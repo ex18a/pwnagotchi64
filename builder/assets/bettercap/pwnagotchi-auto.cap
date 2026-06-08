@@ -1,0 +1,16 @@
+# enable interface monitor mode and define wifi interface to be mon0
+set wifi.interface mon0
+
+# api listening on http://0.0.0.0:8081/ and ui to http://0.0.0.0
+set api.rest.address 0.0.0.0
+set api.rest.port 8081
+set http.server.address 0.0.0.0
+set http.server.port 80
+set http.server.path /usr/local/share/bettercap/ui
+set api.rest.username pwnagotchi
+set api.rest.password pwnagotchi
+set api.rest.websocket true
+
+# go!
+api.rest on
+http.server on

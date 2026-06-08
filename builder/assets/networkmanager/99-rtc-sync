@@ -1,0 +1,24 @@
+#!/bin/bash
+# This script is triggered automatically by NetworkManager when a connection changes
+
+INTERFACE=$1
+ACTION=$2
+
+# Did a network interface just connect?
+if [ "$ACTION" = "up" ]; then
+    # Does RTC Hardware exist?
+    if [ -e /dev/rtc0 ]; then
+        # Run in a background subshell so we do not block NetworkManager
+        (
+            # Loop for up to 60 seconds waiting for a verified NTP sync
+            for i in {1..12}; do
+                if timedatectl status | grep -q "System clock synchronized: yes"; then
+                    # The OS time is officially accurate. Write it to the RTC chip.
+                    /sbin/hwclock -w
+                    exit 0
+                fi
+                sleep 5
+            done
+        ) &
+    fi
+fi

@@ -8,6 +8,7 @@ VERSION=$1
 HOSTNAME=$2
 NEW_USER="pwn"
 OUTPUT_IMG="dist/pwnagotchi-${VERSION}-64bit-kali.img"
+TARBALL="dist/pwnagotchi-${VERSION}.tar.gz"
 
 if [ -z "$VERSION" ] || [ -z "$HOSTNAME" ]; then
     echo " [!] ERROR: Usage: $0 <version> <hostname>"
@@ -60,6 +61,10 @@ touch /mnt/boot/firmware/ssh
 mv /mnt/etc/resolv.conf /mnt/etc/resolv.conf.bak
 echo "nameserver 8.8.8.8" > /mnt/etc/resolv.conf
 
+echo " [*] Step 3.5: Injecting Pwnagotchi source and assets..."
+cp "$TARBALL" /mnt/tmp/
+cp -r builder/assets/bettercap /mnt/tmp/bettercap_assets
+
 # ==============================================================================
 # PHASE 4: KALI CHROOT ENVIRONMENT
 # ==============================================================================
@@ -78,6 +83,34 @@ apt-get autoremove --purge -y
 
 echo "  -> [Chroot] Installing required core packages..."
 apt-get install -y aircrack-ng tcpdump bettercap bettercap-ui
+
+echo "  -> [Chroot] Installing Python build dependencies..."
+apt-get install -y python3-pip python3-dev build-essential libpcap-dev libssl-dev libffi-dev fonts-dejavu libglib2.0-dev libdbus-1-dev
+
+echo "  -> [Chroot] Unpacking application core..."
+mkdir -p /tmp/pwn_source
+tar -xzf /tmp/pwnagotchi-${VERSION}.tar.gz -C /tmp/pwn_source --strip-components=1
+
+echo "  -> [Chroot] Installing Python dependencies..."
+# Use --break-system-packages to bypass PEP 668 on this dedicated appliance image
+python3 -m pip install --break-system-packages -r /tmp/pwn_source/requirements.txt
+python3 -m pip install --break-system-packages --no-deps /tmp/pwnagotchi-${VERSION}.tar.gz
+
+echo "  -> [Chroot] Configuring Bettercap caplets..."
+mkdir -p /usr/local/share/bettercap/caplets
+cp /tmp/bettercap_assets/pwnagotchi-manual.cap /usr/local/share/bettercap/caplets/
+cp /tmp/bettercap_assets/pwnagotchi-auto.cap /usr/local/share/bettercap/caplets/
+
+# Ensure launcher scripts are executable
+chmod +x /usr/bin/pwnagotchi-launcher /usr/bin/bettercap-launcher /usr/bin/monstart /usr/bin/monstop
+
+echo "  -> [Chroot] Pre-creating Pwnagotchi system directories..."
+mkdir -p /etc/pwnagotchi/
+chmod 755 /etc/pwnagotchi/
+
+echo "  -> [Chroot] Registering systemd network unit configurations..."
+systemctl enable bettercap.service
+systemctl enable pwnagotchi.service
 
 # Custom User
 if ! id "$NEW_USER" &>/dev/null; then
