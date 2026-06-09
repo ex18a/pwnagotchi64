@@ -273,8 +273,15 @@ echo "$HOSTNAME" > /etc/hostname
 echo "127.0.1.1 $HOSTNAME" >> /etc/hosts
 
 # Cleanup
-echo "  -> [Chroot] Final cache cleanup..."
+echo "  -> [Chroot] Final cleanup..."
+DEBIAN_FRONTEND=noninteractive apt-get purge -y metasploit-framework firefox-esr openjdk-21-jre-headless postgresql-18 mariadb-server mariadb-server-core mariadb-client
+DEBIAN_FRONTEND=noninteractive apt-get purge -y llvm-21-dev llvm-18-dev gcc-mingw-w64-i686-win32 gcc-mingw-w64-x86-64-win32 mingw-w64-i686-dev mingw-w64-x86-64-dev
+DEBIAN_FRONTEND=noninteractive apt-get purge -y firmware-nvidia-graphics firmware-amd-graphics firmware-iwlwifi firmware-atheros firmware-mediatek firmware-marvell-prestera
+
+echo "  -> [Chroot] Performing aggressive dependency autoremove..."
+DEBIAN_FRONTEND=noninteractive apt-get autoremove --purge -y
 apt-get clean
+
 rm -rf /tmp/* /var/lib/apt/lists/*
 EOF
 
