@@ -1,0 +1,14 @@
+# ==========================================
+# PI ZERO 2 W SPECIFIC OVERLAYS
+# ==========================================
+[pi02]
+# Enable USB Ethernet Gadget mode
+dtoverlay=dwc2
+
+# ==========================================
+# PWNAGOTCHI HARDWARE BUSES (Applies to all)
+# ==========================================
+[all]
+dtparam=spi=on
+dtparam=i2c_arm=on
+dtoverlay=i2c-rtc,ds3231
