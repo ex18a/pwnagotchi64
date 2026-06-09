@@ -83,10 +83,13 @@ echo "  -> [Chroot] Reclaiming disk space..."
 apt-get autoremove --purge -y
 
 echo "  -> [Chroot] Installing required core packages..."
-apt-get install -y aircrack-ng tcpdump bettercap bettercap-ui bluez-tools jq dphys-swapfile
+apt-get install -y aircrack-ng tcpdump bettercap bettercap-ui bluez-tools jq dphys-swapfile hcxtools
 
 echo "  -> [Chroot] Installing Python build dependencies..."
 apt-get install -y python3-pip python3-dev build-essential libpcap-dev libssl-dev libffi-dev fonts-dejavu libglib2.0-dev libdbus-1-dev
+
+echo "  -> [Chroot] Forcing Kernel Wi-Fi Regulatory Domain to BO (Max TX Power)..."
+echo "options cfg80211 ieee80211_regdom=BO" > /etc/modprobe.d/cfg80211_regdomain.conf
 
 echo "  -> [Chroot] Injecting NetworkManager scripts..."
 cp /tmp/networkmanager/98-bt-gateway /etc/NetworkManager/dispatcher.d/98-bt-gateway
@@ -200,8 +203,8 @@ python3 -m pip install --break-system-packages --no-deps /tmp/pwnagotchi-${VERSI
 
 echo "  -> [Chroot] Configuring Bettercap caplets..."
 mkdir -p /usr/local/share/bettercap/caplets
-cp /tmp/bettercap_assets/pwnagotchi-manual.cap /usr/local/share/bettercap/caplets/
-cp /tmp/bettercap_assets/pwnagotchi-auto.cap /usr/local/share/bettercap/caplets/
+cp /tmp/bettercap_assets/pwnagotchi-manual.cap /usr/share/bettercap/caplets/
+cp /tmp/bettercap_assets/pwnagotchi-auto.cap /usr/share/bettercap/caplets/
 
 # Ensure launcher scripts are executable
 chmod +x /usr/bin/pwnagotchi-launcher /usr/bin/bettercap-launcher /usr/bin/monstart /usr/bin/monstop
@@ -256,8 +259,7 @@ cat <<MOTD_EOF > /etc/motd
         touch /root/.pwnagotchi-auto && systemctl restart pwnagotchi
         \${NC}
 MOTD_EOF
-sed -i 's/#PrintMotd yes/PrintMotd yes/' /etc/ssh/sshd_config
-sed -i 's/PrintMotd no/PrintMotd yes/' /etc/ssh/sshd_config
+rm -rf /etc/update-motd.d/* /etc/motd.d/*
 
 echo "  -> [Chroot] Configuring 512MB Swap Space..."
 sed -i 's/^CONF_SWAPSIZE=.*$/CONF_SWAPSIZE=512/' /etc/dphys-swapfile

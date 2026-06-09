@@ -41,7 +41,7 @@ class IPDisplay(plugins.Plugin):
 
     def on_ready(self, agent):
         self._agent = agent
-        logging.info("IP Display Plugin ready.")
+        logging.info("[IPDisplay] Plugin ready.")
         self.ready = True
 
     def on_ui_setup(self, ui):
