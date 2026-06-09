@@ -53,9 +53,7 @@ done
 # ==============================================================================
 echo " [*] Step 3: Injecting QEMU and Config..."
 cp /usr/bin/qemu-aarch64-static /mnt/usr/bin/
-echo "dtparam=spi=on" >> /mnt/boot/firmware/config.txt
-echo "dtparam=i2c_arm=on" >> /mnt/boot/firmware/config.txt
-echo "dtoverlay=i2c-rtc,ds3231" >> /mnt/boot/firmware/config.txt
+
 touch /mnt/boot/firmware/ssh
 
 # DNS Fix for Chroot
@@ -66,6 +64,7 @@ echo " [*] Step 3.5: Injecting Pwnagotchi source and assets..."
 cp "$TARBALL" /mnt/tmp/
 cp -r builder/assets/bettercap /mnt/tmp/bettercap_assets
 cp -r builder/assets/networkmanager /mnt/tmp/networkmanager
+cp builder/assets/boot/config.txt /mnt/boot/firmware/config.txt
 
 # ==============================================================================
 # PHASE 4: KALI CHROOT ENVIRONMENT
@@ -263,6 +262,9 @@ sed -i 's/PrintMotd no/PrintMotd yes/' /etc/ssh/sshd_config
 echo "  -> [Chroot] Configuring 512MB Swap Space..."
 sed -i 's/^CONF_SWAPSIZE=.*$/CONF_SWAPSIZE=512/' /etc/dphys-swapfile
 systemctl enable dphys-swapfile.service
+
+echo "  -> [Chroot] Injecting USB Ethernet Gadget modules into cmdline.txt..."
+sed -i 's/$/ modules-load=dwc2,g_ether/' /mnt/boot/firmware/cmdline.txt
 
 # Hostname
 echo "$HOSTNAME" > /etc/hostname
