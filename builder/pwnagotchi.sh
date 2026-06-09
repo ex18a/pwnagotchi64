@@ -73,19 +73,31 @@ chroot /mnt /bin/bash <<EOF
 set -e
 export DEBIAN_FRONTEND=noninteractive
 
-echo "  -> [Chroot] Updating repositories..."
-apt-get update -y
+echo "  -> [Chroot] Enabling QEMU high-speed I/O..."
+echo "force-unsafe-io" > /etc/dpkg/dpkg.cfg.d/force-unsafe-io
 
-echo "  -> [Chroot] Stripping desktop and heavy metapackages..."
+echo "  -> [Chroot] PHASE 4.1: Aggressive Base System Purge..."
+# 1. Strip all desktop environments and Kali metapackages
 apt-get purge -y --allow-remove-essential kali-desktop-core kali-desktop-xfce kali-linux-default x11-common kali-linux-headless
 
-echo "  -> [Chroot] Reclaiming disk space..."
+# 2. Strip heavy databases, browsers, and frameworks
+apt-get purge -y metasploit-framework firefox-esr openjdk-21-jre-headless postgresql-* mariadb-*
+
+# 3. Strip massive developer toolchains and Windows cross-compilers
+apt-get purge -y llvm-21* llvm-18* gcc-mingw-w64-* mingw-w64-*
+
+# 4. Strip unused non-Raspberry Pi hardware firmware
+apt-get purge -y firmware-nvidia-graphics firmware-amd-graphics firmware-marvell-prestera firmware-iwlwifi firmware-atheros firmware-mediatek
+
+echo "  -> [Chroot] PHASE 4.2: Sweeping up orphaned dependencies..."
 apt-get autoremove --purge -y
+apt-get clean
 
-echo "  -> [Chroot] Installing required core packages..."
+echo "  -> [Chroot] PHASE 4.3: Updating lean repository list..."
+apt-get update -y
+
+echo "  -> [Chroot] PHASE 4.4: Installing core Pwnagotchi packages..."
 apt-get install -y aircrack-ng tcpdump bettercap bettercap-ui bluez-tools jq dphys-swapfile hcxtools
-
-echo "  -> [Chroot] Installing Python build dependencies..."
 apt-get install -y python3-pip python3-dev build-essential libpcap-dev libssl-dev libffi-dev fonts-dejavu libglib2.0-dev libdbus-1-dev
 
 echo "  -> [Chroot] Forcing Kernel Wi-Fi Regulatory Domain to BO (Max TX Power)..."
@@ -197,16 +209,14 @@ mkdir -p /tmp/pwn_source
 tar -xzf /tmp/pwnagotchi-${VERSION}.tar.gz -C /tmp/pwn_source --strip-components=1
 
 echo "  -> [Chroot] Installing Python dependencies..."
-# Use --break-system-packages to bypass PEP 668 on this dedicated appliance image
 python3 -m pip install --break-system-packages -r /tmp/pwn_source/requirements.txt
 python3 -m pip install --break-system-packages --no-deps /tmp/pwnagotchi-${VERSION}.tar.gz
 
 echo "  -> [Chroot] Configuring Bettercap caplets..."
-mkdir -p /usr/local/share/bettercap/caplets
+mkdir -p /usr/share/bettercap/caplets
 cp /tmp/bettercap_assets/pwnagotchi-manual.cap /usr/share/bettercap/caplets/
 cp /tmp/bettercap_assets/pwnagotchi-auto.cap /usr/share/bettercap/caplets/
 
-# Ensure launcher scripts are executable
 chmod +x /usr/bin/pwnagotchi-launcher /usr/bin/bettercap-launcher /usr/bin/monstart /usr/bin/monstop
 
 echo "  -> [Chroot] Pre-creating Pwnagotchi system directories..."
@@ -217,7 +227,6 @@ echo "  -> [Chroot] Registering systemd network unit configurations..."
 systemctl enable bettercap.service
 systemctl enable pwnagotchi.service
 
-# Custom User
 if ! id "$NEW_USER" &>/dev/null; then
     useradd -m -G sudo,video,input,netdev,plugdev -s /bin/bash "$NEW_USER"
 fi
@@ -259,29 +268,19 @@ cat <<MOTD_EOF > /etc/motd
         touch /root/.pwnagotchi-auto && systemctl restart pwnagotchi
         \${NC}
 MOTD_EOF
-rm -rf /etc/update-motd.d/* /etc/motd.d/*
 
 echo "  -> [Chroot] Configuring 512MB Swap Space..."
 sed -i 's/^CONF_SWAPSIZE=.*$/CONF_SWAPSIZE=512/' /etc/dphys-swapfile
 systemctl enable dphys-swapfile.service
 
 echo "  -> [Chroot] Injecting USB Ethernet Gadget modules into cmdline.txt..."
-sed -i 's/$/ modules-load=dwc2,g_ether/' /mnt/boot/firmware/cmdline.txt
+sed -i 's/$/ modules-load=dwc2,g_ether/' /boot/firmware/cmdline.txt
 
-# Hostname
 echo "$HOSTNAME" > /etc/hostname
 echo "127.0.1.1 $HOSTNAME" >> /etc/hosts
 
-# Cleanup
 echo "  -> [Chroot] Final cleanup..."
-DEBIAN_FRONTEND=noninteractive apt-get purge -y metasploit-framework firefox-esr openjdk-21-jre-headless postgresql-18 mariadb-server mariadb-server-core mariadb-client
-DEBIAN_FRONTEND=noninteractive apt-get purge -y llvm-21-dev llvm-18-dev gcc-mingw-w64-i686-win32 gcc-mingw-w64-x86-64-win32 mingw-w64-i686-dev mingw-w64-x86-64-dev
-DEBIAN_FRONTEND=noninteractive apt-get purge -y firmware-nvidia-graphics firmware-amd-graphics firmware-iwlwifi firmware-atheros firmware-mediatek firmware-marvell-prestera
-
-echo "  -> [Chroot] Performing aggressive dependency autoremove..."
-DEBIAN_FRONTEND=noninteractive apt-get autoremove --purge -y
-apt-get clean
-
+rm -f /etc/dpkg/dpkg.cfg.d/force-unsafe-io
 rm -rf /tmp/* /var/lib/apt/lists/*
 EOF
 
