@@ -210,6 +210,12 @@ tar -xzf /tmp/pwnagotchi-${VERSION}.tar.gz -C /tmp/pwn_source --strip-components
 
 echo "  -> [Chroot] Installing Python dependencies..."
 python3 -m pip install --break-system-packages -r /tmp/pwn_source/requirements.txt
+
+echo "  -> [Chroot] Installing PyTorch AI Engine..."
+# --no-cache-dir is CRITICAL here to prevent the image from bloating by 2GB+
+python3 -m pip install --break-system-packages --no-cache-dir torch stable-baselines3 numpy pandas gym shimmy
+
+echo "  -> [Chroot] Installing Pwnagotchi core..."
 python3 -m pip install --break-system-packages --no-deps /tmp/pwnagotchi-${VERSION}.tar.gz
 
 echo "  -> [Chroot] Configuring Bettercap caplets..."

@@ -114,7 +114,7 @@ class AsyncTrainer(object):
         logging.info("[ai] saving model to %s ..." % self._nn_path)
         temp = "%s.tmp" % self._nn_path
         self._model.save(temp)
-        os.replace(temp, self._nn_path)
+        os.replace(temp + ".zip", self._nn_path + ".zip")
 
     def on_ai_step(self):
         self._model.env.render()

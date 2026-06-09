@@ -2,10 +2,6 @@ import os
 import time
 import logging
 
-# https://stackoverflow.com/questions/40426502/is-there-a-way-to-suppress-the-messages-tensorflow-prints/40426709
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # or any {'0', '1', '2'}
-
-
 def load(config, agent, epoch, from_disk=True):
     config = config['ai']
     if not config['enabled']:
@@ -14,19 +10,14 @@ def load(config, agent, epoch, from_disk=True):
 
     try:
         begin = time.time()
-
-        logging.info("[ai] bootstrapping dependencies ...")
+        logging.info("[ai] bootstrapping PyTorch dependencies ...")
 
         start = time.time()
-        from stable_baselines import A2C
+        from stable_baselines3 import A2C
         logging.debug("[ai] A2C imported in %.2fs" % (time.time() - start))
 
         start = time.time()
-        from stable_baselines.common.policies import MlpLstmPolicy
-        logging.debug("[ai] MlpLstmPolicy imported in %.2fs" % (time.time() - start))
-
-        start = time.time()
-        from stable_baselines.common.vec_env import DummyVecEnv
+        from stable_baselines3.common.vec_env import DummyVecEnv
         logging.debug("[ai] DummyVecEnv imported in %.2fs" % (time.time() - start))
 
         start = time.time()
@@ -37,18 +28,17 @@ def load(config, agent, epoch, from_disk=True):
         env = DummyVecEnv([lambda: env])
 
         logging.info("[ai] creating model ...")
-
         start = time.time()
-        a2c = A2C(MlpLstmPolicy, env, **config['params'])
+        a2c = A2C("MlpPolicy", env, **config['params'])
         logging.debug("[ai] A2C created in %.2fs" % (time.time() - start))
 
-        if from_disk and os.path.exists(config['path']):
-            logging.info("[ai] loading %s ..." % config['path'])
+        if from_disk and os.path.exists(config['path'] + ".zip"):
+            logging.info("[ai] loading %s.zip ..." % config['path'])
             start = time.time()
-            a2c.load(config['path'], env)
+            a2c = A2C.load(config['path'], env=env)
             logging.debug("[ai] A2C loaded in %.2fs" % (time.time() - start))
         else:
-            logging.info("[ai] model created:")
+            logging.info("[ai] new model created:")
             for key, value in config['params'].items():
                 logging.info("      %s: %s" % (key, value))
 
