@@ -65,8 +65,6 @@ class Stats(object):
             self.worst_reward = reward
 
         self.save()
-        if self.receiver is not None:
-            self.receiver.on_ai_epoch(self.epochs_lived, self.epochs_trained, data)
 
 
 class AsyncTrainer(object):
