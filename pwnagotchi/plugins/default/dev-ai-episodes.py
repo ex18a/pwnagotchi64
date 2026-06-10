@@ -36,7 +36,7 @@ class DevAiEpisodes(plugins.Plugin):
         # 2. Setup the element and push the initial value immediately
         ui.add_element('lifetime_episodes', LabeledValue(color=BLACK, label='EPS', value=str(self.ep_count),
                                                        position=(110, 90),
-                                                       label_font=fonts.Bold, text_font=fonts.Small))
+                                                       label_font=fonts.Bold, text_font=fonts.Medium))
 
     def on_epoch(self, agent, epoch, epoch_data):
         # 1. The AI just finished an epoch. Check the new count.

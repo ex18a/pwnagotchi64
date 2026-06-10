@@ -17,7 +17,7 @@ class BlindCount(plugins.Plugin):
     def on_ui_setup(self, ui):
         ui.add_element('blind_val', LabeledValue(color=BLACK, label='BLIND ', value='0',
                                                  position=(110, 80),
-                                                 label_font=fonts.Bold, text_font=fonts.Small))
+                                                 label_font=fonts.Bold, text_font=fonts.Medium))
 
     def on_ui_update(self, ui):
         try:
