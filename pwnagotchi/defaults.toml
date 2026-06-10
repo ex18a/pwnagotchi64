@@ -16,9 +16,9 @@ main.filter = ""
 main.log.debug = false
 
 main.plugins.portrait-mode.enabled = false
-main.plugins.IPDisplay.enabled = false
+main.plugins.IPDisplay.enabled = true
 main.plugins.hashvault.enabled = false
-main.plugins.dev-ai-count.enabled = false
+main.plugins.dev-ai-episodes.enabled = false
 main.plugins.dev-blind.enabled = false
 main.plugins.pisugar3i2c.enabled = false
 main.plugins.face_only.enabled = false
@@ -38,7 +38,7 @@ main.log.path = "/var/log/pwnagotchi.log"
 main.log.rotation.enabled = true
 main.log.rotation.size = "10M"
 
-ai.enabled = false
+ai.enabled = true
 ai.path = "/root/brain.nn"
 ai.laziness = 0.1
 ai.epochs_per_episode = 50
@@ -109,7 +109,7 @@ ui.web.origin = ""
 ui.web.port = 8080
 ui.web.on_frame = ""
 
-ui.display.enabled = false
+ui.display.enabled = true
 ui.display.orientation = 90
 ui.display.type = "waveshare_4"
 ui.display.color = "black"
