@@ -1,6 +1,6 @@
 import logging
-import gym
-from gym import spaces
+import gymnasium as gym
+from gymnasium import spaces
 import numpy as np
 
 import pwnagotchi.ai.featurizer as featurizer
@@ -34,7 +34,6 @@ class Environment(gym.Env):
         self._epoch_num = 0
         self._last_render = None
 
-        # see https://github.com/evilsocket/pwnagotchi/issues/583
         self._supported_channels = agent.supported_channels()
         self._extended_spectrum = any(ch > 140 for ch in self._supported_channels)
         self._histogram_size, self._observation_shape = featurizer.describe(self._extended_spectrum)
@@ -65,25 +64,20 @@ class Environment(gym.Env):
     def policy_to_params(policy):
         num = len(policy)
         params = {}
-
         assert len(Environment.params) == num
-
         channels = []
 
         for i in range(num):
             param = Environment.params[i]
-
             if '_channel' not in param.name:
                 params[param.name] = param.to_param_value(policy[i])
             else:
                 has_chan = param.to_param_value(policy[i])
-                # print("%s policy:%s bool:%s" % (param.name, policy[i], has_chan))
                 chan = param.meta
                 if has_chan:
                     channels.append(chan)
 
         params['channels'] = channels
-
         return params
 
     def _next_epoch(self):
@@ -96,13 +90,11 @@ class Environment(gym.Env):
         self.last['params'] = new_params
         self._agent.on_ai_policy(new_params)
 
+    # MODERN GYMNASIUM API REQUIREMENT: step() returns 5 variables
     def step(self, policy):
-        # create the parameters from the policy and update
-        # update them in the algorithm
         self._apply_policy(policy)
         self._epoch_num += 1
 
-        # wait for the algorithm to run with the new parameters
         state = self._next_epoch()
 
         self.last['reward'] = state['reward']
@@ -111,15 +103,22 @@ class Environment(gym.Env):
 
         self._agent.on_ai_step()
 
-        return self.last['state_v'], self.last['reward'], not self._agent.is_training(), {}
+        terminated = not self._agent.is_training()
+        truncated = False  # Explicitly required by new Gymnasium API
+        info = {}          # Explicitly required by new Gymnasium API
 
-    def reset(self):
-        # logging.info("[ai] resetting environment ...")
+        return self.last['state_v'], self.last['reward'], terminated, truncated, info
+
+    # MODERN GYMNASIUM API REQUIREMENT: reset() accepts seed/options and returns tuple
+    def reset(self, seed=None, options=None):
+        super().reset(seed=seed)
         self._epoch_num = 0
         state = self._next_epoch()
         self.last['state'] = state
         self.last['state_v'] = featurizer.featurize(state, 1)
-        return self.last['state_v']
+        
+        info = {} # Explicitly required by new Gymnasium API
+        return self.last['state_v'], info
 
     def _render_histogram(self, hist):
         for ch in range(self._histogram_size):
@@ -127,8 +126,6 @@ class Environment(gym.Env):
                 logging.info("      CH %d: %s" % (ch + 1, hist[ch]))
 
     def render(self, mode='human', close=False, force=False):
-        # when using a vectorialized environment, render gets called twice
-        # avoid rendering the same data
         if self._last_render == self._epoch_num:
             return
 
@@ -139,7 +136,6 @@ class Environment(gym.Env):
 
         logging.info("[ai] --- training epoch %d/%d ---" % (self._epoch_num, self._agent.training_epochs()))
         logging.info("[ai] REWARD: %f" % self.last['reward'])
-
         logging.debug("[ai] policy: %s" % ', '.join("%s:%s" % (name, value) for name, value in self.last['params'].items()))
 
         logging.info("[ai] observation:")

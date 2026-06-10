@@ -374,6 +374,7 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         # --- NATIVE HOME PAUSE INITIALIZATION ---
         cache_path = '/etc/pwnagotchi/home_paused_cache.json'
         home_detected = False
+        home_miss_count = 0 # NEW COOLDOWN COUNTER
 
         # Pull the existing array directly from your config
         whitelist = self._config.get('main', {}).get('whitelist', [])
@@ -392,7 +393,7 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             self._update_counters()
             self._update_handshakes(0)
 
-            # --- NATIVE HOME PAUSE ENGINE ---
+            # --- NATIVE HOME PAUSE ENGINE (WITH COOLDOWN BUFFER) ---
             if whitelist and 'wifi' in s and 'aps' in s['wifi']:
                 found = any(
                     ap.get('hostname') in whitelist or
@@ -401,6 +402,7 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
                 )
 
                 if found:
+                    home_miss_count = 0 # Reset counter on valid sighting
                     if not home_detected:
                         logging.info("[AGENT] Whitelisted network detected. Parking AI execution.")
                         home_detected = True
@@ -417,18 +419,24 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
 
                 else:
                     if home_detected:
-                        logging.info("[AGENT] Whitelisted networks cleared from environment. Resuming AI.")
-                        home_detected = False
+                        home_miss_count += 1
+                        
+                        if home_miss_count >= 3:
+                            logging.info(f"[AGENT] Whitelisted networks cleared for {home_miss_count} scans. Resuming AI.")
+                            home_detected = False
+                            home_miss_count = 0 # Reset counter
 
-                        restored_laz = 0.1
-                        if os.path.exists(cache_path):
-                            try:
-                                with open(cache_path, 'r') as f:
-                                    restored_laz = json.load(f).get('runtime_laziness', 0.1)
-                            except Exception:
-                                pass
+                            restored_laz = 0.1
+                            if os.path.exists(cache_path):
+                                try:
+                                    with open(cache_path, 'r') as f:
+                                        restored_laz = json.load(f).get('runtime_laziness', 0.1)
+                                except Exception:
+                                    pass
 
-                        self._config['ai']['laziness'] = restored_laz
+                            self._config['ai']['laziness'] = restored_laz
+                        else:
+                            logging.debug(f"[AGENT] Home network missing from scan (Buffer: {home_miss_count}/3). Holding state.")
 
             # Rule: If actively learning (50/50 block), show AI. Otherwise, show AUTO.
             try:

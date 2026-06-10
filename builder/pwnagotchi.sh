@@ -98,7 +98,13 @@ apt-get update -y
 
 echo "  -> [Chroot] PHASE 4.4: Installing core Pwnagotchi packages..."
 apt-get install -y aircrack-ng tcpdump bettercap bettercap-ui bluez-tools jq dphys-swapfile hcxtools
-apt-get install -y python3-pip python3-dev build-essential libpcap-dev libssl-dev libffi-dev fonts-dejavu libglib2.0-dev libdbus-1-dev
+apt-get install -y python3-pip python3-dev build-essential libpcap-dev libssl-dev libffi-dev fonts-dejavu libglib2.0-dev libdbus-1-dev python3-rpi.gpio python3-smbus
+
+echo "  -> [Chroot] Installing heavy math and AI engines natively..."
+apt-get install -y python3-torch python3-numpy python3-pandas
+
+echo "  -> [Chroot] Enabling I2C hardware modules..."
+echo "i2c-dev" >> /etc/modules
 
 echo "  -> [Chroot] Forcing Kernel Wi-Fi Regulatory Domain to BO (Max TX Power)..."
 echo "options cfg80211 ieee80211_regdom=BO" > /etc/modprobe.d/cfg80211_regdomain.conf
@@ -208,12 +214,13 @@ echo "  -> [Chroot] Unpacking application core..."
 mkdir -p /tmp/pwn_source
 tar -xzf /tmp/pwnagotchi-${VERSION}.tar.gz -C /tmp/pwn_source --strip-components=1
 
-echo "  -> [Chroot] Installing Python dependencies..."
-python3 -m pip install --break-system-packages -r /tmp/pwn_source/requirements.txt
+echo "  -> [Chroot] Bypassing Debian RECORD conflicts..."
+# pip panics if it tries to upgrade an apt-installed package without a receipt. 
+# This forces pip to install its own local copies and ignore the apt versions.
+python3 -m pip install --break-system-packages --no-cache-dir --ignore-installed mpmath sympy
 
-echo "  -> [Chroot] Installing PyTorch AI Engine..."
-# --no-cache-dir is CRITICAL here to prevent the image from bloating by 2GB+
-python3 -m pip install --break-system-packages --no-cache-dir torch stable-baselines3 numpy pandas gym shimmy
+echo "  -> [Chroot] Installing unified Python dependencies & Modern AI Environment..."
+python3 -m pip install --break-system-packages --no-cache-dir -r /tmp/pwn_source/requirements.txt
 
 echo "  -> [Chroot] Installing Pwnagotchi core..."
 python3 -m pip install --break-system-packages --no-deps /tmp/pwnagotchi-${VERSION}.tar.gz

@@ -12,75 +12,61 @@ import pwnagotchi.ai as ai
 
 class Stats(object):
     def __init__(self, path, events_receiver):
-        self._lock = threading.Lock()
-        self._receiver = events_receiver
-
         self.path = path
+        self.receiver = events_receiver
         self.born_at = time.time()
-        # total epochs lived (trained + just eval)
         self.epochs_lived = 0
-        # total training epochs
         self.epochs_trained = 0
-
+        self.episodes_completed = 0
         self.worst_reward = 0.0
         self.best_reward = 0.0
 
-        self.load()
-
-    def on_epoch(self, data, training):
-        best_r = False
-        worst_r = False
-        with self._lock:
-            reward = data['reward']
-            if reward < self.worst_reward:
-                self.worst_reward = reward
-                worst_r = True
-
-            elif reward > self.best_reward:
-                best_r = True
-                self.best_reward = reward
-
-            self.epochs_lived += 1
-            if training:
-                self.epochs_trained += 1
-
-        self.save()
-
-        if best_r:
-            self._receiver.on_ai_best_reward(reward)
-        elif worst_r:
-            self._receiver.on_ai_worst_reward(reward)
-
     def load(self):
-        with self._lock:
-            if os.path.exists(self.path) and os.path.getsize(self.path) > 0:
-                logging.info("[ai] loading %s" % self.path)
+        if os.path.exists(self.path):
+            try:
                 with open(self.path, 'rt') as fp:
-                    obj = json.load(fp)
-
-                self.born_at = obj['born_at']
-                self.epochs_lived, self.epochs_trained = obj['epochs_lived'], obj['epochs_trained']
-                self.best_reward, self.worst_reward = obj['rewards']['best'], obj['rewards']['worst']
+                    data = json.load(fp)
+                    self.born_at = data['born_at']
+                    self.epochs_lived = data['epochs_lived']
+                    self.epochs_trained = data['epochs_trained']
+                    self.episodes_completed = data['episodes_completed']
+                    self.worst_reward = data['rewards']['worst']
+                    self.best_reward = data['rewards']['best']
+            except Exception as e:
+                logging.warning("error while loading %s: %s" % (self.path, e))
 
     def save(self):
-        with self._lock:
-            logging.info("[ai] saving %s" % self.path)
+        try:
+            with open(self.path, 'wt') as fp:
+                json.dump({
+                    'born_at': self.born_at,
+                    'epochs_lived': self.epochs_lived,
+                    'epochs_trained': self.epochs_trained,
+                    'episodes_completed': self.episodes_completed,
+                    'rewards': {
+                        'best': self.best_reward,
+                        'worst': self.worst_reward
+                    }
+                }, fp)
+        except Exception as e:
+            logging.warning("error while saving %s: %s" % (self.path, e))
 
-            data = json.dumps({
-                'born_at': self.born_at,
-                'epochs_lived': self.epochs_lived,
-                'epochs_trained': self.epochs_trained,
-                'rewards': {
-                    'best': self.best_reward,
-                    'worst': self.worst_reward
-                }
-            })
+    def on_epoch(self, data, training):
+        self.epochs_lived += 1
+        if training:
+            self.epochs_trained += 1
+            if self.epochs_trained % 50 == 0:
+                self.episodes_completed += 1
 
-            temp = "%s.tmp" % self.path
-            with open(temp, 'wt') as fp:
-                fp.write(data)
+        reward = data['reward']
+        if reward > self.best_reward:
+            self.best_reward = reward
+        elif reward < self.worst_reward:
+            self.worst_reward = reward
 
-            os.replace(temp, self.path)
+        self.save()
+        if self.receiver is not None:
+            self.receiver.on_ai_epoch(self.epochs_lived, self.epochs_trained, data)
 
 
 class AsyncTrainer(object):
@@ -112,9 +98,11 @@ class AsyncTrainer(object):
 
     def _save_ai(self):
         logging.info("[ai] saving model to %s ..." % self._nn_path)
-        temp = "%s.tmp" % self._nn_path
+        # Explicitly tell PyTorch to use .zip for the temp file
+        temp = "%s.tmp.zip" % self._nn_path
         self._model.save(temp)
-        os.replace(temp + ".zip", self._nn_path + ".zip")
+        # Safely overwrite the old brain with the new one
+        os.replace(temp, "%s.zip" % self._nn_path)
 
     def on_ai_step(self):
         self._model.env.render()
