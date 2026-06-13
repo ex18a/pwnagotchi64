@@ -11,9 +11,9 @@ from pwnagotchi.ai.parameter import Parameter
 class Environment(gym.Env):
     metadata = {'render.modes': ['human']}
     params = [
-        Parameter('min_rssi', min_value=-120, max_value=-50),
-        Parameter('ap_ttl', min_value=30, max_value=120),
-        Parameter('sta_ttl', min_value=30, max_value=90),
+        Parameter('min_rssi', min_value=-200, max_value=-50),
+        Parameter('ap_ttl', min_value=30, max_value=600),
+        Parameter('sta_ttl', min_value=60, max_value=300),
 
         Parameter('recon_time', min_value=5, max_value=60),
         Parameter('max_inactive_scale', min_value=3, max_value=10),
@@ -64,11 +64,14 @@ class Environment(gym.Env):
     def policy_to_params(policy):
         num = len(policy)
         params = {}
+
         assert len(Environment.params) == num
+
         channels = []
 
         for i in range(num):
             param = Environment.params[i]
+
             if '_channel' not in param.name:
                 params[param.name] = param.to_param_value(policy[i])
             else:
@@ -90,7 +93,6 @@ class Environment(gym.Env):
         self.last['params'] = new_params
         self._agent.on_ai_policy(new_params)
 
-    # MODERN GYMNASIUM API REQUIREMENT: step() returns 5 variables
     def step(self, policy):
         self._apply_policy(policy)
         self._epoch_num += 1
@@ -103,22 +105,21 @@ class Environment(gym.Env):
 
         self._agent.on_ai_step()
 
+        # Gymnasium format: observation, reward, terminated, truncated, info
         terminated = not self._agent.is_training()
-        truncated = False  # Explicitly required by new Gymnasium API
-        info = {}          # Explicitly required by new Gymnasium API
+        truncated = False
+        return self.last['state_v'], self.last['reward'], terminated, truncated, {}
 
-        return self.last['state_v'], self.last['reward'], terminated, truncated, info
-
-    # MODERN GYMNASIUM API REQUIREMENT: reset() accepts seed/options and returns tuple
     def reset(self, seed=None, options=None):
+        # Gymnasium expects seed routing
         super().reset(seed=seed)
         self._epoch_num = 0
         state = self._next_epoch()
         self.last['state'] = state
         self.last['state_v'] = featurizer.featurize(state, 1)
         
-        info = {} # Explicitly required by new Gymnasium API
-        return self.last['state_v'], info
+        # Gymnasium format: observation, info
+        return self.last['state_v'], {}
 
     def _render_histogram(self, hist):
         for ch in range(self._histogram_size):
@@ -137,9 +138,9 @@ class Environment(gym.Env):
         logging.info("[ai] --- training epoch %d/%d ---" % (self._epoch_num, self._agent.training_epochs()))
         logging.info("[ai] REWARD: %f" % self.last['reward'])
         logging.debug("[ai] policy: %s" % ', '.join("%s:%s" % (name, value) for name, value in self.last['params'].items()))
-
         logging.info("[ai] observation:")
         for name, value in self.last['state'].items():
             if 'histogram' in name:
                 logging.info("    %s" % name.replace('_histogram', ''))
                 self._render_histogram(value)
+

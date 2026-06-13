@@ -137,7 +137,6 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         self.start_monitor_mode()
         self.start_event_polling()
         self.start_session_fetcher()
-        # print initial stats
         self.next_epoch()
         self.set_ready()
 
@@ -210,11 +209,8 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         channels = self._config['personality']['channels']
         grouped = {}
 
-        # group by channel
         for ap in aps:
             ch = ap['channel']
-            # if we're sticking to a channel, skip anything
-            # which is not on that channel
             if channels and ch not in channels:
                 continue
 
@@ -223,7 +219,6 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             else:
                 grouped[ch].append(ap)
 
-        # sort by more populated channels
         return sorted(grouped.items(), key=lambda kv: len(kv[1]), reverse=True)
 
     def _find_ap_sta_in(self, station_mac, ap_mac, session):
@@ -238,7 +233,6 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
     def _update_uptime(self, s):
         secs = pwnagotchi.uptime()
         self._view.set('uptime', utils.secs_to_hhmmss(secs))
-        # self._view.set('epoch', '%04d' % self._epoch.epoch)
 
     def _update_counters(self):
         self._tot_aps = len(self._access_points)
@@ -259,19 +253,15 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             if not os.path.exists(handshake_dir):
                 return None
 
-            # Use glob to find ONLY .pcap files in /root/handshakes
             files = glob.glob(os.path.join(handshake_dir, '*.pcap'))
             if not files:
                 return None
 
-            # Sort files by modification time to find the absolute newest one
             newest_file = max(files, key=os.path.getmtime)
             filename = os.path.basename(newest_file)
 
-            # Strip the .pcap extension
             name_part, _ = os.path.splitext(filename)
 
-            # Split by underscore and drop the trailing MAC address element
             if '_' in name_part:
                 parts = name_part.split('_')
                 if len(parts) > 1:
@@ -290,36 +280,25 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         tot = utils.total_unique_handshakes(self._config['bettercap']['handshakes'])
         txt = '%d (%d)' % (len(self._handshakes), tot)
 
-        # Update the main shakes element (the bold PWND part)
         self._view.set('shakes', txt)
 
 # --- DYNAMIC POSITIONING ---
         try:
-            # 1. Grab the fixed starting coordinates of the main 'shakes' element
             shakes_x, shakes_y = self._view._state._state['shakes'].xy
 
-            # 2. AUTO-DETECT PORTRAIT MODE
             if self._view._width == 122:
-                # We are in Portrait Mode!
-                # Skip the horizontal math so the plugin's new line coordinates stay safe!
                 pass
             else:
-                # We are in standard Landscape Mode!
-                # Calculate the exact width of the text (~6px per character)
                 dynamic_offset = 32 + (len(txt) * 6)
-
-                # Slide the network name over dynamically so it perfectly dodges the numbers
                 self._view._state._state['last_pwnd_name'].xy = (shakes_x + dynamic_offset, shakes_y)
 
         except Exception:
             pass
         # ---------------------------------
 
-        # If just booted and have no session captures yet, look at the disk
         if self._last_pwnd is None:
             self._last_pwnd = self._get_historical_last_pwnd()
 
-        # Update for the WiFi name
         if self._last_pwnd is not None:
             self._view.set('last_pwnd_name', '[%s]' % self._last_pwnd)
         else:
@@ -366,25 +345,11 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             if not no_exceptions:
                 raise
 
-
     def start_session_fetcher(self):
         _thread.start_new_thread(self._fetch_stats, ())
 
     def _fetch_stats(self):
-        # --- NATIVE HOME PAUSE INITIALIZATION ---
-        cache_path = '/etc/pwnagotchi/home_paused_cache.json'
-        home_detected = False
-        home_miss_count = 0 # NEW COOLDOWN COUNTER
-
-        # Pull the existing array directly from your config
-        whitelist = self._config.get('main', {}).get('whitelist', [])
-
-        # Pause AI immediately on boot if a whitelist is configured
-        if whitelist:
-            logging.info("[AGENT] Boot-Lock enabled via main.whitelist targets. Assuming home until proven otherwise.")
-            self._config['ai']['laziness'] = 1.0
-            home_detected = True
-
+        # A 100% clean loop, allowing the core UI engine to control mode states naturally
         while True:
             s = self.session()
             self._update_uptime(s)
@@ -392,70 +357,12 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             self._update_peers()
             self._update_counters()
             self._update_handshakes(0)
-
-            # --- NATIVE HOME PAUSE ENGINE (WITH COOLDOWN BUFFER) ---
-            if whitelist and 'wifi' in s and 'aps' in s['wifi']:
-                found = any(
-                    ap.get('hostname') in whitelist or
-                    ap.get('mac', '').lower() in [w.lower() for w in whitelist]
-                    for ap in s['wifi']['aps']
-                )
-
-                if found:
-                    home_miss_count = 0 # Reset counter on valid sighting
-                    if not home_detected:
-                        logging.info("[AGENT] Whitelisted network detected. Parking AI execution.")
-                        home_detected = True
-
-                        live_laz = self._config.get('ai', {}).get('laziness', 0.1)
-                        if live_laz != 1.0:
-                            try:
-                                with open(cache_path, 'w') as f:
-                                    json.dump({'runtime_laziness': live_laz}, f)
-                            except Exception as e:
-                                logging.error(f"[core] Cache write error: {e}")
-
-                        self._config['ai']['laziness'] = 1.0
-
-                else:
-                    if home_detected:
-                        home_miss_count += 1
-                        
-                        if home_miss_count >= 3:
-                            logging.info(f"[AGENT] Whitelisted networks cleared for {home_miss_count} scans. Resuming AI.")
-                            home_detected = False
-                            home_miss_count = 0 # Reset counter
-
-                            restored_laz = 0.1
-                            if os.path.exists(cache_path):
-                                try:
-                                    with open(cache_path, 'r') as f:
-                                        restored_laz = json.load(f).get('runtime_laziness', 0.1)
-                                except Exception:
-                                    pass
-
-                            self._config['ai']['laziness'] = restored_laz
-                        else:
-                            logging.debug(f"[AGENT] Home network missing from scan (Buffer: {home_miss_count}/3). Holding state.")
-
-            # Rule: If actively learning (50/50 block), show AI. Otherwise, show AUTO.
-            try:
-                if hasattr(self, 'is_training') and self.is_training():
-                    self.mode = 'ai'
-                    self._view.set('mode', '  AI')
-                else:
-                    self.mode = 'auto'
-                    self._view.set('mode', 'AUTO')
-            except Exception:
-                pass
-
             time.sleep(1)
 
     async def _on_event(self, msg):
         found_handshake = False
         jmsg = json.loads(msg)
 
-        # give plugins access to all raw bettercap events
         try:
             plugins.on('bcap_%s' % re.sub(r"[^a-z0-9_]+", "_",  jmsg['tag'].lower()), self, jmsg)
         except Exception as err:
@@ -501,9 +408,7 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
                 logging.debug("Error while polling via websocket (%s)", ex)
 
     def start_event_polling(self):
-        # start a thread and pass in the mainloop
         _thread.start_new_thread(self._event_poller, (asyncio.get_event_loop(),))
-
 
     def is_module_running(self, module):
         s = self.session()
@@ -584,10 +489,6 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             logging.debug("recon is stale, skipping set_channel(%d)", channel)
             return
 
-        # if in the previous loop no client stations has been deauthenticated
-        # and only association frames have been sent, we don't need to wait
-        # very long before switching channel as we don't have to wait for
-        # such client stations to reconnect in order to sniff the handshake.
         wait = 0
         if self._epoch.did_deauth:
             wait = self._config['personality']['hop_recon_time']
@@ -613,3 +514,4 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
 
             except Exception as e:
                 logging.error("Error while setting channel (%s)", e)
+
