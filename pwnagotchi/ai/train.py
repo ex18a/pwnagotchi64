@@ -43,8 +43,6 @@ class Stats(object):
                 self.epochs_trained += 1
 
         self.save()
-<<<<<<< HEAD
-=======
 
         if best_r:
             self._receiver.on_ai_best_reward(reward)
@@ -81,7 +79,6 @@ class Stats(object):
                 fp.write(data)
 
             os.replace(temp, self.path)
->>>>>>> 5f866ec (ai training now works normally)
 
 
 class AsyncTrainer(object):
@@ -118,7 +115,6 @@ class AsyncTrainer(object):
         os.replace(temp, self._nn_path)
 
     def _render_env_safe(self):
-        # Bypasses the 64-bit DummyVecEnv barrier to force logging
         try:
             if hasattr(self._model.env, 'envs'):
                 self._model.env.envs[0].render()
@@ -138,7 +134,7 @@ class AsyncTrainer(object):
     def on_ai_training_step(self, _locals, _globals):
         self._render_env_safe()
         plugins.on('ai_training_step', self, _locals, _globals)
-        return True # CRITICAL for 64-bit to finish the full 50 epochs
+        return True
 
     def on_ai_policy(self, new_params):
         plugins.on('ai_policy', self, new_params)
@@ -181,7 +177,7 @@ class AsyncTrainer(object):
             obs = None
             while True:
                 self._render_env_safe()
-                
+
                 if random.random() > self._config['ai']['laziness']:
                     logging.info("[ai] learning for %d epochs ..." % epochs_per_episode)
                     try:
@@ -192,10 +188,9 @@ class AsyncTrainer(object):
                     finally:
                         self.set_training(False)
                         obs = self._model.env.reset()
-                
+
                 elif obs is None:
                     obs = self._model.env.reset()
 
                 action, _ = self._model.predict(obs)
                 obs, _, _, _ = self._model.env.step(action)
-
