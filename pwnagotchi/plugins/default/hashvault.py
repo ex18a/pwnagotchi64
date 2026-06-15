@@ -10,7 +10,7 @@ class HashVault(plugins.Plugin):
     __description__ = 'Monitors, validates, and archives handshakes into a dedicated hash repository without deleting raw PCAPs.'
 
     def __init__(self):
-        self.handshake_dir = '/root/handshakes/'
+        self.handshake_dir = '/root/'
         self.hash_dir = os.path.join(self.handshake_dir, 'hashes')
         self.last_checked_mtime = {}
 

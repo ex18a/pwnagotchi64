@@ -67,7 +67,6 @@ class View(object):
                            color=BLACK,
                            font=self._layout['status']['font'],
                            wrap=True,
-                           # the current maximum number of characters per line, assuming each character is 6 pixels wide
                            max_length=self._layout['status']['max']),
 
             'shakes': LabeledValue(label='PWND ', value='0 (00)', color=BLACK,
@@ -135,16 +134,13 @@ class View(object):
             time.sleep(delay)
 
     def set(self, key, value):
-        self._state.set(key, value)
-
-    def set(self, key, value):
-        # --- NATIVE STATUS LOGGER ---
         if key == 'status':
             if not hasattr(self, '_last_logged_status') or self._last_logged_status != value:
                 import logging
-                logging.info(f"[STATUS] {value}")
+                # Flatten multi-line strings so the Web UI log parser doesn't eat the first words!
+                safe_log = value.strip().replace('\n', ' | ')
+                logging.info(f"[STATUS] {safe_log}")
                 self._last_logged_status = value
-        # ----------------------------
         self._state.set(key, value)
 
     def get(self, key):
@@ -202,7 +198,6 @@ class View(object):
             self.set('friend_face', None)
             self.set('friend_name', None)
         else:
-            # ref. https://www.metageek.com/training/resources/understanding-rssi-2.html
             if peer.rssi >= -67:
                 num_bars = 4
             elif peer.rssi >= -70:
@@ -228,13 +223,10 @@ class View(object):
 
     def on_new_peer(self, peer):
         face = ''
-        # first time they met, neutral mood
         if peer.first_encounter():
             face = random.choice((faces.AWAKE, faces.COOL))
-        # a good friend, positive expression
         elif peer.is_good_friend(self._config):
             face = random.choice((faces.MOTIVATED, faces.FRIEND, faces.HAPPY))
-        # normal friend, neutral-positive
         else:
             face = random.choice((faces.EXCITED, faces.HAPPY, faces.SMART))
 
@@ -263,10 +255,6 @@ class View(object):
         part = secs / 10.0
 
         for step in range(0, 10):
-            # if we weren't in a normal state before going
-            # to sleep, keep that face and status on for
-            # a while, otherwise the sleep animation will
-            # always override any minor state change before it
             if was_normal or step > 5:
                 if sleeping:
                     if secs > 1:

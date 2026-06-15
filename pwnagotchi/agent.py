@@ -282,7 +282,7 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
 
         self._view.set('shakes', txt)
 
-# --- DYNAMIC POSITIONING ---
+        # --- DYNAMIC POSITIONING ---
         try:
             shakes_x, shakes_y = self._view._state._state['shakes'].xy
 
@@ -349,7 +349,6 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         _thread.start_new_thread(self._fetch_stats, ())
 
     def _fetch_stats(self):
-        # A 100% clean loop, allowing the core UI engine to control mode states naturally
         while True:
             s = self.session()
             self._update_uptime(s)
@@ -373,6 +372,10 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             sta_mac = jmsg['data']['station']
             ap_mac = jmsg['data']['ap']
             key = "%s -> %s" % (sta_mac, ap_mac)
+
+            # AMNESIA MOD: Always stamp the time, even if we are updating an old one
+            jmsg['captured_at'] = time.time()
+
             if key not in self._handshakes:
                 self._handshakes[key] = jmsg
                 s = self.session()
@@ -393,6 +396,10 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
                             ap['hostname'], ap['mac'], ap['vendor'])
                     plugins.on('handshake', self, filename, ap, sta)
                 found_handshake = True
+            else:
+                # AMNESIA MOD: Update the timestamp of the existing entry
+                self._handshakes[key]['captured_at'] = jmsg['captured_at']
+
             self._update_handshakes(1 if found_handshake else 0)
 
     def _event_poller(self, loop):
@@ -424,10 +431,26 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         self.run('%s off; %s on' % (module, module))
 
     def _has_handshake(self, bssid):
-        for key in self._handshakes:
+        # --- 60-MINUTE AMNESIA MOD ---
+        amnesia_limit_seconds = 3600  # 60 minutes
+        current_time = time.time()
+        keys_to_forget = []
+
+        for key, jmsg in self._handshakes.items():
+            if 'captured_at' in jmsg:
+                if (current_time - jmsg['captured_at']) > amnesia_limit_seconds:
+                    keys_to_forget.append(key)
+                    continue
+
             if bssid.lower() in key:
                 return True
+
+        for key in keys_to_forget:
+            logging.info(f"[Amnesia] Forgetting old handshake: {key}")
+            del self._handshakes[key]
+
         return False
+        # -----------------------------
 
     def _should_interact(self, who):
         if self._has_handshake(who):
@@ -514,4 +537,3 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
 
             except Exception as e:
                 logging.error("Error while setting channel (%s)", e)
-

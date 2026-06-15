@@ -8,19 +8,19 @@ main.custom_plugin_repos = [
 main.iface = "mon0"
 main.mon_start_cmd = "/usr/bin/monstart"
 main.mon_stop_cmd = "/usr/bin/monstop"
-main.mon_max_blind_epochs = 50
+main.mon_max_blind_epochs = 12
 main.no_restart = false
 main.whitelist = []
 main.filter = ""
 
 main.log.debug = false
 
-main.plugins.portrait-mode.enabled = false
+main.plugins.portrait-mode.enabled = true
 main.plugins.IPDisplay.enabled = true
-main.plugins.hashvault.enabled = false
+main.plugins.hashvault.enabled = true
 main.plugins.dev-ai-episodes.enabled = false
-main.plugins.dev-blind.enabled = false
-main.plugins.pisugar3i2c.enabled = false
+main.plugins.dev-blind.enabled = true
+main.plugins.pisugar3i2c.enabled = true
 main.plugins.face_only.enabled = false
 
 main.plugins.wpa-sec.enabled = false
@@ -30,7 +30,7 @@ main.plugins.wpa-sec.download_results = false
 main.plugins.wpa-sec.download_interval = 3600
 main.plugins.wpa-sec.whitelist = []
 
-main.plugins.memtemp.enabled = false
+main.plugins.memtemp.enabled = true
 main.plugins.memtemp.scale = "celsius"
 main.plugins.memtemp.orientation = "horizontal"
 
@@ -71,7 +71,7 @@ personality.bored_num_epochs = 15
 personality.sad_num_epochs = 25
 personality.bond_encounters_factor = 20000
 
-ui.fps = 0.0
+ui.fps = 1.0
 ui.font.name = "DejaVuSansMono" # for japanese: fonts-japanese-gothic
 ui.font.size_offset = 0 # will be added to the font size
 
@@ -83,7 +83,7 @@ ui.faces.sleep = "(⇀‿‿↼)"
 ui.faces.sleep2 = ["(≖‿‿≖)", "(≖__≖)", "(u__u)", "(-__-)", "(z__z)", "(◡__◡)"]
 ui.faces.awake = "(◕‿‿◕)"
 ui.faces.bored = "(-__-)"
-ui.faces.intense = ["(°▃▃°)", "( ◣_◢)", "(ʘдʘ)", "(°ロ°)"]
+ui.faces.intense = ["(°▃▃°)", "( ◣_◢)"]
 ui.faces.cool = ["(⌐■_■)", "(♥‿‿♥)"]
 ui.faces.happy = ["(•‿‿•)", "(^‿‿^)", "(^◡◡^)"]
 ui.faces.excited = ["(ᵔ◡◡ᵔ)", "(✜‿‿✜)"]
