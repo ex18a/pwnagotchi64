@@ -12,3 +12,5 @@ dtoverlay=dwc2
 dtparam=spi=on
 dtparam=i2c_arm=on
 dtoverlay=i2c-rtc,ds3231
+dtparam=krnbt=on
+enable_uart=1
