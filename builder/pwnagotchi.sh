@@ -174,6 +174,9 @@ sed -i 's/$/ modules-load=dwc2,g_ether/' /boot/firmware/cmdline.txt
 echo "$HOSTNAME" > /etc/hostname
 sed -i "s/127.0.1.1.*/127.0.1.1 $HOSTNAME/" /etc/hosts
 
+# Remove the kali motd
+sed -i '/if \[ -e \/usr\/bin\/kali-motd \]; then/,/fi/s/^/#/' /etc/profile.d/kali.sh
+
 echo "  -> [Chroot] Final cleanup..."
 rm -f /etc/dpkg/dpkg.cfg.d/force-unsafe-io
 rm -rf /tmp/* /var/lib/apt/lists/*
