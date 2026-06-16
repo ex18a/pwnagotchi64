@@ -60,7 +60,7 @@ class PortraitMode(plugins.Plugin):
                 'memtemp_data': {'xy': (16, 167), 'font': deja_10},
                 'sugar_lbl': {'xy': (70, 3)},
                 'sugar_val': {'xy': (90, 3)},
-                'lifetime_train': {'xy': (5, 187), 'font': deja_10},
+                'lifetime_trained': {'xy': (5, 187), 'font': deja_10},
                 'blind_val': {'xy': (5, 177)},
                 'ip1': {'xy': (0, 140)}
             }
