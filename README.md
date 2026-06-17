@@ -78,6 +78,6 @@ This 64-bit build would not be possible without the foundational work and contin
 * **[aluminum-ice](https://github.com/aluminum-ice)** - For crucial contributions to the core codebase.
 * **[jayofelony](https://github.com/jayofelony)** - For crucial contributions to the core codebase.
 
-* If I have inadvertently used your code, script, or concept without proper attribution, thank you for your indirect help! Please open an issue so I can ensure you are properly credited here.*
+*If I have inadvertently used your code, script, or concept without proper attribution, thank you for your indirect help! Please open an issue so I can ensure you are properly credited here.*
 
 This project is open-source and inherits the original **GPL-3.0 License**.
