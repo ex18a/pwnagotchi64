@@ -14,7 +14,7 @@ output-pwnagotchi
 .DS_Store
 build
 dist
-pwnagotchi.egg-info
+pwnagotchi64.egg-info
 *backup*.tgz
 *backup*.gz
 .vscode
