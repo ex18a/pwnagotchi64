@@ -15,6 +15,9 @@ main.filter = ""
 
 main.log.debug = false
 
+main.plugins.grid.enabled = true
+main.plugins.grid.report = true
+
 main.plugins.portrait-mode.enabled = true
 main.plugins.IPDisplay.enabled = true
 main.plugins.hashvault.enabled = true

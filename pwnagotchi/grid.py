@@ -11,24 +11,39 @@ API_ADDRESS = "http://127.0.0.1:8666/api/v1"
 
 
 def is_connected():
-    # Neutered: Pwngrid is removed, so we are never connected to the mesh API.
-    return False
+    try:
+        # Check against the active community grid uptime endpoint
+        requests.get('https://api.opwngrid.xyz/api/v1/uptime', timeout=2.0)
+        return True
+    except:
+        return False
 
 
 def call(path, obj=None):
-    """
-    Neutered for 64-bit Lite Port.
-    Intercepts all API calls to the missing pwngrid binary 
-    and safely returns empty data structures to keep the UI happy.
-    """
+    url = f"{API_ADDRESS}{path}"
+    try:
+        if obj is None:
+            logging.debug(f"grid.call GET {url}")
+            r = requests.get(url, timeout=(30.0, 60.0))
+        else:
+            logging.debug(f"grid.call POST {url} with data")
+            r = requests.post(url, json=obj, timeout=(30.0, 60.0))
+
+        if r.status_code == 200:
+            return r.json()
+        else:
+            logging.error(f"grid.call unexpected status code {r.status_code} for {url}")
+    except Exception as e:
+        logging.error(f"grid.call communication error for {url}: {e}")
+
+    # Return safe structures to prevent UI thread crashes if communication drops
     if "peers" in path or "memory" in path or "inbox" in path:
         return []
-    
     return {}
 
 
 def advertise(enabled=True):
-    return call("/mesh/%s" % 'true' if enabled else 'false')
+    return call("/mesh/%s" % ('true' if enabled else 'false'))
 
 
 def set_advertisement_data(data):
@@ -60,6 +75,10 @@ def update_data(last_session):
     except:
         pass
 
+    enabled = [name for name, options in pwnagotchi.config['main']['plugins'].items() if
+               'enabled' in options and options['enabled']]
+    language = pwnagotchi.config['main']['lang']
+
     data = {
         'session': {
             'duration': last_session.duration,
@@ -75,11 +94,16 @@ def update_data(last_session):
         },
         'uname': subprocess.getoutput("uname -a"),
         'brain': brain,
-        'version': pwnagotchi.__version__
+        'version': pwnagotchi.__version__,
+
+        'build': "Pwnagotchi64 by ex18a",
+        'plugins': enabled,
+        'language': language,
+        'bettercap': subprocess.getoutput("bettercap -version"),
+        'opwngrid': subprocess.getoutput("pwngrid -version")
     }
 
     logging.debug("updating grid data: %s" % data)
-
     call("/data", data)
 
 
@@ -98,7 +122,7 @@ def report_ap(essid, bssid):
 
 def inbox(page=1, with_pager=False):
     obj = call("/inbox?p=%d" % page)
-    return obj["messages"] if not with_pager else obj
+    return obj.get("messages", []) if not with_pager else obj
 
 
 def inbox_message(id):
