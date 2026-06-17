@@ -83,12 +83,12 @@ with open('requirements.txt') as fp:
 VERSION_FILE = 'pwnagotchi/_version.py'
 pwnagotchi_version = version(VERSION_FILE)
 
-setup(name='pwnagotchi',
+setup(name='pwnagotchi64',
       version=pwnagotchi_version,
       description='(⌐■_■) - Deep Reinforcement Learning instrumenting bettercap for WiFI pwning (64-bit Port).',
       author='evilsocket && the dev team',
       author_email='evilsocket@gmail.com',
-      maintainer='gee',
+      maintainer='ex18a',
       maintainer_email='your.email@example.com',
       url='https://github.com/yourusername/pwnagotchi64',
       license='GPL-3.0-or-later',

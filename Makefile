@@ -1,7 +1,7 @@
 PWN_HOSTNAME := pwnagotchi
 PWN_VERSION  := $(shell python3 -c "exec(open('pwnagotchi/_version.py').read()); print(__version__)")
-PWN_RELEASE  := pwnagotchi-$(PWN_VERSION)-64bit
-SDIST        := dist/pwnagotchi-$(PWN_VERSION).tar.gz
+PWN_RELEASE  := pwnagotchi64-$(PWN_VERSION)
+SDIST        := dist/pwnagotchi64-$(PWN_VERSION).tar.gz
 USER_ID      := $(shell id -u)
 GROUP_ID     := $(shell id -g)
 

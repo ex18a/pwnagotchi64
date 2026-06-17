@@ -7,8 +7,8 @@ set -e
 VERSION=$1
 HOSTNAME=$2
 NEW_USER="pwn"
-OUTPUT_IMG="dist/pwnagotchi-${VERSION}-64bit-kali.img"
-TARBALL="dist/pwnagotchi-${VERSION}.tar.gz"
+OUTPUT_IMG="dist/pwnagotchi64-${VERSION}.img"
+TARBALL="dist/pwnagotchi64-${VERSION}.tar.gz"
 
 if [ -z "$VERSION" ] || [ -z "$HOSTNAME" ]; then
     echo " [!] ERROR: Usage: $0 <version> <hostname>"
@@ -66,7 +66,6 @@ cp -r builder/assets/bettercap /mnt/tmp/bettercap_assets
 cp -r builder/assets/networkmanager /mnt/tmp/networkmanager
 cp -r builder/assets/bluetooth /mnt/tmp/bluetooth
 cp -r builder/assets/system /mnt/tmp/system
-cp -r builder/assets/pwngrid /mnt/tmp/pwngrid
 cp builder/assets/boot/config.txt /mnt/boot/firmware/config.txt
 
 # ==============================================================================
@@ -100,17 +99,11 @@ apt-get install -y \
     python3-torch python3-numpy python3-pandas
 
 echo "  -> [Chroot] Downloading and installing 64-bit Pwngrid engine..."
-wget -q "https://github.com/evilsocket/pwngrid/releases/download/v1.10.3/pwngrid_linux_aarch64_v1.10.3.zip" -O /tmp/pwngrid_engine.zip
+wget -q "https://github.com/jayofelony/pwngrid/releases/download/v1.11.1/pwngrid-1.11.1-aarch64.zip" -O /tmp/pwngrid_engine.zip
 unzip -q /tmp/pwngrid_engine.zip -d /tmp/engine_extract
-mv /tmp/engine_extract/pwngrid /usr/bin/pwngrid-peer
-chmod +x /usr/bin/pwngrid-peer
+mv /tmp/engine_extract/pwngrid /usr/bin/pwngrid
+chmod +x /usr/bin/pwngrid
 rm -rf /tmp/pwngrid_engine.zip /tmp/engine_extract
-
-echo "  -> [Chroot] Installing Pwngrid background service from assets..."
-cp /tmp/pwngrid/pwngrid-peer.service /etc/systemd/system/pwngrid-peer.service
-
-echo "  -> [Chroot] Enabling Pwngrid service..."
-systemctl enable pwngrid-peer.service
 
 echo "  -> [Chroot] Enabling I2C hardware modules..."
 echo -e "i2c-dev\nbnep" >> /etc/modules
@@ -140,7 +133,7 @@ sed -i 's|^ExecStart=.*bluetoothd.*|ExecStart=/usr/libexec/bluetooth/bluetoothd 
 
 echo "  -> [Chroot] Unpacking application core..."
 mkdir -p /tmp/pwn_source
-tar -xzf /tmp/pwnagotchi-${VERSION}.tar.gz -C /tmp/pwn_source --strip-components=1
+tar -xzf /tmp/pwnagotchi64-${VERSION}.tar.gz -C /tmp/pwn_source --strip-components=1
 
 echo "  -> [Chroot] Bypassing Debian RECORD conflicts..."
 python3 -m pip install --break-system-packages --no-cache-dir --ignore-installed mpmath sympy
@@ -149,7 +142,7 @@ echo "  -> [Chroot] Installing unified Python dependencies & Modern AI Environme
 python3 -m pip install --break-system-packages --no-cache-dir -r /tmp/pwn_source/requirements.txt
 
 echo "  -> [Chroot] Installing Pwnagotchi core..."
-python3 -m pip install --break-system-packages --no-deps /tmp/pwnagotchi-${VERSION}.tar.gz
+python3 -m pip install --break-system-packages --no-deps /tmp/pwnagotchi64-${VERSION}.tar.gz
 
 echo "  -> [Chroot] Configuring Bettercap caplets..."
 mkdir -p /usr/share/bettercap/caplets
@@ -165,6 +158,7 @@ chmod 755 /etc/pwnagotchi/
 echo "  -> [Chroot] Registering systemd network unit configurations..."
 systemctl enable bettercap.service
 systemctl enable pwnagotchi.service
+systemctl enable pwngrid-peer.service
 
 if ! id "$NEW_USER" &>/dev/null; then
     useradd -m -G sudo,video,input,netdev,plugdev -s /bin/bash "$NEW_USER"
@@ -210,5 +204,5 @@ umount /mnt
 losetup -d "$loop_dev"
 
 echo "========================================================================"
-echo " [+] SUCCESS: KALI-BASED LITE PWNAGOTCHI IMAGE COMPILED "
+echo " [+] SUCCESS: PWNAGOTCHI64 IMAGE COMPILED "
 echo "========================================================================"
