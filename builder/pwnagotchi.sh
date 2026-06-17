@@ -66,6 +66,7 @@ cp -r builder/assets/bettercap /mnt/tmp/bettercap_assets
 cp -r builder/assets/networkmanager /mnt/tmp/networkmanager
 cp -r builder/assets/bluetooth /mnt/tmp/bluetooth
 cp -r builder/assets/system /mnt/tmp/system
+cp -r builder/assets/pwngrid /mnt/tmp/pwngrid
 cp builder/assets/boot/config.txt /mnt/boot/firmware/config.txt
 
 # ==============================================================================
@@ -97,6 +98,19 @@ apt-get install -y \
     aircrack-ng tcpdump bettercap bettercap-ui bluez-tools jq dphys-swapfile hcxtools \
     python3-pip python3-dev build-essential libpcap-dev libssl-dev libffi-dev fonts-dejavu libglib2.0-dev libdbus-1-dev python3-rpi.gpio python3-smbus \
     python3-torch python3-numpy python3-pandas
+
+echo "  -> [Chroot] Downloading and installing 64-bit Pwngrid engine..."
+wget -q "https://github.com/evilsocket/pwngrid/releases/download/v1.10.3/pwngrid_linux_aarch64_v1.10.3.zip" -O /tmp/pwngrid_engine.zip
+unzip -q /tmp/pwngrid_engine.zip -d /tmp/engine_extract
+mv /tmp/engine_extract/pwngrid /usr/bin/pwngrid-peer
+chmod +x /usr/bin/pwngrid-peer
+rm -rf /tmp/pwngrid_engine.zip /tmp/engine_extract
+
+echo "  -> [Chroot] Installing Pwngrid background service from assets..."
+cp /tmp/pwngrid/pwngrid-peer.service /etc/systemd/system/pwngrid-peer.service
+
+echo "  -> [Chroot] Enabling Pwngrid service..."
+systemctl enable pwngrid-peer.service
 
 echo "  -> [Chroot] Enabling I2C hardware modules..."
 echo -e "i2c-dev\nbnep" >> /etc/modules
