@@ -166,7 +166,12 @@ fi
 echo "$NEW_USER:raspberry" | chpasswd
 echo "$NEW_USER ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/010_pwn-nopasswd
 
-echo "alias pwnlog='tail -f -n300 /var/log/pwna*.log | sed --unbuffered \"s/,[[:digit:]]\\\\{3\\\\}\\\\]//g\" | cut -d \" \" -f 2-'" >> /home/$NEW_USER/.bashrc
+echo "# The standard live feed" >> /home/$NEW_USER/.bashrc
+echo "alias pwnlog='tail -f -n300 /var/log/pwnagotchi.log | sed --unbuffered \"s/,[[:digit:]]\\\\{3\\\\}\\\\]//g\" | cut -d \" \" -f 2-'" >> /home/$NEW_USER/.bashrc
+
+echo "# crash reader (No formatting destruction)" >> /home/$NEW_USER/.bashrc
+echo "alias crashlog='cat /var/log/pwnagotchi_crashes.log'" >> /home/$NEW_USER/.bashrc
+echo "alias crashwatch='tail -f /var/log/pwnagotchi_crashes.log'" >> /home/$NEW_USER/.bashrc
 chown $NEW_USER:$NEW_USER /home/$NEW_USER/.bashrc
 
 echo "  -> [Chroot] Generating MOTD..."
