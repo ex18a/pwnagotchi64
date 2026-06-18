@@ -27,7 +27,12 @@ def call(path, obj=None):
             r = requests.get(url, timeout=(30.0, 60.0))
         else:
             logging.debug(f"grid.call POST {url} with data")
-            r = requests.post(url, json=obj, timeout=(30.0, 60.0))
+
+            # THE FIX: Send bytes as raw data, send everything else as JSON
+            if isinstance(obj, bytes):
+                r = requests.post(url, data=obj, timeout=(30.0, 60.0))
+            else:
+                r = requests.post(url, json=obj, timeout=(30.0, 60.0))
 
         if r.status_code == 200:
             return r.json()
@@ -122,6 +127,17 @@ def report_ap(essid, bssid):
 
 def inbox(page=1, with_pager=False):
     obj = call("/inbox?p=%d" % page)
+
+    # 1. If call() failed and returned a list, reset it to a safe dictionary
+    if isinstance(obj, list) or not isinstance(obj, dict):
+        obj = {'pages': 1, 'messages': []}
+
+    # 2. Guarantee the required keys exist so the Web UI never crashes
+    if 'pages' not in obj:
+        obj['pages'] = 1
+    if 'messages' not in obj:
+        obj['messages'] = []
+
     return obj.get("messages", []) if not with_pager else obj
 
 
