@@ -1,9 +1,5 @@
 # Pwnagotchi 64-Bit AI Edition
 
-This is a high-performance, 64-bit-native fork of Pwnagotchi. Built from the ground up on Kali Linux, it replaces legacy AI implementations with a modern **PyTorch** engine, resulting in a much smarter, more stable experience.
-
-Whether you’re running a Pi Zero 2 W or a Pi 3B+, this build is engineered to keep your Pwnagotchi fast, reliable right out of the box.
-
 This is a specialized, high-performance fork of the Pwnagotchi project. This build is designed for 64-bit architecture, utilizing **PyTorch** for AI inference and training, providing a significant boost in intelligence and processing stability over the original A2C implementation.
 
 > **Hardware Support:** specifically optimized for the **Raspberry Pi Zero 2 W**. The **Raspberry Pi 3B+** is also supported.
