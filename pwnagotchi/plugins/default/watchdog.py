@@ -7,8 +7,8 @@ import pwnagotchi
 
 class Watchdog(plugins.Plugin):
     __author__ = 'ex18a'
-    __version__ = '1.1.0'
-    __description__ = 'Monitors physical Wi-Fi hardware health, saves forensic logs on failure, and triggers recovery reboots.'
+    __version__ = '1.7.0'
+    __description__ = 'Monitors physical Wi-Fi hardware health via iw dev and triggers recovery reboots.'
 
     def __init__(self):
         self.interface = pwnagotchi.config['main']['iface']
@@ -16,97 +16,124 @@ class Watchdog(plugins.Plugin):
         self.crash_log_path = '/var/log/pwnagotchi_crashes.log'
 
     def on_loaded(self):
-        logging.info(f"[Watchdog] Active. Monitoring physical health of {self.interface}...")
+        logging.info(f"[Watchdog] Active. Hardcore monitoring of {self.interface} via mac80211 subsystem...")
 
     def on_epoch(self, agent, epoch, epoch_data):
-        if not self._is_interface_healthy():
-            self.crashes_detected += 1
-            logging.warning(f"[Watchdog] Hardware anomaly detected on {self.interface}! (Strike {self.crashes_detected}/2)")
+        blind_epochs = agent.session().get('blind', 0)
+        is_blind = (blind_epochs >= 1)
 
-            # Wait for two consecutive failed checks before taking extreme action
+        health_status = self._is_interface_healthy(is_blind)
+
+        if health_status == "FATAL_CRASH":
+            logging.error(f"[Watchdog] FATAL dmesg crash detected on {self.interface}! Archiving and rebooting...")
+            self._save_crash_log("DMESG_CRASH")
+            self._trigger_native_reboot(agent, "Hardware Crash")
+
+        elif health_status == "FATAL_VANISHED":
+            logging.error(f"[Watchdog] SILENT DEAFNESS: {self.interface} vanished from iw dev! Archiving and rebooting...")
+            self._save_crash_log("IW_DEV_VANISHED")
+            self._trigger_native_reboot(agent, "Silent Deafness")
+
+        elif health_status == "DOWN":
+            self.crashes_detected += 1
+            logging.warning(f"[Watchdog] Interface {self.interface} is DOWN! (Strike {self.crashes_detected}/2)")
+
             if self.crashes_detected >= 2:
-                logging.error("[Watchdog] Nexmon driver failure confirmed. Archiving logs and rebooting...")
-                self._save_crash_log()
-                self._reboot_system()
+                logging.error("[Watchdog] Interface failed to recover. Archiving logs and rebooting...")
+                self._save_crash_log("IP_LINK_DOWN")
+                self._trigger_native_reboot(agent, "Interface Down")
         else:
-            # If the interface is healthy, reset the strike counter
+            if self.crashes_detected > 0:
+                logging.info(f"[Watchdog] {self.interface} recovered naturally. Resetting strike counter.")
             self.crashes_detected = 0
 
-    def _is_interface_healthy(self):
+    def _is_interface_healthy(self, is_blind):
         try:
-            # 1. Check if the interface exists and is UP in the Linux networking stack
-            ip_link = subprocess.run(['ip', 'link', 'show', self.interface], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            if is_blind:
+                iw_output = subprocess.run(['iw', 'dev'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                if iw_output.returncode == 0 and f"Interface {self.interface}" not in iw_output.stdout:
+                    return "FATAL_VANISHED"
 
-            if ip_link.returncode != 0:
-                return False
-
-            if "state DOWN" in ip_link.stdout:
-                return False
-
-            # 2. Check the kernel log for Broadcom/Nexmon firmware fatal crashes
             dmesg = subprocess.run(['dmesg'], stdout=subprocess.PIPE, text=True)
             recent_logs = "\n".join(dmesg.stdout.splitlines()[-50:])
+            if "brcmf_fw_crashed" in recent_logs or "failed backplane access over SDIO" in recent_logs:
+                return "FATAL_CRASH"
 
-            if "brcmf_sdio_firmware_fatal" in recent_logs or "brcmfmac: brcmf_bus_txctl" in recent_logs:
-                return False
+            ip_link = subprocess.run(['ip', 'link', 'show', self.interface], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            if ip_link.returncode != 0 or "state DOWN" in ip_link.stdout:
+                return "DOWN"
 
         except Exception as e:
             logging.error(f"[Watchdog] Error checking physical health: {e}")
-        return True
 
-    def _save_crash_log(self):
+        return "HEALTHY"
+
+    def _save_crash_log(self, crash_reason="UNKNOWN"):
         try:
-            # Set up the separator block
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             separator_tag = "------------ CRASH REPORT:"
-            separator_full = f"{separator_tag} {timestamp} ------------\n"
+            separator_full = f"{separator_tag} [{crash_reason}] {timestamp} ------------\n"
 
-            # Grab the last 50 lines of the Pwnagotchi log
             try:
                 pwn_output = subprocess.run(['tail', '-n', '50', '/var/log/pwnagotchi.log'], stdout=subprocess.PIPE, text=True)
                 pwn_logs = pwn_output.stdout if pwn_output.stdout else "No Pwnagotchi logs found.\n"
             except Exception:
                 pwn_logs = "Failed to read Pwnagotchi logs.\n"
 
-            # Grab the last 50 lines of the dmesg kernel log
             try:
                 dmesg_output = subprocess.run(['dmesg'], stdout=subprocess.PIPE, text=True)
                 dmesg_logs = "\n".join(dmesg_output.stdout.splitlines()[-50:]) if dmesg_output.stdout else "No dmesg logs found.\n"
             except Exception:
                 dmesg_logs = "Failed to read dmesg logs.\n"
 
-            # Construct the final crash block
             new_crash_entry = (
                 f"{separator_full}"
                 f"[PWNAGOTCHI LOGS - LAST 50 LINES]\n{pwn_logs}\n"
                 f"[DMESG LOGS - LAST 50 LINES]\n{dmesg_logs}\n\n"
             )
 
-            # Manage the 50-crash limit
             if os.path.exists(self.crash_log_path):
                 with open(self.crash_log_path, 'r') as f:
                     content = f.read()
 
-                # Split the file into chunks based on the separator tag
                 crash_blocks = content.split(separator_tag)
-                crash_blocks = [block for block in crash_blocks if block.strip()] # Filter out empty chunks
+                crash_blocks = [block for block in crash_blocks if block.strip()]
 
-                # If we have reached 50 crashes, keep the newest 49, then append the new one
                 if len(crash_blocks) >= 50:
                     crash_blocks = crash_blocks[-49:]
-
                     with open(self.crash_log_path, 'w') as f:
                         for block in crash_blocks:
                             f.write(f"{separator_tag}{block}")
                         f.write(new_crash_entry)
                     return
 
-            # If the file doesn't exist or is under the limit, just append normally
             with open(self.crash_log_path, 'a') as f:
                 f.write(new_crash_entry)
 
         except Exception as e:
             logging.error(f"[Watchdog] Critical failure while attempting to save crash log: {e}")
 
-    def _reboot_system(self):
-        subprocess.run(['sudo', 'reboot'])
+    def _trigger_native_reboot(self, agent, reason_text):
+        logging.info(f"[Watchdog] Triggering custom native reboot sequence: {reason_text}")
+
+        try:
+            # 1. Put the UI into the panic state (This natively draws the dead face)
+            agent.set_rebooting()
+
+            # 2. Overwrite the generic default panic text with our exact reason
+            agent.view().set('status', f"Crash: {reason_text}! Rebooting...")
+            agent.view().update(force=True)
+
+            # 3. Save the recovery data (JSON backup) so the current session isn't lost
+            agent._save_recovery_data()
+        except Exception as e:
+            logging.error(f"[Watchdog] Error during UI lockdown: {e}")
+
+        # 4. Issue the actual OS-level reboot command
+        pwnagotchi.reboot()
+
+        # 5. The Ultimate UI Lock: Paralyze the AI thread so it cannot overwrite the screen
+        logging.info("[Watchdog] Paralyzing the AI brain to lock the e-ink display...")
+        import time
+        while True:
+            time.sleep(1)
