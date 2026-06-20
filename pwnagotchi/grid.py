@@ -3,6 +3,7 @@ import socket
 import requests
 import json
 import logging
+import threading
 
 import pwnagotchi
 
@@ -19,23 +20,54 @@ def is_connected():
         return False
 
 
+def _auto_heal_grid():
+    def heal_task():
+        try:
+            logging.warning("[Grid Auto-Heal] 422 Detected. Stopping corrupted pwngrid-peer...")
+            subprocess.run(['sudo', 'systemctl', 'stop', 'pwngrid-peer'])
+
+            logging.warning("[Grid Auto-Heal] Nudging corrupted database into the void...")
+            subprocess.run(['sudo', 'rm', '-rf', '/root/.pwngrid/'])
+
+            logging.warning("[Grid Auto-Heal] Booting fresh pwngrid-peer instance...")
+            subprocess.run(['sudo', 'systemctl', 'start', 'pwngrid-peer'])
+
+            logging.info("[Grid Auto-Heal] Database factory reset complete!")
+        except Exception as e:
+            logging.error(f"[Grid Auto-Heal] Failed to execute recovery sequence: {e}")
+
+    # Launch this as a background time bomb so the UI ticker doesn't freeze waiting for systemctl!
+    heal_thread = threading.Thread(target=heal_task)
+    heal_thread.daemon = True
+    heal_thread.start()
+
+
 def call(path, obj=None):
     url = f"{API_ADDRESS}{path}"
     try:
         if obj is None:
             logging.debug(f"grid.call GET {url}")
-            r = requests.get(url, timeout=(30.0, 60.0))
+            # THE FIX: Slashed timeout from 60s down to 3s to prevent UI thread lockups
+            r = requests.get(url, timeout=(1.0, 3.0))
         else:
             logging.debug(f"grid.call POST {url} with data")
 
             # THE FIX: Send bytes as raw data, send everything else as JSON
             if isinstance(obj, bytes):
-                r = requests.post(url, data=obj, timeout=(30.0, 60.0))
+                r = requests.post(url, data=obj, timeout=(1.0, 3.0))
             else:
-                r = requests.post(url, json=obj, timeout=(30.0, 60.0))
+                r = requests.post(url, json=obj, timeout=(1.0, 3.0))
 
+        # THE AUTO-HEAL INTERCEPTOR
         if r.status_code == 200:
             return r.json()
+        elif r.status_code == 422:
+            logging.error(f"grid.call caught 422 Unprocessable Entity! Triggering Auto-Heal...")
+            _auto_heal_grid()
+            # Return safe structures to prevent UI thread crashes while healing
+            if "peers" in path or "memory" in path or "inbox" in path:
+                return []
+            return {}
         else:
             logging.error(f"grid.call unexpected status code {r.status_code} for {url}")
     except Exception as e:
@@ -128,11 +160,11 @@ def report_ap(essid, bssid):
 def inbox(page=1, with_pager=False):
     obj = call("/inbox?p=%d" % page)
 
-    # 1. If call() failed and returned a list, reset it to a safe dictionary
+    # If call() failed and returned a list, reset it to a safe dictionary
     if isinstance(obj, list) or not isinstance(obj, dict):
         obj = {'pages': 1, 'messages': []}
 
-    # 2. Guarantee the required keys exist so the Web UI never crashes
+    # Guarantee the required keys exist so the Web UI never crashes
     if 'pages' not in obj:
         obj['pages'] = 1
     if 'messages' not in obj:
