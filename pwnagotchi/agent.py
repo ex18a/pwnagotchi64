@@ -373,7 +373,13 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             ap_mac = jmsg['data']['ap']
             key = "%s -> %s" % (sta_mac, ap_mac)
 
-            # AMNESIA MOD: Always stamp the time, even if we are updating an old one
+        # --- AMNESIA MOD - Part 1of2 ---
+        # This mod resets the memory that a handshake has already caputured.
+        # It does NOT remove the .pcap file from your handshake folder
+        # after set time has passed it will treat as a new ap.
+        # this is great for ai to practice in static environments.
+
+            # Always stamp the time, even if we are updating an old one
             jmsg['captured_at'] = time.time()
 
             if key not in self._handshakes:
@@ -431,26 +437,47 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         self.run('%s off; %s on' % (module, module))
 
     def _has_handshake(self, bssid):
-        # --- 60-MINUTE AMNESIA MOD ---
-        amnesia_limit_seconds = 3600  # 60 minutes
+        # --- AMNESIA MOD - Part 2of2 ---
+        # How long should a handshake be kept in memory
+        amnesia_limit_seconds = 1800  # 30 minutes
         current_time = time.time()
         keys_to_forget = []
 
+        # Scan the entire dictionary to find ALL expired handshakes
         for key, jmsg in self._handshakes.items():
             if 'captured_at' in jmsg:
                 if (current_time - jmsg['captured_at']) > amnesia_limit_seconds:
                     keys_to_forget.append(key)
-                    continue
 
-            if bssid.lower() in key:
-                return True
-
+        # Delete expired handshakes and purge them from the history interaction limits
         for key in keys_to_forget:
             logging.info(f"[Amnesia] Forgetting old handshake: {key}")
             del self._handshakes[key]
 
+            # Clean out the interaction counters so the AI resets its attack threshold
+            if " -> " in key:
+                try:
+                    sta_mac, ap_mac = key.split(" -> ")
+                    self._history.pop(sta_mac.strip(), None)
+                    self._history.pop(ap_mac.strip(), None)
+                except Exception as e:
+                    logging.error(f"[Amnesia] Error parsing MACs from history: {e}")
+
+        # If we forgot anything, flush Bettercap's cache to force an instant, aggressive rediscovery loop
+        if keys_to_forget:
+            try:
+                logging.info("[Amnesia] Flushing Bettercap live Wi-Fi cache to force target re-evaluation...")
+                self.run('wifi.clear')
+            except Exception as e:
+                logging.error(f"[Amnesia] Failed to clear Bettercap wifi cache: {e}")
+
+        # Now check if the requested BSSID is still in our active memory
+        for key in self._handshakes.keys():
+            if bssid.lower() in key.lower():
+                return True
+
         return False
-        # -----------------------------
+        # -------------------------------------
 
     def _should_interact(self, who):
         if self._has_handshake(who):
