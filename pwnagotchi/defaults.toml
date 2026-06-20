@@ -17,6 +17,7 @@ main.log.debug = false
 
 main.plugins.grid.enabled = true
 main.plugins.grid.report = true
+main.plugins.watchdog.enabled = true
 
 main.plugins.portrait-mode.enabled = true
 main.plugins.IPDisplay.enabled = true
