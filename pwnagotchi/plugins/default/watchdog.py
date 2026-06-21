@@ -1,72 +1,98 @@
 import os
 import logging
 import subprocess
+import time
 from datetime import datetime
 import pwnagotchi.plugins as plugins
 import pwnagotchi
 
 class Watchdog(plugins.Plugin):
     __author__ = 'ex18a'
-    __version__ = '1.7.0'
-    __description__ = 'Monitors physical Wi-Fi hardware health via iw dev and triggers recovery reboots.'
+    __version__ = '1.7.2'
+    __description__ = 'wifi hardware check with crash logging'
 
     def __init__(self):
         self.interface = pwnagotchi.config['main']['iface']
-        self.crashes_detected = 0
+        self.lockdown_triggered = False
         self.crash_log_path = '/var/log/pwnagotchi_crashes.log'
 
     def on_loaded(self):
-        logging.info(f"[Watchdog] Active. Hardcore monitoring of {self.interface} via mac80211 subsystem...")
+        logging.info(f"[Watchdog] Active. Monitoring {self.interface}")
 
     def on_epoch(self, agent, epoch, epoch_data):
-        blind_epochs = agent.session().get('blind', 0)
-        is_blind = (blind_epochs >= 1)
+        # Stop checking if already dying
+        if self.lockdown_triggered:
+            return
 
-        health_status = self._is_interface_healthy(is_blind)
-
-        if health_status == "FATAL_CRASH":
-            logging.error(f"[Watchdog] FATAL dmesg crash detected on {self.interface}! Archiving and rebooting...")
-            self._save_crash_log("DMESG_CRASH")
-            self._trigger_native_reboot(agent, "Hardware Crash")
-
-        elif health_status == "FATAL_VANISHED":
-            logging.error(f"[Watchdog] SILENT DEAFNESS: {self.interface} vanished from iw dev! Archiving and rebooting...")
-            self._save_crash_log("IW_DEV_VANISHED")
-            self._trigger_native_reboot(agent, "Silent Deafness")
-
-        elif health_status == "DOWN":
-            self.crashes_detected += 1
-            logging.warning(f"[Watchdog] Interface {self.interface} is DOWN! (Strike {self.crashes_detected}/2)")
-
-            if self.crashes_detected >= 2:
-                logging.error("[Watchdog] Interface failed to recover. Archiving logs and rebooting...")
-                self._save_crash_log("IP_LINK_DOWN")
-                self._trigger_native_reboot(agent, "Interface Down")
-        else:
-            if self.crashes_detected > 0:
-                logging.info(f"[Watchdog] {self.interface} recovered naturally. Resetting strike counter.")
-            self.crashes_detected = 0
-
-    def _is_interface_healthy(self, is_blind):
+        # Ask agent for the blind counter
         try:
-            if is_blind:
-                iw_output = subprocess.run(['iw', 'dev'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-                if iw_output.returncode == 0 and f"Interface {self.interface}" not in iw_output.stdout:
-                    return "FATAL_VANISHED"
+            blind_epochs = agent._epoch.blind_for
+        except AttributeError:
+            blind_epochs = 0
 
-            dmesg = subprocess.run(['dmesg'], stdout=subprocess.PIPE, text=True)
-            recent_logs = "\n".join(dmesg.stdout.splitlines()[-50:])
-            if "brcmf_fw_crashed" in recent_logs or "failed backplane access over SDIO" in recent_logs:
-                return "FATAL_CRASH"
+        # Do nothing if can see perfectly fine
+        if blind_epochs == 0:
+            return
 
-            ip_link = subprocess.run(['ip', 'link', 'show', self.interface], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            if ip_link.returncode != 0 or "state DOWN" in ip_link.stdout:
-                return "DOWN"
+        # Check if the interface is physically missing
+        is_missing = self._is_interface_missing()
 
+        # STAGE 1: The Warning
+        if blind_epochs == 1:
+            if is_missing:
+                logging.warning(f"[Watchdog] blind=1: {self.interface} is missing! Nexmon firmware likely crashed. Waiting 1 epoch...")
+            return
+
+        # STAGE 2: The Kill
+        if blind_epochs >= 2:
+            if is_missing:
+                logging.error(f"[Watchdog] blind=2: {self.interface} is STILL missing! Executing lockdown reboot...")
+                self._save_crash_log("IW_DEV_VANISHED")
+                self._lockdown_reboot(agent, f"{self.interface} vanished")
+
+    def _is_interface_missing(self):
+        try:
+            # use the 'info' command because it cuts through fake "UP" statuses
+            iw_output = subprocess.run(['iw', 'dev', self.interface, 'info'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            if iw_output.returncode != 0:
+                return True # It threw an error, the interface is gone
         except Exception as e:
-            logging.error(f"[Watchdog] Error checking physical health: {e}")
+            logging.error(f"[Watchdog] Error executing iw command: {e}")
+            return True # Failsafe
 
-        return "HEALTHY"
+        return False # Interface is healthy and present
+
+    def _lockdown_reboot(self, agent, reason_text):
+        self.lockdown_triggered = True
+
+        # Trigger native reboot face
+        agent.set_rebooting()
+
+        # Draw custom text
+        agent.view().set('status', f"Crash: {reason_text}!")
+        agent.view().update(force=True)
+
+        # stop the UI thread
+        agent.view().update = lambda *args, **kwargs: None
+        agent.view().set = lambda *args, **kwargs: None
+        logging.info("[Watchdog] UI Lobotomized. Safe to perform background tasks.")
+
+        # Save session data
+        try:
+            agent._save_recovery_data()
+        except Exception:
+            pass
+
+        # E-ink Settle Time
+        time.sleep(3)
+
+        # Reboot OS
+        logging.critical("[Watchdog] Natively rebooting...")
+        pwnagotchi.reboot()
+
+        # Trap the Python thread
+        while True:
+            time.sleep(1)
 
     def _save_crash_log(self, crash_reason="UNKNOWN"):
         try:
@@ -112,28 +138,3 @@ class Watchdog(plugins.Plugin):
 
         except Exception as e:
             logging.error(f"[Watchdog] Critical failure while attempting to save crash log: {e}")
-
-    def _trigger_native_reboot(self, agent, reason_text):
-        logging.info(f"[Watchdog] Triggering custom native reboot sequence: {reason_text}")
-
-        try:
-            # 1. Put the UI into the panic state (This natively draws the dead face)
-            agent.set_rebooting()
-
-            # 2. Overwrite the generic default panic text with our exact reason
-            agent.view().set('status', f"Crash: {reason_text}! Rebooting...")
-            agent.view().update(force=True)
-
-            # 3. Save the recovery data (JSON backup) so the current session isn't lost
-            agent._save_recovery_data()
-        except Exception as e:
-            logging.error(f"[Watchdog] Error during UI lockdown: {e}")
-
-        # 4. Issue the actual OS-level reboot command
-        pwnagotchi.reboot()
-
-        # 5. The Ultimate UI Lock: Paralyze the AI thread so it cannot overwrite the screen
-        logging.info("[Watchdog] Paralyzing the AI brain to lock the e-ink display...")
-        import time
-        while True:
-            time.sleep(1)
