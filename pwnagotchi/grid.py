@@ -4,11 +4,16 @@ import requests
 import json
 import logging
 import threading
+import time
 
 import pwnagotchi
 
 # pwngrid-peer is running on port 8666
 API_ADDRESS = "http://127.0.0.1:8666/api/v1"
+
+# THE BOOT DELAY FIX
+# Set the timer to the exact moment the Pi powers on and loads the plugin!
+LAST_RESTART_TIME = time.time()
 
 
 def is_connected():
@@ -36,10 +41,34 @@ def _auto_heal_grid():
         except Exception as e:
             logging.error(f"[Grid Auto-Heal] Failed to execute recovery sequence: {e}")
 
-    # Launch this as a background time bomb so the UI ticker doesn't freeze waiting for systemctl!
+    # Launch this in background so the UI ticker doesn't freeze waiting for systemctl!
     heal_thread = threading.Thread(target=heal_task)
     heal_thread.daemon = True
     heal_thread.start()
+
+
+def _auto_start_grid():
+    global LAST_RESTART_TIME
+    current_time = time.time()
+
+    # Cooldown Lock (180 seconds)
+    if current_time - LAST_RESTART_TIME < 180:
+        return False  # Tell the main script we are on cooldown so it stays silent
+
+    LAST_RESTART_TIME = current_time
+
+    def start_task():
+        try:
+            logging.warning("[Grid Auto-Starter] Connection Refused! Daemon is dead. Booting it back up...")
+            subprocess.run(['sudo', 'systemctl', 'restart', 'pwngrid-peer'])
+            logging.info("[Grid Auto-Starter] pwngrid-peer revived and on 2-minute cooldown.")
+        except Exception as e:
+            logging.error(f"[Grid Auto-Starter] Failed to execute startup sequence: {e}")
+
+    start_thread = threading.Thread(target=start_task)
+    start_thread.daemon = True
+    start_thread.start()
+    return True
 
 
 def call(path, obj=None):
@@ -47,18 +76,18 @@ def call(path, obj=None):
     try:
         if obj is None:
             logging.debug(f"grid.call GET {url}")
-            # THE FIX: Slashed timeout from 60s down to 3s to prevent UI thread lockups
+            # Slashed timeout from 60s down to 3s to prevent UI thread lockups
             r = requests.get(url, timeout=(1.0, 3.0))
         else:
             logging.debug(f"grid.call POST {url} with data")
 
-            # THE FIX: Send bytes as raw data, send everything else as JSON
+            # Send bytes as raw data, send everything else as JSON
             if isinstance(obj, bytes):
                 r = requests.post(url, data=obj, timeout=(1.0, 3.0))
             else:
                 r = requests.post(url, json=obj, timeout=(1.0, 3.0))
 
-        # THE AUTO-HEAL INTERCEPTOR
+        # AUTO-HEAL INTERCEPTOR
         if r.status_code == 200:
             return r.json()
         elif r.status_code == 422:
@@ -70,8 +99,18 @@ def call(path, obj=None):
             return {}
         else:
             logging.error(f"grid.call unexpected status code {r.status_code} for {url}")
+
     except Exception as e:
-        logging.error(f"grid.call communication error for {url}: {e}")
+        error_str = str(e)
+        if "Connection refused" in error_str:
+            # Trigger the auto-starter only if the cooldown has finished
+            if _auto_start_grid():
+                logging.error(f"grid.call caught Connection Refused! Triggering Auto-Starter...")
+        elif "Read timed out" in error_str:
+            # The daemon is alive but busy syncing to the cloud. Stay completely silent!
+            pass
+        else:
+            logging.error(f"grid.call communication error for {url}: {e}")
 
     # Return safe structures to prevent UI thread crashes if communication drops
     if "peers" in path or "memory" in path or "inbox" in path:
@@ -160,11 +199,11 @@ def report_ap(essid, bssid):
 def inbox(page=1, with_pager=False):
     obj = call("/inbox?p=%d" % page)
 
-    # If call() failed and returned a list, reset it to a safe dictionary
+    # 1. If call() failed and returned a list, reset it to a safe dictionary
     if isinstance(obj, list) or not isinstance(obj, dict):
         obj = {'pages': 1, 'messages': []}
 
-    # Guarantee the required keys exist so the Web UI never crashes
+    # 2. Guarantee the required keys exist so the Web UI never crashes
     if 'pages' not in obj:
         obj['pages'] = 1
     if 'messages' not in obj:
@@ -183,3 +222,4 @@ def mark_message(id, mark):
 
 def send_message(to, message):
     return call("/unit/%s/inbox" % to, message.encode('utf-8'))
+
