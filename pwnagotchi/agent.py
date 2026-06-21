@@ -41,6 +41,9 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         self._view.set_agent(self)
         self._web_ui = Server(self, config['ui'])
 
+        # persistent wait flag that survives epoch rollovers
+        self._pending_wait = False
+
         self._access_points = []
         self._last_pwnd = None
         self._history = {}
@@ -141,6 +144,22 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         self.set_ready()
 
     def recon(self):
+        # --- RECON PATCH ---
+        # The original code drops into recon and abandons the channel instantly.
+        # This catches it and forces it to wait if we just fired a deauth.
+        wait = 0
+        if getattr(self, '_pending_wait', False) or self._epoch.did_deauth:
+            wait = self._config['personality']['hop_recon_time']
+        elif self._epoch.did_associate:
+            wait = self._config['personality']['min_recon_time']
+
+        if self._current_channel != 0 and wait > 0:
+            logging.info("waiting for %ds on channel %d before dropping to recon ...", wait, self._current_channel)
+            self.wait_for(wait)
+            self._pending_wait = False
+            self._epoch.did_deauth = False
+        # -------------------------
+
         recon_time = self._config['personality']['recon_time']
         max_inactive = self._config['personality']['max_inactive_scale']
         recon_mul = self._config['personality']['recon_inactive_multiplier']
@@ -374,12 +393,6 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             key = "%s -> %s" % (sta_mac, ap_mac)
 
         # --- AMNESIA MOD - Part 1of2 ---
-        # This mod resets the memory that a handshake has already caputured.
-        # It does NOT remove the .pcap file from your handshake folder
-        # after set time has passed it will treat as a new ap.
-        # this is great for ai to practice in static environments.
-
-            # Always stamp the time, even if we are updating an old one
             jmsg['captured_at'] = time.time()
 
             if key not in self._handshakes:
@@ -403,7 +416,6 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
                     plugins.on('handshake', self, filename, ap, sta)
                 found_handshake = True
             else:
-                # AMNESIA MOD: Update the timestamp of the existing entry
                 self._handshakes[key]['captured_at'] = jmsg['captured_at']
 
             self._update_handshakes(1 if found_handshake else 0)
@@ -438,23 +450,19 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
 
     def _has_handshake(self, bssid):
         # --- AMNESIA MOD - Part 2of2 ---
-        # How long should a handshake be kept in memory
-        amnesia_limit_seconds = 1800  # 30 minutes
+        amnesia_limit_seconds = 1800
         current_time = time.time()
         keys_to_forget = []
 
-        # Scan the entire dictionary to find ALL expired handshakes
         for key, jmsg in self._handshakes.items():
             if 'captured_at' in jmsg:
                 if (current_time - jmsg['captured_at']) > amnesia_limit_seconds:
                     keys_to_forget.append(key)
 
-        # Delete expired handshakes and purge them from the history interaction limits
         for key in keys_to_forget:
             logging.info(f"[Amnesia] Forgetting old handshake: {key}")
             del self._handshakes[key]
 
-            # Clean out the interaction counters so the AI resets its attack threshold
             if " -> " in key:
                 try:
                     sta_mac, ap_mac = key.split(" -> ")
@@ -463,7 +471,6 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
                 except Exception as e:
                     logging.error(f"[Amnesia] Error parsing MACs from history: {e}")
 
-        # If we forgot anything, flush Bettercap's cache to force an instant, aggressive rediscovery loop
         if keys_to_forget:
             try:
                 logging.info("[Amnesia] Flushing Bettercap live Wi-Fi cache to force target re-evaluation...")
@@ -471,7 +478,6 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             except Exception as e:
                 logging.error(f"[Amnesia] Failed to clear Bettercap wifi cache: {e}")
 
-        # Now check if the requested BSSID is still in our active memory
         for key in self._handshakes.keys():
             if bssid.lower() in key.lower():
                 return True
@@ -518,6 +524,8 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             logging.debug("recon is stale, skipping deauth(%s)", sta['mac'])
             return
 
+        throttle = 1.0
+
         if self._config['personality']['deauth'] and self._should_interact(sta['mac']):
             self._view.on_deauth(sta)
 
@@ -526,12 +534,20 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
                     sta['mac'], sta['vendor'], ap['hostname'], ap['mac'], ap['vendor'], ap['channel'], ap['rssi'])
                 self.run('wifi.deauth %s' % sta['mac'])
                 self._epoch.track(deauth=True)
+
+                # Set the persistent wait flag
+                self._pending_wait = True
+
             except Exception as e:
                 self._on_error(sta['mac'], e)
 
             plugins.on('deauthentication', self, ap, sta)
+
             if throttle > 0:
                 time.sleep(throttle)
+                # CLOCK FIX: Tell the epoch timer we slept so it doesn't penalize the channel time limit
+                self._epoch.track(sleep=True, inc=throttle)
+
             self._view.on_normal()
 
     def set_channel(self, channel, verbose=True):
@@ -540,7 +556,8 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             return
 
         wait = 0
-        if self._epoch.did_deauth:
+        # Check the persistent flag as well as the epoch flag
+        if getattr(self, '_pending_wait', False) or self._epoch.did_deauth:
             wait = self._config['personality']['hop_recon_time']
         elif self._epoch.did_associate:
             wait = self._config['personality']['min_recon_time']
@@ -552,6 +569,11 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
                 else:
                     logging.debug("waiting for %ds on channel %d ...", wait, self._current_channel)
                 self.wait_for(wait)
+
+                # Clear flags because we successfully waited
+                self._pending_wait = False
+                self._epoch.did_deauth = False
+
             if verbose and self._epoch.any_activity:
                 logging.info("CHANNEL %d", channel)
             try:
@@ -564,3 +586,4 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
 
             except Exception as e:
                 logging.error("Error while setting channel (%s)", e)
+
