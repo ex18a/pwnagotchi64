@@ -44,7 +44,7 @@ main.log.rotation.size = "10M"
 
 ai.enabled = true
 ai.path = "/root/brain.nn"
-ai.laziness = 0.1
+ai.laziness = 0.9
 ai.epochs_per_episode = 50
 
 ai.params.gamma = 0.99
@@ -75,7 +75,7 @@ personality.bored_num_epochs = 15
 personality.sad_num_epochs = 25
 personality.bond_encounters_factor = 20000
 
-ui.fps = 1.0
+ui.fps = 0.0
 ui.font.name = "DejaVuSansMono" # for japanese: fonts-japanese-gothic
 ui.font.size_offset = 0 # will be added to the font size
 
