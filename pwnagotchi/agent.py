@@ -180,7 +180,7 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             except Exception as e:
                 logging.exception("Error while setting wifi.recon.channels (%s)", e)
 
-        # Run the housekeeping sweep right before we drop into our idle waiting state
+        # Run the sweep right before we drop into our idle waiting state
         self._amnesia_sweep()
 
         self.wait_for(recon_time, sleeping=False)
@@ -482,13 +482,13 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         for key, jmsg in self._handshakes.items():
             if bssid.lower() in key.lower():
 
-                # If amnesia IS triggered, we lie and pretend we don't have it.
+                # If amnesia IS triggered, pretend we don't have it.
                 if jmsg.get('amnesia_triggered', False):
                     return False
                 # Otherwise, it's protected. Tell the engine to leave it alone.
                 return True
 
-        # We legitimately do not have this handshake yet.
+        # legitimately do not have this handshake yet.
         return False
         # ----------------------------------------------------
 
@@ -510,6 +510,8 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             logging.debug("recon is stale, skipping assoc(%s)", ap['mac'])
             return
 
+        throttle = 1.0
+
         if self._config['personality']['associate'] and self._should_interact(ap['mac']):
             self._view.on_assoc(ap)
 
@@ -518,12 +520,19 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
                     ap['hostname'], ap['mac'], ap['vendor'], ap['channel'], len(ap['clients']), ap['rssi'])
                 self.run('wifi.assoc %s' % ap['mac'])
                 self._epoch.track(assoc=True)
+
+                # Set the wait flag
+                self._pending_wait = True
+
             except Exception as e:
                 self._on_error(ap['mac'], e)
 
             plugins.on('association', self, ap)
             if throttle > 0:
                 time.sleep(throttle)
+                # CLOCK FIX: Tell the epoch timer it slept so it doesn't penalize the channel time limit
+                self._epoch.track(sleep=True, inc=throttle)
+
             self._view.on_normal()
 
     def deauth(self, ap, sta, throttle=0):
@@ -542,7 +551,7 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
                 self.run('wifi.deauth %s' % sta['mac'])
                 self._epoch.track(deauth=True)
 
-                # Set the wait flag
+                # Set persistent wait flag
                 self._pending_wait = True
 
             except Exception as e:
