@@ -24,6 +24,20 @@ ROOT = None
 class View(object):
     def __init__(self, config, impl, state=None):
         global ROOT
+        global WHITE, BLACK
+
+        # --- DYNAMIC INVERSION MOD ---
+        # Checks the config file to see if we should invert the canvas and text colors
+        try:
+            if config['ui']['display']['color'].lower() == 'white':
+                WHITE = 0x00  # Canvas background becomes Black
+                BLACK = 0xff  # Text and lines become White
+            else:
+                WHITE = 0xff  # Canvas background becomes White
+                BLACK = 0x00  # Text and lines become Black
+        except Exception:
+            pass # Fallback to defaults if the config key is missing
+        # -----------------------------
 
         # setup faces from the configuration in case the user customized them
         faces.load_from_config(config['ui']['faces'])
@@ -388,3 +402,4 @@ class View(object):
                     cb(self._canvas)
 
                 self._state.reset()
+

@@ -10,12 +10,21 @@ class WaveshareV4(DisplayImpl):
         self._render_count = 0
         self._last_width = None # Tracks the canvas size to auto-detect toggles!
 
+        # --- DYNAMIC BACKGROUND COLOR ---
+        self.bg_color = 0xFF # Default to White
+        try:
+            if config['ui']['display']['color'].lower() == 'white':
+                self.bg_color = 0x00 # Invert hardware flush to Black
+        except Exception:
+            pass
+        # --------------------------------
+
     def layout(self):
-        # BASELINE: Standard Landscape (180). 
+        # BASELINE: Standard Landscape (180).
         fonts.setup(10, 8, 10, 35, 25, 9)
         self._layout['width'] = 250
         self._layout['height'] = 122
-        
+
         self._layout['face'] = (0, 40)
         self._layout['name'] = (5, 20)
         self._layout['channel'] = (0, 0)
@@ -39,21 +48,21 @@ class WaveshareV4(DisplayImpl):
         from pwnagotchi.ui.hw.libs.waveshare.v4.epd2in13_V4 import EPD
         self._display = EPD()
         self._display.init()
-        self._display.Clear(0xFF)
+        self._display.Clear(self.bg_color)
 
         # Base hardware frame buffer remains anchored at 122x250 portrait bytes
-        self._display.displayPartBaseImage(self._display.getbuffer(Image.new('1', (122, 250), 0xFF)))
+        self._display.displayPartBaseImage(self._display.getbuffer(Image.new('1', (122, 250), self.bg_color)))
 
     def render(self, canvas):
         self._render_count += 1
         width, height = canvas.size
-        
+
         # --- AUTO-DETECT LIVE TOGGLE & FORCE SCREEN WIPE ---
         if self._last_width is not None and self._last_width != width:
             logging.info(f"Driver detected canvas change from {self._last_width} to {width}. Forcing hardware wipe...")
-            self._display.Clear(0xFF)
+            self._display.Clear(self.bg_color)
             self._render_count = 1000 # Forces the modulo below to trigger an instant full refresh!
-            
+
         self._last_width = width
 
         # --- AUTONOMOUS ROTATION MATH ---
@@ -63,17 +72,17 @@ class WaveshareV4(DisplayImpl):
         else:
             # Canvas is Landscape (Plugin is OFF). Rotate 270 to package into hardware!
             image = canvas.rotate(270, expand=True).convert('1')
-            
+
         buf = self._display.getbuffer(image)
 
         if self._render_count % 1000 == 0:
             logging.info("Performing full screen refresh...")
             self._display.init()
             self._display.display(buf)
-            self._display.displayPartBaseImage(buf) 
+            self._display.displayPartBaseImage(buf)
         else:
             self._display.displayPartial(buf)
 
     def clear(self):
-        self._display.Clear(0xFF)
+        self._display.Clear(self.bg_color)
 
