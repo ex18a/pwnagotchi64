@@ -144,9 +144,7 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         self.set_ready()
 
     def recon(self):
-        # --- RECON PATCH ---
-        # The original code drops into recon and abandons the channel instantly.
-        # This catches it and forces it to wait if we just fired a deauth.
+        # post-deauth wait BEFORE any channel math.
         wait = 0
         if getattr(self, '_pending_wait', False) or self._epoch.did_deauth:
             wait = self._config['personality']['hop_recon_time']
@@ -155,10 +153,11 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
 
         if self._current_channel != 0 and wait > 0:
             logging.info("waiting for %ds on channel %d before dropping to recon ...", wait, self._current_channel)
+            # Sweep while we wait
+            self._amnesia_sweep()
             self.wait_for(wait)
             self._pending_wait = False
             self._epoch.did_deauth = False
-        # -------------------------
 
         recon_time = self._config['personality']['recon_time']
         max_inactive = self._config['personality']['max_inactive_scale']
@@ -180,6 +179,9 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
                 self.run('wifi.recon.channel %s' % ','.join(map(str, channels)))
             except Exception as e:
                 logging.exception("Error while setting wifi.recon.channels (%s)", e)
+
+        # Run the housekeeping sweep right before we drop into our idle waiting state
+        self._amnesia_sweep()
 
         self.wait_for(recon_time, sleeping=False)
 
@@ -392,8 +394,10 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             ap_mac = jmsg['data']['ap']
             key = "%s -> %s" % (sta_mac, ap_mac)
 
-        # --- AMNESIA MOD - Part 1of2 ---
+            # --- AMNESIA MOD - Part 1of2 ---
             jmsg['captured_at'] = time.time()
+            # Mark that this is a fresh capture
+            jmsg['amnesia_triggered'] = False
 
             if key not in self._handshakes:
                 self._handshakes[key] = jmsg
@@ -417,6 +421,8 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
                 found_handshake = True
             else:
                 self._handshakes[key]['captured_at'] = jmsg['captured_at']
+                # Reset the flag so it stops attacking once captured again!
+                self._handshakes[key]['amnesia_triggered'] = False
 
             self._update_handshakes(1 if found_handshake else 0)
 
@@ -448,42 +454,43 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
     def restart_module(self, module):
         self.run('%s off; %s on' % (module, module))
 
-    def _has_handshake(self, bssid):
-        # --- AMNESIA MOD - Part 2of2 ---
-        amnesia_limit_seconds = 1800
+    def _amnesia_sweep(self):
+        # --- AMNESIA IDLE SWEEPER ---
+        # This only runs when about to sleep or wait.
+        amnesia_limit_seconds = 1200
         current_time = time.time()
-        keys_to_forget = []
 
         for key, jmsg in self._handshakes.items():
-            if 'captured_at' in jmsg:
-                if (current_time - jmsg['captured_at']) > amnesia_limit_seconds:
-                    keys_to_forget.append(key)
+            if not jmsg.get('amnesia_triggered', False):
+                if 'captured_at' in jmsg and (current_time - jmsg['captured_at']) > amnesia_limit_seconds:
+                    logging.info(f"[Amnesia] Timer expired for {key}. Resetting interaction history!")
 
-        for key in keys_to_forget:
-            logging.info(f"[Amnesia] Forgetting old handshake: {key}")
-            del self._handshakes[key]
+                    # Flag it as forgotten for attack purposes
+                    jmsg['amnesia_triggered'] = True
 
-            if " -> " in key:
-                try:
-                    sta_mac, ap_mac = key.split(" -> ")
-                    self._history.pop(sta_mac.strip(), None)
-                    self._history.pop(ap_mac.strip(), None)
-                except Exception as e:
-                    logging.error(f"[Amnesia] Error parsing MACs from history: {e}")
+                    # Wipe the interaction history safely
+                    if " -> " in key:
+                        try:
+                            sta_mac, ap_mac = key.split(" -> ")
+                            self._history.pop(sta_mac.strip(), None)
+                            self._history.pop(ap_mac.strip(), None)
+                        except Exception:
+                            pass
 
-        if keys_to_forget:
-            try:
-                logging.info("[Amnesia] Flushing Bettercap live Wi-Fi cache to force target re-evaluation...")
-                self.run('wifi.clear')
-            except Exception as e:
-                logging.error(f"[Amnesia] Failed to clear Bettercap wifi cache: {e}")
-
-        for key in self._handshakes.keys():
+    def _has_handshake(self, bssid):
+        # --- AMNESIA MOD - Part 2of2 (Target Check ONLY) ---
+        for key, jmsg in self._handshakes.items():
             if bssid.lower() in key.lower():
+
+                # If amnesia IS triggered, we lie and pretend we don't have it.
+                if jmsg.get('amnesia_triggered', False):
+                    return False
+                # Otherwise, it's protected. Tell the engine to leave it alone.
                 return True
 
+        # We legitimately do not have this handshake yet.
         return False
-        # -------------------------------------
+        # ----------------------------------------------------
 
     def _should_interact(self, who):
         if self._has_handshake(who):
@@ -535,7 +542,7 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
                 self.run('wifi.deauth %s' % sta['mac'])
                 self._epoch.track(deauth=True)
 
-                # Set the persistent wait flag
+                # Set the wait flag
                 self._pending_wait = True
 
             except Exception as e:
@@ -545,7 +552,7 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
 
             if throttle > 0:
                 time.sleep(throttle)
-                # CLOCK FIX: Tell the epoch timer we slept so it doesn't penalize the channel time limit
+                # CLOCK FIX: Tell the epoch timer it slept so it doesn't penalize the channel time limit
                 self._epoch.track(sleep=True, inc=throttle)
 
             self._view.on_normal()
@@ -555,25 +562,7 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             logging.debug("recon is stale, skipping set_channel(%d)", channel)
             return
 
-        wait = 0
-        # Check the persistent flag as well as the epoch flag
-        if getattr(self, '_pending_wait', False) or self._epoch.did_deauth:
-            wait = self._config['personality']['hop_recon_time']
-        elif self._epoch.did_associate:
-            wait = self._config['personality']['min_recon_time']
-
         if channel != self._current_channel:
-            if self._current_channel != 0 and wait > 0:
-                if verbose:
-                    logging.info("waiting for %ds on channel %d ...", wait, self._current_channel)
-                else:
-                    logging.debug("waiting for %ds on channel %d ...", wait, self._current_channel)
-                self.wait_for(wait)
-
-                # Clear flags because we successfully waited
-                self._pending_wait = False
-                self._epoch.did_deauth = False
-
             if verbose and self._epoch.any_activity:
                 logging.info("CHANNEL %d", channel)
             try:
