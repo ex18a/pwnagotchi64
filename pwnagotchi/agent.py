@@ -153,8 +153,6 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
 
         if self._current_channel != 0 and wait > 0:
             logging.info("waiting for %ds on channel %d before dropping to recon ...", wait, self._current_channel)
-            # Sweep while we wait
-            self._amnesia_sweep()
             self.wait_for(wait)
             self._pending_wait = False
             self._epoch.did_deauth = False
@@ -179,9 +177,6 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
                 self.run('wifi.recon.channel %s' % ','.join(map(str, channels)))
             except Exception as e:
                 logging.exception("Error while setting wifi.recon.channels (%s)", e)
-
-        # Run the sweep right before we drop into our idle waiting state
-        self._amnesia_sweep()
 
         self.wait_for(recon_time, sleeping=False)
 
@@ -394,11 +389,6 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             ap_mac = jmsg['data']['ap']
             key = "%s -> %s" % (sta_mac, ap_mac)
 
-            # --- AMNESIA MOD - Part 1of2 ---
-            jmsg['captured_at'] = time.time()
-            # Mark that this is a fresh capture
-            jmsg['amnesia_triggered'] = False
-
             if key not in self._handshakes:
                 self._handshakes[key] = jmsg
                 s = self.session()
@@ -419,10 +409,6 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
                             ap['hostname'], ap['mac'], ap['vendor'])
                     plugins.on('handshake', self, filename, ap, sta)
                 found_handshake = True
-            else:
-                self._handshakes[key]['captured_at'] = jmsg['captured_at']
-                # Reset the flag so it stops attacking once captured again!
-                self._handshakes[key]['amnesia_triggered'] = False
 
             self._update_handshakes(1 if found_handshake else 0)
 
@@ -454,43 +440,11 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
     def restart_module(self, module):
         self.run('%s off; %s on' % (module, module))
 
-    def _amnesia_sweep(self):
-        # --- AMNESIA IDLE SWEEPER ---
-        # This only runs when about to sleep or wait.
-        amnesia_limit_seconds = 1200
-        current_time = time.time()
-
-        for key, jmsg in self._handshakes.items():
-            if not jmsg.get('amnesia_triggered', False):
-                if 'captured_at' in jmsg and (current_time - jmsg['captured_at']) > amnesia_limit_seconds:
-                    logging.info(f"[Amnesia] Timer expired for {key}. Resetting interaction history!")
-
-                    # Flag it as forgotten for attack purposes
-                    jmsg['amnesia_triggered'] = True
-
-                    # Wipe the interaction history safely
-                    if " -> " in key:
-                        try:
-                            sta_mac, ap_mac = key.split(" -> ")
-                            self._history.pop(sta_mac.strip(), None)
-                            self._history.pop(ap_mac.strip(), None)
-                        except Exception:
-                            pass
-
     def _has_handshake(self, bssid):
-        # --- AMNESIA MOD - Part 2of2 (Target Check ONLY) ---
         for key, jmsg in self._handshakes.items():
             if bssid.lower() in key.lower():
-
-                # If amnesia IS triggered, pretend we don't have it.
-                if jmsg.get('amnesia_triggered', False):
-                    return False
-                # Otherwise, it's protected. Tell the engine to leave it alone.
                 return True
-
-        # legitimately do not have this handshake yet.
         return False
-        # ----------------------------------------------------
 
     def _should_interact(self, who):
         if self._has_handshake(who):
@@ -584,4 +538,3 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
 
             except Exception as e:
                 logging.error("Error while setting channel (%s)", e)
-
