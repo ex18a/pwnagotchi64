@@ -5,13 +5,13 @@ set -e
 # PHASE 1: INITIAL ENVIRONMENT SETUP
 # ==============================================================================
 VERSION=$1
-HOSTNAME=$2
+HOSTNAME=pwnagotchi
 NEW_USER="pwn"
 OUTPUT_IMG="dist/pwnagotchi64-${VERSION}.img"
 TARBALL="dist/pwnagotchi64-${VERSION}.tar.gz"
 
-if [ -z "$VERSION" ] || [ -z "$HOSTNAME" ]; then
-    echo " [!] ERROR: Usage: $0 <version> <hostname>"
+if [ -z "$VERSION" ]; then
+    echo " [!] ERROR: Usage: $0 <version>"
     exit 1
 fi
 
@@ -154,6 +154,8 @@ chmod +x /usr/bin/pwnagotchi-launcher /usr/bin/bettercap-launcher /usr/bin/monst
 echo "  -> [Chroot] Pre-creating Pwnagotchi system directories..."
 mkdir -p /etc/pwnagotchi/
 chmod 755 /etc/pwnagotchi/
+echo "  -> [Chroot] Seeding initial config.toml..."
+cp /tmp/pwn_source/pwnagotchi/defaults.toml /etc/pwnagotchi/config.toml
 
 echo "  -> [Chroot] Registering systemd network unit configurations..."
 systemctl enable bettercap.service
