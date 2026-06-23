@@ -8,6 +8,150 @@ Plugins
 {% block styles %}
   {{ super() }}
   <style>
+    /* Container for the settings list */
+    .plugin-list {
+      display: flex;
+      flex-direction: column;
+      background-color: #f9f9f9; 
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      margin: 20px auto;
+      max-width: 800px;
+    }
+
+    /* Individual plugin row */
+    .plugin-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 15px 20px;
+      background-color: #ffffff;
+      border-bottom: 1px solid #e0e0e0;
+      transition: background-color 0.2s ease;
+    }
+
+    /* Remove border from the last item */
+    .plugin-row:last-child {
+      border-bottom: none;
+    }
+
+    .plugin-row:hover {
+      background-color: #f1f1f1;
+    }
+
+    /* Plugin Info (Left side) */
+    .plugin-info {
+      display: flex;
+      flex-direction: column;
+      max-width: 75%; /* Leaves room for the toggle switch */
+    }
+
+    .plugin-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin: 0 0 4px 0;
+    }
+
+    .plugin-title a {
+      text-decoration: none;
+      color: #333; 
+    }
+
+    .plugin-title a:hover {
+      color: #007bff;
+    }
+
+    .plugin-version {
+      font-size: 12px;
+      color: #888;
+      margin-bottom: 4px;
+      font-family: monospace;
+    }
+
+    .plugin-description {
+      font-size: 13px;
+      color: #666;
+      line-height: 1.4;
+    }
+
+    /* Plugin Toggle (Right side) */
+    .plugin-controls {
+      display: flex;
+      align-items: center;
+    }
+  </style>
+{% endblock %}
+
+{% block script %}
+  $(function(){
+      $('input[type=checkbox]').change(function(e) {
+          var checkbox = $(this);
+          var form = checkbox.closest('form');
+          var url = form.attr('action');
+
+          $.ajax({
+              type: 'POST',
+              url: url,
+              data: form.serialize(),
+              success: function(data) {
+                  if (data.indexOf('failed') != -1) {
+                      alert('Could not be toggled.');
+                  }
+              }
+          });
+      });
+  });
+{% endblock %}
+
+{% block content %}
+<div id="container" class="plugin-list">
+    {% for name in database.keys() | sort %}
+        {% set has_info = name in loaded and loaded[name].__description__ is defined %}
+        <div class="plugin-row">
+          
+          <div class="plugin-info">
+            <div class="plugin-title">
+              <a {% if name in loaded and loaded[name].on_webhook is defined %} href="/plugins/{{name}}" {% endif %}>
+                {{ name }}
+              </a>
+            </div>
+            
+            {% if has_info and loaded[name].__version__ is defined %}
+              <div class="plugin-version">v{{ loaded[name].__version__ }}</div>
+            {% endif %}
+            
+            <div class="plugin-description">
+              {% if has_info %}
+                {{ loaded[name].__description__ }}
+              {% else %}
+                Description can't be loaded yet.
+              {% endif %}
+            </div>
+          </div>
+
+          <div class="plugin-controls">
+            <form method="POST" action="/plugins/toggle" style="margin: 0;">
+              <input type="checkbox" data-role="flipswitch" name="enabled" id="flip-checkbox-{{name}}" data-on-text="Enabled" data-off-text="Disabled" data-wrapper-class="custom-size-flipswitch" {% if name in loaded %} checked {% endif %}>
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+              <input type="hidden" name="plugin" value="{{ name }}"/>
+            </form>
+          </div>
+          
+        </div>
+    {% endfor %}
+</div>
+{% endblock %}
+{% extends "base.html" %}
+{% set active_page = "plugins" %}
+
+{% block title %}
+Plugins
+{% endblock %}
+
+{% block styles %}
+  {{ super() }}
+  <style>
     .plugins-box {
       position: relative;
       display: inline-block;
