@@ -11,6 +11,10 @@ class Automata(object):
         self._view = view
         self._epoch = Epoch(config)
 
+        # --- AI AUTO-TOGGLE INIT ---
+        # Track if the user originally wanted AI enabled
+        self._ai_base_enabled = config.get('ai', {}).get('enabled', False)
+
     def _on_miss(self, who):
         logging.info("it looks like %s is not in range anymore :/", who)
         self._epoch.track(miss=True)
@@ -110,6 +114,22 @@ class Automata(object):
         did_miss = self._epoch.num_missed
 
         self._epoch.next()
+
+        # --- AI AUTO-TOGGLE MOD ---
+        if self._ai_base_enabled:
+            # SLEEP: If the bot enters the bored state (bored_for >= 1)
+            if self.mode == 'ai' and self._epoch.bored_for >= 1:
+                logging.info("[AI SLEEP] Rig is in a dead zone (Bored). Suspending AI and dropping to AUTO.")
+                # We leave config ALONE so it survives reboots!
+                self.mode = 'auto'
+                self._view.set('mode', 'AUTO')
+
+            # WAKE: If activity hits 1 after being asleep
+            elif self.mode == 'auto' and self._epoch.inactive_for == 0 and self._epoch.active_for > 0:
+                logging.info("[AI WAKE] Target engaged! Resuming AI mode.")
+                self.mode = 'ai'
+                self._view.set('mode', '  AI')
+        # --------------------------
 
         # after X misses during an epoch, set the status to lonely or angry
         if was_stale:
