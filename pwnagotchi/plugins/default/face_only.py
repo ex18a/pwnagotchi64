@@ -39,7 +39,7 @@ class FaceOnly(plugins.Plugin):
                 'status': {'xy': (999, 999)},
                 'memtemp_header': {'xy': (999, 999)},
                 'memtemp_data': {'xy': (999, 999)},
-                'lifetime_train': {'xy': (999, 999)},
+                'lifetime_trained': {'xy': (999, 999)},
                 'blind_val': {'xy': (999, 999)},
                 'ip1': {'xy': (999, 999)}
             }
