@@ -67,7 +67,6 @@ cp -r builder/assets/networkmanager /mnt/tmp/networkmanager
 cp -r builder/assets/bluetooth /mnt/tmp/bluetooth
 
 cp builder/assets/system/motd-gen.sh /mnt/tmp/system/motd-gen.sh
-cp builder/assets/system/pisugar_powercut.sh /mnt/tmp/system/pisugar_powercut.sh
 cp builder/assets/boot/config.txt /mnt/boot/firmware/config.txt
 
 # ==============================================================================
@@ -110,10 +109,6 @@ rm -rf /tmp/pwngrid_engine.zip /tmp/engine_extract
 echo "  -> [Chroot] Enabling I2C hardware modules..."
 echo -e "i2c-dev\nbnep" >> /etc/modules
 
-echo "  -> [Chroot] Installing PiSugar 3 Power Management..."
-chmod +x /tmp/system/pisugar_powercut.sh
-/tmp/system/pisugar_powercut.sh
-
 echo "  -> [Chroot] Forcing Kernel Wi-Fi Regulatory Domain to BO (Max TX Power)..."
 echo "options cfg80211 ieee80211_regdom=BO" > /etc/modprobe.d/cfg80211_regdomain.conf
 
@@ -141,7 +136,7 @@ echo "  -> [Chroot] Unpacking application core..."
 mkdir -p /tmp/pwn_source
 tar -xzf /tmp/pwnagotchi64-${VERSION}.tar.gz -C /tmp/pwn_source --strip-components=1
 
-echo "  -> [Chroot] Bypassing Debian RECORD conflicts..."
+echo "  -> [Chroot] Bypassing RECORD conflicts..."
 python3 -m pip install --break-system-packages --no-cache-dir --ignore-installed mpmath sympy
 
 echo "  -> [Chroot] Installing unified Python dependencies & Modern AI Environment..."
