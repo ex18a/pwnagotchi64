@@ -16,7 +16,7 @@ api.rest on
 http.server on
 
 set wifi.handshakes.aggregate false
-set wifi.handshakes.file /root/handshakes
+set wifi.handshakes.file /home/pwn/handshakes
 
 # Start passive wifi reconnaissance
 wifi.recon on
