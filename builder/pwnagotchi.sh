@@ -109,7 +109,6 @@ echo "  -> [Chroot] Enabling I2C hardware modules..."
 echo -e "i2c-dev\nbnep" >> /etc/modules
 
 echo "  -> [Chroot] Installing PiSugar 3 Power Management..."
-mkdir -p /tmp/system
 chmod +x /tmp/system/pisugar_powercut.sh
 /tmp/system/pisugar_powercut.sh
 
