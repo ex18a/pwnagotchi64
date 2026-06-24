@@ -94,7 +94,7 @@ apt-get update -y
 
 echo "  -> [Chroot] PHASE 4.4: Installing core packages..."
 apt-get install -y \
-    aircrack-ng tcpdump bettercap bettercap-ui bluez-tools jq dphys-swapfile hcxtools \
+    aircrack-ng tcpdump bettercap bettercap-ui bluez-tools jq dphys-swapfile hcxtools i2c-tools \
     python3-pip python3-dev build-essential libpcap-dev libssl-dev libffi-dev fonts-dejavu libglib2.0-dev libdbus-1-dev python3-rpi.gpio python3-smbus \
     python3-torch python3-numpy python3-pandas
 
@@ -107,6 +107,10 @@ rm -rf /tmp/pwngrid_engine.zip /tmp/engine_extract
 
 echo "  -> [Chroot] Enabling I2C hardware modules..."
 echo -e "i2c-dev\nbnep" >> /etc/modules
+
+echo "  -> [Chroot] Installing PiSugar 3 Power Management..."
+chmod +x /tmp/system/pisugar-setup.sh
+/tmp/system/pisugar-setup.sh
 
 echo "  -> [Chroot] Forcing Kernel Wi-Fi Regulatory Domain to BO (Max TX Power)..."
 echo "options cfg80211 ieee80211_regdom=BO" > /etc/modprobe.d/cfg80211_regdomain.conf
