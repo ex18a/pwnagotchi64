@@ -8,7 +8,7 @@ import pwnagotchi
 
 class Watchdog(plugins.Plugin):
     __author__ = 'ex18a'
-    __version__ = '1.7.2'
+    __version__ = '1.7.3'
     __description__ = 'wifi hardware check with crash logging'
 
     def __init__(self):
@@ -23,6 +23,25 @@ class Watchdog(plugins.Plugin):
         # Stop checking if already dying
         if self.lockdown_triggered:
             return
+
+        # If bettercap's systemd unit isn't active, give systemd's own
+        # Restart=on-failure policy a chance to bring it back on its own
+        # first (confirmed: a "concurrent map iteration and map write" Go
+        # fatal error kills the whole process, but systemd typically
+        # restarts it within ~30s without any help from us). Only escalate
+        # to a full device reboot if it's STILL down after that grace
+        # period -- rebooting the instant we see one bad reading would
+        # trigger a slower, more disruptive full reboot for exactly the
+        # failure that was already about to fix itself.
+        if self._is_bettercap_service_down():
+            logging.warning("[Watchdog] bettercap service not active -- giving systemd up to 60s to auto-restart it ...")
+            if self._is_bettercap_still_down_after_grace_period():
+                logging.error("[Watchdog] bettercap still down after grace period! Executing lockdown reboot...")
+                self._save_crash_log("BETTERCAP_SERVICE_DOWN")
+                self._lockdown_reboot(agent, "bettercap crashed and didn't recover")
+                return
+            else:
+                logging.info("[Watchdog] bettercap recovered on its own, no reboot needed.")
 
         # Ask agent for the blind counter
         try:
@@ -46,9 +65,47 @@ class Watchdog(plugins.Plugin):
         # STAGE 2: The Kill
         if blind_epochs >= 2:
             if is_missing:
-                logging.error(f"[Watchdog] blind=2: {self.interface} is STILL missing! Executing lockdown reboot...")
+                logging.error(f"[Watchdog] blind={blind_epochs}: {self.interface} is STILL missing! Executing lockdown reboot...")
                 self._save_crash_log("IW_DEV_VANISHED")
                 self._lockdown_reboot(agent, f"{self.interface} vanished")
+                return
+
+            # The interface can be present and healthy while bettercap
+            # itself has crashed, hung, or dropped its REST/websocket API --
+            # that leaves the agent blind with no hardware-level symptom at
+            # all, so it needs its own independent check rather than relying
+            # on _is_interface_missing() to catch it.
+            if self._is_bettercap_unresponsive(agent):
+                logging.error(f"[Watchdog] blind={blind_epochs}: {self.interface} present but bettercap is unresponsive! Executing lockdown reboot...")
+                self._save_crash_log("BETTERCAP_UNRESPONSIVE")
+                self._lockdown_reboot(agent, "bettercap unresponsive")
+
+    def _is_bettercap_service_down(self):
+        try:
+            result = subprocess.run(['systemctl', 'is-active', 'bettercap'],
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            # systemctl is-active prints "active" and exits 0 when healthy;
+            # anything else ("failed", "inactive", "activating", ...) means
+            # the unit isn't in a normal running state.
+            return result.stdout.strip() != 'active'
+        except Exception as e:
+            logging.error(f"[Watchdog] Error checking bettercap service status: {e}")
+            return False  # don't false-trigger a reboot if systemctl itself is the thing failing
+
+    def _is_bettercap_still_down_after_grace_period(self, grace_seconds=60, poll_interval=5):
+        # Blocks on_epoch for up to grace_seconds -- only while bettercap is
+        # already known to be down, in which case the agent's own REST calls
+        # are failing anyway, so this isn't costing anything beyond what's
+        # already lost. Polls every poll_interval seconds so it returns as
+        # soon as systemd's restart succeeds, rather than always waiting
+        # the full window.
+        waited = 0
+        while waited < grace_seconds:
+            time.sleep(poll_interval)
+            waited += poll_interval
+            if not self._is_bettercap_service_down():
+                return False
+        return self._is_bettercap_service_down()
 
     def _is_interface_missing(self):
         try:
@@ -61,6 +118,18 @@ class Watchdog(plugins.Plugin):
             return True # Failsafe
 
         return False # Interface is healthy and present
+
+    def _is_bettercap_unresponsive(self, agent):
+        # agent.session() is the same REST call get_access_points() makes
+        # internally -- if bettercap's API has died or hung, this raises
+        # (or, if bettercap is wedged rather than dead, could block; if that
+        # turns out to happen in practice this may need its own timeout).
+        try:
+            agent.session()
+            return False
+        except Exception as e:
+            logging.error(f"[Watchdog] bettercap session() check failed: {e}")
+            return True
 
     def _lockdown_reboot(self, agent, reason_text):
         self.lockdown_triggered = True
@@ -112,9 +181,22 @@ class Watchdog(plugins.Plugin):
             except Exception:
                 dmesg_logs = "Failed to read dmesg logs.\n"
 
+            try:
+                # This is where the actual root-cause stack trace lives for
+                # a bettercap-side crash (e.g. the Go runtime fatal error) --
+                # pwnagotchi's own log and dmesg won't show it. 250 lines
+                # because a full Go panic dump (goroutine stacks included)
+                # routinely runs well past 100 lines on its own.
+                bcap_output = subprocess.run(['journalctl', '-u', 'bettercap', '-n', '250', '--no-pager'],
+                                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                bcap_logs = bcap_output.stdout if bcap_output.stdout else "No bettercap logs found.\n"
+            except Exception:
+                bcap_logs = "Failed to read bettercap logs.\n"
+
             new_crash_entry = (
                 f"{separator_full}"
                 f"[PWNAGOTCHI LOGS - LAST 50 LINES]\n{pwn_logs}\n"
+                f"[BETTERCAP LOGS - LAST 250 LINES]\n{bcap_logs}\n"
                 f"[DMESG LOGS - LAST 50 LINES]\n{dmesg_logs}\n\n"
             )
 
