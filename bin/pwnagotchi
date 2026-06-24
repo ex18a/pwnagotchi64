@@ -55,8 +55,13 @@ def do_auto_mode(agent):
             agent.recon()
             # get nearby access points grouped by channel
             channels = agent.get_access_points_by_channel()
-            # for each channel
-            for ch, aps in channels:
+            # only attack the busiest channel this epoch (channels[0], since
+            # get_access_points_by_channel() sorts by AP count descending),
+            # then close out and let the next epoch's recon() rescan fresh.
+            # Working through every channel a scan turns up can take long
+            # enough that, walking around, you've already passed the
+            # networks on the later channels by the time it gets to them.
+            for ch, aps in channels[:1]:
                 agent.set_channel(ch)
 
                 if not agent.is_stale() and agent.any_activity():
