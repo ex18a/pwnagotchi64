@@ -110,8 +110,9 @@ echo "  -> [Chroot] Enabling I2C hardware modules..."
 echo -e "i2c-dev\nbnep" >> /etc/modules
 
 echo "  -> [Chroot] Installing PiSugar 3 Power Management..."
-chmod +x /tmp/system/pisugar-setup.sh
-/tmp/system/pisugar-setup.sh
+mkdir -p /tmp/system
+chmod +x /tmp/system/pisugar_powercut.sh
+/tmp/system/pisugar_powercut.sh
 
 echo "  -> [Chroot] Forcing Kernel Wi-Fi Regulatory Domain to BO (Max TX Power)..."
 echo "options cfg80211 ieee80211_regdom=BO" > /etc/modprobe.d/cfg80211_regdomain.conf
