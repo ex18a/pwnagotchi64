@@ -41,8 +41,10 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         self._view.set_agent(self)
         self._web_ui = Server(self, config['ui'])
 
-        # persistent wait flag that survives epoch rollovers
-        self._pending_wait = False
+        # persistent wait flag that survives epoch rollovers -- now holds a
+        # number of seconds (0 = nothing pending) rather than a bool, so we
+        # can carry the right wait duration through to set_channel()
+        self._pending_wait = 0
 
         self._access_points = []
         self._last_pwnd = None
@@ -143,19 +145,29 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         self.next_epoch()
         self.set_ready()
 
-    def recon(self):
-        # post-deauth wait BEFORE any channel math.
-        wait = 0
-        if getattr(self, '_pending_wait', False) or self._epoch.did_deauth:
-            wait = self._config['personality']['hop_recon_time']
-        elif self._epoch.did_associate:
-            wait = self._config['personality']['min_recon_time']
+    def flush_pending_wait(self):
+        # Closes out the scan > attack > wait > new epoch cycle: takes any
+        # reply-window wait still owed on the channel we just attacked,
+        # *before* the epoch ends -- so the wait time (and the chance of
+        # catching a delayed handshake) is attributed to the epoch that
+        # earned it, not bled into the next epoch's recon(). Call this
+        # right after the per-channel attack loop, right before next_epoch().
+        if self._current_channel != 0 and self._pending_wait > 0:
+            logging.info("holding on channel %d for %ds before ending epoch ...",
+                         self._current_channel, self._pending_wait)
+            self.wait_for(self._pending_wait)
+        self._pending_wait = 0
 
-        if self._current_channel != 0 and wait > 0:
-            logging.info("waiting for %ds on channel %d before dropping to recon ...", wait, self._current_channel)
-            self.wait_for(wait)
-            self._pending_wait = False
-            self._epoch.did_deauth = False
+    def recon(self):
+        # Normally flush_pending_wait() (called right before next_epoch())
+        # already cleared this out, so this is just a defensive fallback in
+        # case recon() ever gets called without that happening first.
+        if self._current_channel != 0 and self._pending_wait > 0:
+            logging.info("holding on channel %d for %ds before broadening recon ...",
+                         self._current_channel, self._pending_wait)
+            self.wait_for(self._pending_wait)
+        self._pending_wait = 0
+        self._epoch.did_deauth = False
 
         recon_time = self._config['personality']['recon_time']
         max_inactive = self._config['personality']['max_inactive_scale']
@@ -475,8 +487,11 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
                 self.run('wifi.assoc %s' % ap['mac'])
                 self._epoch.track(assoc=True)
 
-                # Set the wait flag
-                self._pending_wait = True
+                # Hold this channel for a bit before set_channel() is allowed
+                # to hop away, so a reply has a chance to arrive. Don't
+                # shorten a longer wait already queued up by a deauth.
+                self._pending_wait = max(self._pending_wait,
+                                          self._config['personality']['min_recon_time'])
 
             except Exception as e:
                 self._on_error(ap['mac'], e)
@@ -505,8 +520,11 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
                 self.run('wifi.deauth %s' % sta['mac'])
                 self._epoch.track(deauth=True)
 
-                # Set persistent wait flag
-                self._pending_wait = True
+                # Deauth gets the longer wait, and always wins over a
+                # shorter assoc wait queued earlier on the same channel --
+                # we want to stick around for the handshake.
+                self._pending_wait = max(self._pending_wait,
+                                          self._config['personality']['hop_recon_time'])
 
             except Exception as e:
                 self._on_error(sta['mac'], e)
@@ -526,6 +544,16 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             return
 
         if channel != self._current_channel:
+            # If a deauth (or assoc) just happened on the channel we're
+            # currently sitting on, give it a chance to get a reply before
+            # we abandon it for the next router -- this is the actual fix
+            # for "switches channel, misses the packet from the first one".
+            if self._current_channel != 0 and self._pending_wait > 0:
+                logging.info("holding on channel %d for %ds before hopping to %d ...",
+                             self._current_channel, self._pending_wait, channel)
+                self.wait_for(self._pending_wait)
+                self._pending_wait = 0
+
             if verbose and self._epoch.any_activity:
                 logging.info("CHANNEL %d", channel)
             try:
