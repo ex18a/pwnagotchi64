@@ -65,7 +65,9 @@ cp "$TARBALL" /mnt/tmp/
 cp -r builder/assets/bettercap /mnt/tmp/bettercap_assets
 cp -r builder/assets/networkmanager /mnt/tmp/networkmanager
 cp -r builder/assets/bluetooth /mnt/tmp/bluetooth
-cp -r builder/assets/system /mnt/tmp/system
+
+cp builder/assets/system/motd-gen.sh /mnt/tmp/system/motd-gen.sh
+cp builder/assets/system/pisugar_powercut.sh /mnt/tmp/system/pisugar_powercut.sh
 cp builder/assets/boot/config.txt /mnt/boot/firmware/config.txt
 
 # ==============================================================================
