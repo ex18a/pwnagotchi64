@@ -110,4 +110,4 @@ class PiSugar3i2c(plugins.Plugin):
                 try:
                     ui.remove_element(element)
                 except:
-                    passimport logging
+                    pass
