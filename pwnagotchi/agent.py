@@ -247,7 +247,14 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             else:
                 grouped[ch].append(ap)
 
-        return sorted(grouped.items(), key=lambda kv: len(kv[1]), reverse=True)
+        # Sort by total client count on the channel, not AP count. A channel
+        # with lots of APs but no clients can only be hit with associate(),
+        # which is a much less reliable way to get a handshake than deauth
+        # -- so prioritize wherever the actual stations are. AP count is
+        # kept as a tiebreaker for channels with equal (often zero) clients.
+        return sorted(grouped.items(),
+                      key=lambda kv: (sum(len(ap['clients']) for ap in kv[1]), len(kv[1])),
+                      reverse=True)
 
     def _find_ap_sta_in(self, station_mac, ap_mac, session):
         for ap in session['wifi']['aps']:
@@ -560,9 +567,17 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
                 self.run('wifi.recon.channel %d' % channel)
                 self._current_channel = channel
                 self._epoch.track(hop=True)
-                self._view.set('channel', '%d' % channel)
 
                 plugins.on('channel_hop', self, channel)
 
             except Exception as e:
                 logging.error("Error while setting channel (%s)", e)
+
+        # Always reflect the real channel on screen once we're actually
+        # parked on one -- not just on calls that caused a hop. Otherwise,
+        # staying on the same channel across epochs (very common when
+        # there's really just one network of interest) leaves the display
+        # stuck on '*' from the last recon() call, even though the radio
+        # is genuinely fixed on a single channel the whole time.
+        if self._current_channel != 0:
+            self._view.set('channel', '%d' % self._current_channel)
