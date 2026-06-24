@@ -70,6 +70,12 @@ def do_auto_mode(agent):
                     for sta in ap['clients']:
                         agent.deauth(ap, sta)
 
+            # scan > attack > wait on channel > new epoch: give the last
+            # channel we attacked a chance at a reply before the epoch
+            # closes out, so the wait counts against the epoch that earned
+            # it rather than bleeding into the next one's recon().
+            agent.flush_pending_wait()
+
             # An interesting effect of this:
             #
             # From Pwnagotchi's perspective, the more new access points
