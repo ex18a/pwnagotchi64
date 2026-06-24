@@ -44,8 +44,8 @@ main.log.rotation.size = "10M"
 
 ai.enabled = true
 ai.path = "/root/brain.nn"
-ai.laziness = 0.9
-ai.epochs_per_episode = 50
+ai.laziness = 0.5
+ai.epochs_per_episode = 10
 
 ai.params.gamma = 0.99
 ai.params.n_steps = 1
