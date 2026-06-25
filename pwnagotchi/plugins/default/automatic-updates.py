@@ -106,8 +106,6 @@ class AutomaticUpdates(plugins.Plugin):
 
         zip_path = os.path.join(work_dir, 'source.zip')
 
-        # Downloads everything in the repo at that tag, as a single zip --
-        # there's no per-file selection step.
         display.update(force=True, new_data={'status': f"Downloading {info['available']} ..."})
         r = requests.get(info['zip_url'], timeout=60)
         r.raise_for_status()
@@ -117,18 +115,55 @@ class AutomaticUpdates(plugins.Plugin):
         display.update(force=True, new_data={'status': f"Extracting {info['available']} ..."})
         shutil.unpack_archive(zip_path, work_dir, format='zip')
 
-        # GitHub's tag archive always extracts to one subfolder, normally
-        # named "<repo-name>-<tag-without-leading-v>"
         source_dir = next((d for d in glob.glob(os.path.join(work_dir, '*')) if os.path.isdir(d)), None)
         if source_dir is None:
             logging.error("[automatic-updates] couldn't find extracted source folder")
             return False
 
-        # This is the step that actually decides "where files go" -- pip
-        # reads setup.py inside source_dir and copies every pwnagotchi
-        # package file from the extracted repo on top of whatever's
-        # already installed in site-packages. --no-deps so it only
-        # touches our own files, not every dependency too.
+        # =========================================================
+        # DYNAMIC SYSTEM DEPENDENCY INSTALLER
+        # =========================================================
+        apt_req_file = os.path.join(source_dir, 'apt-requirements.txt')
+        
+        if os.path.exists(apt_req_file):
+            # Read the file, stripping out empty lines and comments
+            with open(apt_req_file, 'r') as f:
+                packages = [line.strip() for line in f if line.strip() and not line.startswith('#')]
+            
+            if packages:
+                display.update(force=True, new_data={'status': "Installing sys deps ..."})
+                logging.info(f"[automatic-updates] Found apt-requirements.txt. Installing: {', '.join(packages)}")
+                
+                # Clone the current environment variables and force non-interactive mode
+                env = os.environ.copy()
+                env['DEBIAN_FRONTEND'] = 'noninteractive'
+                
+                # Update apt sources first so it can actually find the packages
+                subprocess.run(['apt-get', 'update'], capture_output=True, env=env)
+                
+                # Install the packages read from the file
+                apt_cmd = ['apt-get', 'install', '-y'] + packages
+                apt_result = subprocess.run(apt_cmd, capture_output=True, text=True, env=env)
+                
+                if apt_result.returncode != 0:
+                    logging.error(f"[automatic-updates] apt install failed: {apt_result.stderr.strip()}")
+                    return False
+
+                # =========================================================
+                # THE SAFEGUARD: Verify packages are actually on the system
+                # =========================================================
+                logging.info("[automatic-updates] Verifying package installations...")
+                for pkg in packages:
+                    # dpkg -s checks the actual system status of the package
+                    verify_cmd = subprocess.run(['dpkg', '-s', pkg], capture_output=True, text=True)
+                    
+                    if 'Status: install ok installed' not in verify_cmd.stdout:
+                        logging.error(f"[automatic-updates] SAFEGUARD TRIGGERED: {pkg} failed to install. Aborting update to protect Pwnagotchi.")
+                        return False # This stops the update entirely
+                
+                logging.info("[automatic-updates] All dependencies verified. Proceeding with Pwnagotchi update.")
+        # =========================================================
+
         result = subprocess.run(['pip3', 'install', '--break-system-packages', '--no-deps', '.'], cwd=source_dir,
                                 capture_output=True, text=True)
         if result.returncode != 0:
