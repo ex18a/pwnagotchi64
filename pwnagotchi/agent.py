@@ -483,7 +483,7 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             logging.debug("recon is stale, skipping assoc(%s)", ap['mac'])
             return
 
-        throttle = 1.0
+        throttle = 0.7
 
         if self._config['personality']['associate'] and self._should_interact(ap['mac']):
             self._view.on_assoc(ap)
@@ -516,7 +516,7 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             logging.debug("recon is stale, skipping deauth(%s)", sta['mac'])
             return
 
-        throttle = 1.0
+        throttle = 0.7
 
         if self._config['personality']['deauth'] and self._should_interact(sta['mac']):
             self._view.on_deauth(sta)
