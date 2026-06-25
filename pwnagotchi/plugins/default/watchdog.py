@@ -273,3 +273,4 @@ class Watchdog(plugins.Plugin):
                 f.write(new_crash_entry)
 
         except Exception as e:
+            logging.error(f"[Watchdog] Failed to save crash log data: {e}")
