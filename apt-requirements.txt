@@ -1,1 +1,27 @@
+# ==========================================
+# SYSTEM DEPENDENCIES (APT-GET)
+# ==========================================
 
+aircrack-ng
+tcpdump
+bettercap
+bettercap-ui
+bluez-tools
+jq
+dphys-swapfile
+hcxtools
+i2c-tools
+python3-pip
+python3-dev
+build-essential
+libpcap-dev
+libssl-dev
+libffi-dev
+fonts-dejavu
+libglib2.0-dev
+libdbus-1-dev
+python3-rpi.gpio
+python3-smbus
+python3-torch
+python3-numpy
+python3-pandas
