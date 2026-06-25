@@ -65,6 +65,7 @@ cp "$TARBALL" /mnt/tmp/
 cp -r builder/assets/bettercap /mnt/tmp/bettercap_assets
 cp -r builder/assets/networkmanager /mnt/tmp/networkmanager
 cp -r builder/assets/bluetooth /mnt/tmp/bluetooth
+cp -r builder/assets/network /mnt/tmp/network
 
 cp builder/assets/system/motd-gen.sh /mnt/tmp/system/motd-gen.sh
 cp builder/assets/boot/config.txt /mnt/boot/firmware/config.txt
@@ -128,6 +129,10 @@ NM_EOF
 echo "  -> [Chroot] Installing Bluetooth Tethering Wizard..."
 cp /tmp/bluetooth/bt-wizard /usr/local/bin/bt-wizard
 chmod +x /usr/local/bin/bt-wizard
+
+echo "  -> [Chroot] Installing USB gateway discovery script..."
+cp /tmp/network/usb0-route.sh /usr/local/bin/usb0-route.sh
+chmod +x /usr/local/bin/usb0-route.sh
 
 echo "  -> [Chroot] Patching SAP plugin crash in bluetoothd..."
 sed -i 's|^ExecStart=.*bluetoothd.*|ExecStart=/usr/libexec/bluetooth/bluetoothd --noplugin=sap|' /lib/systemd/system/bluetooth.service
