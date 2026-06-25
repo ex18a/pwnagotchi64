@@ -15,6 +15,11 @@ main.filter = ""
 
 main.log.debug = false
 
+main.plugins.automatic-updates.enabled = true
+main.plugins.automatic-updates.repo = "ex18a/pwnagotchi64"
+main.plugins.automatic-updates.interval = 6 # how often to check in hours
+main.plugins.automatic-updates.install = true # set false if you just want the "update available" status message
+
 main.plugins.grid.enabled = true
 main.plugins.grid.report = true
 main.plugins.watchdog.enabled = true
