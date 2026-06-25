@@ -62,6 +62,7 @@ echo "nameserver 8.8.8.8" > /mnt/etc/resolv.conf
 
 echo " [*] Step 3.5: Injecting Pwnagotchi source and assets..."
 cp "$TARBALL" /mnt/tmp/
+cp apt-requirements.txt /mnt/tmp/
 cp -r builder/assets/bettercap /mnt/tmp/bettercap_assets
 cp -r builder/assets/networkmanager /mnt/tmp/networkmanager
 cp -r builder/assets/bluetooth /mnt/tmp/bluetooth
@@ -94,11 +95,8 @@ apt-get clean
 echo "  -> [Chroot] PHASE 4.3: Updating lean repository list..."
 apt-get update -y
 
-echo "  -> [Chroot] PHASE 4.4: Installing core packages..."
-apt-get install -y \
-    aircrack-ng tcpdump bettercap bettercap-ui bluez-tools jq dphys-swapfile hcxtools i2c-tools \
-    python3-pip python3-dev build-essential libpcap-dev libssl-dev libffi-dev fonts-dejavu libglib2.0-dev libdbus-1-dev python3-rpi.gpio python3-smbus \
-    python3-torch python3-numpy python3-pandas
+echo "  -> [Chroot] PHASE 4.4: Installing core packages from apt-requirements.txt..."
+grep -vE '^\s*#|^\s*$' /tmp/apt-requirements.txt | xargs apt-get install -y
 
 echo "  -> [Chroot] Downloading and installing 64-bit Pwngrid engine..."
 wget -q "https://github.com/jayofelony/pwngrid/releases/download/v1.11.1/pwngrid-1.11.1-aarch64.zip" -O /tmp/pwngrid_engine.zip
