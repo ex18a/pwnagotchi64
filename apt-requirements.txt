@@ -25,3 +25,6 @@ python3-smbus
 python3-torch
 python3-numpy
 python3-pandas
+
+#test package
+sl
