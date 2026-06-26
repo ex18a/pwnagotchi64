@@ -28,7 +28,6 @@ main.plugins.portrait-mode.enabled = true
 main.plugins.IPDisplay.enabled = true
 main.plugins.hashvault.enabled = true
 main.plugins.dev-ai-trained.enabled = true
-main.plugins.dev-blind.enabled = true
 main.plugins.pisugar3i2c.enabled = true
 main.plugins.face_only.enabled = false
 
