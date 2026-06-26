@@ -7,5 +7,5 @@ iface usb0 inet static
     gateway 10.42.0.1
     metric 20
     dns-nameservers 8.8.8.8 1.1.1.1
-    post-up /usr/local/bin/usb0-route.sh || true
+    post-up ip route add default via 10.42.0.1 dev usb0 metric 20 || true
     post-up echo "nameserver 8.8.8.8" > /etc/resolv.conf || true
