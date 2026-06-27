@@ -89,7 +89,8 @@ class AsyncTrainer(object):
         self._training_epochs = 0
         self._nn_path = self._config['ai']['path']
         self._stats = Stats("%s.json" % os.path.splitext(self._nn_path)[0], self)
-
+        self._ai_paused = threading.Event()
+    
     def set_training(self, training, for_epochs=0):
         self._is_training = training
         self._training_epochs = for_epochs
@@ -107,6 +108,19 @@ class AsyncTrainer(object):
 
     def start_ai(self):
         _thread.start_new_thread(self._ai_worker, ())
+
+    def pause_ai(self):
+        if not self._ai_paused.is_set():
+            logging.info("[ai] pausing")
+            self._ai_paused.set()
+
+    def resume_ai(self):
+        if self._ai_paused.is_set():
+            logging.info("[ai] resuming")
+            self._ai_paused.clear()
+
+    def is_ai_paused(self):
+        return self._ai_paused.is_set()
 
     def _save_ai(self):
         logging.info("[ai] saving model to %s ..." % self._nn_path)
@@ -176,6 +190,9 @@ class AsyncTrainer(object):
 
             obs = None
             while True:
+                if self._ai_paused.is_set():
+                    time.sleep(1)
+                    continue
                 self._render_env_safe()
 
                 if random.random() > self._config['ai']['laziness']:
