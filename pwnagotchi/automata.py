@@ -112,6 +112,12 @@ class Automata(object):
     # --- AI AUTO-TOGGLE HELPER ---
     def _restore_default_personality(self):
         self._config['personality'].update(self._default_personality)
+        # bettercap doesn't re-read the config dict on its own for these three —
+        # they were pushed to it live by on_ai_policy(), so they need to be
+        # pushed back the same way or bettercap stays on a stale/bad AI value
+        self.run('set wifi.ap.ttl %d' % self._config['personality']['ap_ttl'])
+        self.run('set wifi.sta.ttl %d' % self._config['personality']['sta_ttl'])
+        self.run('set wifi.rssi.min %d' % self._config['personality']['min_rssi'])
     # ------------------------------
 
     def next_epoch(self):
