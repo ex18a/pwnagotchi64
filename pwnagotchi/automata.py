@@ -1,4 +1,5 @@
 import logging
+import copy
 
 import pwnagotchi.plugins as plugins
 from pwnagotchi.ai.epoch import Epoch
@@ -14,6 +15,7 @@ class Automata(object):
         # --- AI AUTO-TOGGLE INIT ---
         # Track if the user originally wanted AI enabled
         self._ai_base_enabled = config.get('ai', {}).get('enabled', False)
+        self._default_personality = copy.deepcopy(config['personality'])   # baseline snapshot
 
     def _on_miss(self, who):
         logging.info("it looks like %s is not in range anymore :/", who)
@@ -107,6 +109,11 @@ class Automata(object):
     def any_activity(self):
         return self._epoch.any_activity
 
+    # --- AI AUTO-TOGGLE HELPER ---
+    def _restore_default_personality(self):
+        self._config['personality'].update(self._default_personality)
+    # ------------------------------
+
     def next_epoch(self):
         logging.debug("agent.next_epoch()")
 
@@ -117,6 +124,12 @@ class Automata(object):
 
         # --- AI AUTO-TOGGLE MOD ---
         if self._ai_base_enabled:
+            # while parked in auto with AI paused, keep personality pinned to
+            # the baseline config so it can never drift/get stuck on a bad
+            # AI-set value (e.g. min_rssi: -30)
+            if self.mode == 'auto' and self.is_ai_paused():
+                self._restore_default_personality()
+
             if self.mode == 'ai' and self._epoch.bored_for >= 1:
                 logging.info("[AI SLEEP] Pwnagotchi is Bored. Suspending AI and dropping to AUTO.")
                 self.mode = 'auto'
