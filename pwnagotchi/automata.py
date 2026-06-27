@@ -117,18 +117,17 @@ class Automata(object):
 
         # --- AI AUTO-TOGGLE MOD ---
         if self._ai_base_enabled:
-            # SLEEP: If the bot enters the bored state (bored_for >= 1)
             if self.mode == 'ai' and self._epoch.bored_for >= 1:
-                logging.info("[AI SLEEP] Rig is in a dead zone (Bored). Suspending AI and dropping to AUTO.")
-                # We leave config ALONE so it survives reboots!
+                logging.info("[AI SLEEP] Pwnagotchi is Bored. Suspending AI and dropping to AUTO.")
                 self.mode = 'auto'
                 self._view.set('mode', 'AUTO')
+                self.pause_ai()          # stops inference/training
 
-            # WAKE: If activity hits 1 after being asleep
             elif self.mode == 'auto' and self._epoch.inactive_for == 0 and self._epoch.active_for > 0:
                 logging.info("[AI WAKE] Target engaged! Resuming AI mode.")
                 self.mode = 'ai'
                 self._view.set('mode', '  AI')
+                self.resume_ai()         # resumes inference/training
         # --------------------------
 
         # after X misses during an epoch, set the status to lonely or angry
