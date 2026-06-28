@@ -5,6 +5,7 @@ import re
 import logging
 import asyncio
 import _thread
+import threading
 import glob
 
 import pwnagotchi
@@ -18,6 +19,14 @@ from pwnagotchi.mesh.utils import AsyncAdvertiser
 from pwnagotchi.ai.train import AsyncTrainer
 
 RECOVERY_DATA_FILE = '/root/.pwnagotchi-recovery'
+
+# --- INTERACTION HISTORY DECAY ---
+# how often the background worker checks for decay opportunities (seconds)
+HISTORY_DECAY_CHECK_INTERVAL = 60
+# a MAC's interaction count drops by 1 once it's been absent (not seen) for
+# this long, and repeats every time another full interval of absence passes
+HISTORY_DECAY_INTERVAL = 30 * 60  # 30 minutes
+# ----------------------------------
 
 
 class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
@@ -49,6 +58,11 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         self._access_points = []
         self._last_pwnd = None
         self._history = {}
+        # --- INTERACTION HISTORY DECAY: NEW ---
+        self._last_seen = {}     # mac -> last time we actually saw it on the radio
+        self._last_decay = {}    # mac -> last time its history count was decremented
+        self._history_lock = threading.Lock()
+        # ---------------------------------------
         self._handshakes = {}
         self.last_session = LastSession(self._config)
         self.mode = 'auto'
@@ -142,6 +156,7 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         self.start_monitor_mode()
         self.start_event_polling()
         self.start_session_fetcher()
+        self.start_history_decay()   # NEW
         self.next_epoch()
         self.set_ready()
 
@@ -199,6 +214,18 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
 
     def set_access_points(self, aps):
         self._access_points = aps
+
+        # --- INTERACTION HISTORY DECAY: NEW ---
+        # stamp every MAC we can currently see (APs and their clients) so the
+        # decay worker knows it's still "present" and shouldn't touch its count
+        now = time.time()
+        with self._history_lock:
+            for ap in aps:
+                self._last_seen[ap['mac']] = now
+                for sta in ap['clients']:
+                    self._last_seen[sta['mac']] = now
+        # ---------------------------------------
+
         plugins.on('wifi_update', self, aps)
         self._epoch.observe(aps, list(self._peers.values()))
         return self._access_points
@@ -373,6 +400,17 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
                 self._history = data['history']
                 self._last_pwnd = data['last_pwnd']
 
+                # --- INTERACTION HISTORY DECAY: NEW ---
+                # seed fresh timestamps for the recovered counts so they don't
+                # look like they've been silent since 1970 and instantly decay
+                # on the very first tick after this reboot
+                now = time.time()
+                with self._history_lock:
+                    for mac in self._history:
+                        self._last_seen[mac] = now
+                        self._last_decay[mac] = now
+                # ---------------------------------------
+
                 if delete:
                     logging.info("deleting %s", RECOVERY_DATA_FILE)
                     os.unlink(RECOVERY_DATA_FILE)
@@ -392,6 +430,41 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             self._update_counters()
             self._update_handshakes(0)
             time.sleep(1)
+
+    # --- INTERACTION HISTORY DECAY: NEW ---
+    def start_history_decay(self):
+        _thread.start_new_thread(self._history_decay_worker, ())
+
+    def _history_decay_worker(self):
+        while True:
+            time.sleep(HISTORY_DECAY_CHECK_INTERVAL)
+            self._decay_history()
+
+    def _decay_history(self):
+        now = time.time()
+        with self._history_lock:
+            for mac in list(self._history.keys()):
+                last_seen = self._last_seen.get(mac, 0)
+                last_decay = self._last_decay.get(mac, 0)
+                # the decay clock restarts from whichever happened more
+                # recently -- being seen again always resets it, even if
+                # it had already partially decayed before reappearing
+                anchor = max(last_seen, last_decay)
+
+                if now - anchor >= HISTORY_DECAY_INTERVAL:
+                    old = self._history[mac]
+                    new = old - 1
+
+                    if new <= 0:
+                        del self._history[mac]
+                        self._last_decay.pop(mac, None)
+                        self._last_seen.pop(mac, None)
+                        logging.info("[history] %s fully decayed, eligible for interaction again", mac)
+                    else:
+                        self._history[mac] = new
+                        self._last_decay[mac] = now
+                        logging.info("[history] %s interaction count decayed %d -> %d", mac, old, new)
+    # ---------------------------------------
 
     async def _on_event(self, msg):
         found_handshake = False
@@ -466,17 +539,20 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         return False
 
     def _should_interact(self, who):
-        if self._has_handshake(who):
-            return False
+        # --- INTERACTION HISTORY DECAY: lock added so the background
+        # decay worker can't race with this on the same dict ---
+        with self._history_lock:
+            if self._has_handshake(who):
+                return False
 
-        elif who not in self._history:
-            self._history[who] = 1
-            return True
+            elif who not in self._history:
+                self._history[who] = 1
+                return True
 
-        else:
-            self._history[who] += 1
+            else:
+                self._history[who] += 1
 
-        return self._history[who] < self._config['personality']['max_interactions']
+            return self._history[who] < self._config['personality']['max_interactions']
 
     def associate(self, ap, throttle=0):
         if self.is_stale():
