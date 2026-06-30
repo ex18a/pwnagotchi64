@@ -15,7 +15,7 @@ from pwnagotchi.utils import StatusFile, parse_version as version_to_tuple
 
 class AutomaticUpdates(plugins.Plugin):
     __author__ = 'ex18a'
-    __version__ = '1.0.0'
+    __version__ = '1.0.1'
     __name__ = 'automatic-updates'
     __license__ = 'GPL3'
     __description__ = ('Checks GitHub Releases on a configured fork and self-updates the '
@@ -67,7 +67,7 @@ class AutomaticUpdates(plugins.Plugin):
                 # --- START UI OVERRIDE & ANIMATION ---
                 self._enable_ui_override(agent)
                 self._set_update_status(agent, f"Installing {info['available']} ...")
-                
+
                 if self._install(agent, info):
                     self._set_update_status(agent, f"Installed {info['available']}, restarting service ...")
                     time.sleep(2)  # Let the user read the success message
@@ -78,7 +78,7 @@ class AutomaticUpdates(plugins.Plugin):
                 else:
                     self._set_update_status(agent, f"Install failed, staying on {info['current']}")
                     logging.error(f"[automatic-updates] install of {info['available']} failed, staying on {info['current']}")
-                    time.sleep(3)  # Let the user read the failure message
+                    time.sleep(10)  # Let the user read the failure message
                     self._disable_ui_override(agent)
 
             except Exception as e:
@@ -134,46 +134,61 @@ class AutomaticUpdates(plugins.Plugin):
         # DYNAMIC SYSTEM DEPENDENCY INSTALLER
         # =========================================================
         apt_req_file = os.path.join(source_dir, 'apt-requirements.txt')
-        
+
         if os.path.exists(apt_req_file):
             # Read the file, stripping out empty lines and comments
             with open(apt_req_file, 'r') as f:
                 packages = [line.strip() for line in f if line.strip() and not line.startswith('#')]
-            
-            if packages:
-                self._set_update_status(agent, "Installing sys deps ...")
-                logging.info(f"[automatic-updates] Found apt-requirements.txt. Installing: {', '.join(packages)}")
-                
-                # Clone the current environment variables and force non-interactive mode
-                env = os.environ.copy()
-                env['DEBIAN_FRONTEND'] = 'noninteractive'
-                
-                # Update apt sources first so it can actually find the packages
-                subprocess.run(['apt-get', 'update'], capture_output=True, env=env)
-                
-                # Install the packages read from the file
-                apt_cmd = ['apt-get', 'install', '-y'] + packages
-                apt_result = subprocess.run(apt_cmd, capture_output=True, text=True, env=env)
-                
-                if apt_result.returncode != 0:
-                    logging.error(f"[automatic-updates] apt install failed: {apt_result.stderr.strip()}")
-                    return False
 
-                # =========================================================
-                # THE SAFEGUARD: Verify packages are actually on the system
-                # =========================================================
-                self._set_update_status(agent, "Verifying package installations...")
+            if packages:
+                # Check first -- only pay the apt-get update + install cost
+                # if something is actually missing
+                self._set_update_status(agent, "Checking sys deps ...")
+                logging.info(f"[automatic-updates] checking apt-requirements.txt against installed packages: {', '.join(packages)}")
+
+                missing = []
                 for pkg in packages:
-                    # dpkg -s checks the actual system status of the package
                     verify_cmd = subprocess.run(['dpkg', '-s', pkg], capture_output=True, text=True)
-                    
                     if 'Status: install ok installed' not in verify_cmd.stdout:
-                        logging.error(f"[automatic-updates] SAFEGUARD TRIGGERED: {pkg} failed to install. Aborting update to protect Pwnagotchi.")
-                        return False # This stops the update entirely
-                
-                logging.info("[automatic-updates] All dependencies verified. Proceeding with Pwnagotchi update.")
+                        missing.append(pkg)
+
+                if missing:
+                    self._set_update_status(agent, "Installing sys deps ...")
+                    logging.info(f"[automatic-updates] missing packages, installing: {', '.join(missing)}")
+
+                    # Clone the current environment variables and force non-interactive mode
+                    env = os.environ.copy()
+                    env['DEBIAN_FRONTEND'] = 'noninteractive'
+
+                    # Update apt sources first so it can actually find the packages
+                    update_result = subprocess.run(['apt-get', 'update'], capture_output=True, text=True, env=env)
+                    if update_result.returncode != 0:
+                        logging.error(f"[automatic-updates] apt-get update failed: {update_result.stderr.strip()}")
+                        return False
+
+                    # Install only the packages that were actually missing
+                    apt_cmd = ['apt-get', 'install', '-y'] + missing
+                    apt_result = subprocess.run(apt_cmd, capture_output=True, text=True, env=env)
+
+                    if apt_result.returncode != 0:
+                        logging.error(f"[automatic-updates] apt install failed: {apt_result.stderr.strip()}")
+                        return False
+
+                    # =========================================================
+                    # THE SAFEGUARD: Verify packages are actually on the system
+                    # =========================================================
+                    self._set_update_status(agent, "Verifying package installations...")
+                    for pkg in missing:
+                        verify_cmd = subprocess.run(['dpkg', '-s', pkg], capture_output=True, text=True)
+                        if 'Status: install ok installed' not in verify_cmd.stdout:
+                            logging.error(f"[automatic-updates] SAFEGUARD TRIGGERED: {pkg} failed to install. Aborting update to protect Pwnagotchi.")
+                            return False  # This stops the update entirely
+
+                    logging.info("[automatic-updates] All dependencies verified. Proceeding with Pwnagotchi update.")
+                else:
+                    logging.info("[automatic-updates] all apt dependencies already present, skipping apt-get entirely.")
         # =========================================================
-        
+
         self._set_update_status(agent, "Installing Python core ...")
         result = subprocess.run(['pip3', 'install', '--break-system-packages', '--no-deps', '.'], cwd=source_dir,
                                 capture_output=True, text=True)
@@ -210,7 +225,7 @@ class AutomaticUpdates(plugins.Plugin):
             return original(key, value, *args, **kwargs)
 
         agent.view().set = _filtered_set
-        
+
         # Spin up an independent thread to animate your custom upload faces
         self._animating = True
         self._animation_thread = threading.Thread(target=self._animate_frames, args=(agent,))
@@ -221,11 +236,11 @@ class AutomaticUpdates(plugins.Plugin):
         self._animating = False
         if hasattr(self, '_animation_thread') and self._animation_thread.is_alive():
             self._animation_thread.join(timeout=2)
-            
+
         if not getattr(self, '_ui_override_active', False):
             return
         self._ui_override_active = False
-        
+
         if hasattr(self, '_original_view_set') and self._original_view_set is not None:
             agent.view().set = self._original_view_set
             self._original_view_set = None
@@ -249,7 +264,7 @@ class AutomaticUpdates(plugins.Plugin):
                 if getattr(self, '_current_status', None):
                     self._original_view_set('status', self._current_status)
                 agent.view().update(force=True)
-                
+
                 face_idx = (face_idx + 1) % len(self._faces)
-            # 2-second sleep keeps the animation looking active without lagging the screen
-            time.sleep(2.0)
+            # 0.5-second sleep keeps the animation looking active without lagging the screen
+            time.sleep(0.5)
