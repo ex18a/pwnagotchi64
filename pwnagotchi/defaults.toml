@@ -111,6 +111,7 @@ ui.faces.upload2 = "(0__1)"
 
 ui.web.enabled = true
 ui.web.address = "0.0.0.0"
+ui.web.auth = false
 ui.web.username = "pwnagotchi"
 ui.web.password = "pwnagotchi"
 ui.web.origin = ""
