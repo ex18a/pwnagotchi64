@@ -5,20 +5,49 @@ title%}Plugins{% endblock %} {% block styles %}{{ super() }}
     .plugins-box form[action="/plugins/upgrade"] {
         display: none !important;
     }
+
+    /* no longer a hover tooltip -- plain default cursor unless the row
+       is actually clickable (handled below) */
+    .tooltip {
+        cursor: default;
+    }
+
+    .plugins-box.has-link {
+        cursor: pointer;
+    }
+
+    .plugins-box.has-link:hover {
+        background-color: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.06);
+    }
 </style>
 {% endblock %} {%
-block script %}{% endblock %} {% block content %}
+block script %}
+document.querySelectorAll('.plugins-box[data-href]').forEach(function (box) {
+    box.addEventListener('click', function (e) {
+        // don't hijack clicks on the toggle switch or its form
+        if (e.target.closest('.plugin-toggle') || e.target.closest('a')) {
+            return;
+        }
+        window.location.href = box.getAttribute('data-href');
+    });
+});
+{% endblock %} {% block content %}
 <div id="container">
   {% for name in database.keys() | sort %} {% set has_info = name in loaded and
-  loaded[name].__description__ is defined %}
-  <div class="plugins-box">
+  loaded[name].__description__ is defined %} {% set has_webui = name in loaded
+  and loaded[name].on_webhook is defined %}
+  <div
+    class="plugins-box{% if has_webui %} has-link{% endif %}"
+    {%
+    if
+    has_webui
+    %}data-href="/plugins/{{ name | urlencode }}"{%
+    endif
+    %}
+  >
     <div class="tooltip">
       <div class="plugin-header">
-        <h4>
-          {% if name in loaded and loaded[name].on_webhook is defined %}
-          <a href="/plugins/{{ name | urlencode }}">{{ name }}</a>
-          {% else %}{{ name }}{% endif %}
-        </h4>
+        <h4>{{ name }}</h4>
         {% if name in loaded and loaded[name].__version__ is defined %}
         <span class="badge version">{{ loaded[name].__version__ }}</span>
         {% endif %}
