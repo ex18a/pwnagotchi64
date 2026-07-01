@@ -44,8 +44,8 @@ class WaveshareV4(DisplayImpl):
         self._display.init()
         self._display.Clear(self.bg_color)
         try:
-            # Use display's own reported dimensions for the base image
-            new_image = Image.new('1', (self._display.height, self._display.width), 255)
+            # width=122, height=250 -- PIL Image.new takes (width, height)
+            new_image = Image.new('1', (self._display.width, self._display.height), 255)
             buf = self._display.getbuffer(new_image)
             self._display.displayPartBaseImage(buf)
         except Exception as e:
@@ -55,7 +55,8 @@ class WaveshareV4(DisplayImpl):
     def render(self, canvas):
         self._render_count += 1
 
-        # Rotate landscape canvas into hardware portrait buffer
+        # Canvas arrives as 250x122 landscape -- rotate 270 to get
+        # 122x250 portrait which is what the hardware buffer expects
         image = canvas.rotate(270, expand=True).convert('1')
         buf = self._display.getbuffer(image)
 
