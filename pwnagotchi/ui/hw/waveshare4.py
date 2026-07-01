@@ -43,24 +43,28 @@ class WaveshareV4(DisplayImpl):
         self._display = EPD()
         self._display.init()
         self._display.Clear(self.bg_color)
-        self._display.displayPartBaseImage(
-            self._display.getbuffer(Image.new('1', (250, 122), self.bg_color))
-        )
+        try:
+            # Use display's own reported dimensions for the base image
+            new_image = Image.new('1', (self._display.height, self._display.width), 255)
+            buf = self._display.getbuffer(new_image)
+            self._display.displayPartBaseImage(buf)
+        except Exception as e:
+            logging.warning(f"waveshare v4 base image init failed: {e}")
+        logging.info("initializing waveshare v4 display done")
 
     def render(self, canvas):
         self._render_count += 1
-        # Landscape canvas -- rotate 270 to package into hardware portrait buffer
+
+        # Rotate landscape canvas into hardware portrait buffer
         image = canvas.rotate(270, expand=True).convert('1')
         buf = self._display.getbuffer(image)
 
-        if self._render_count % 100 == 0:
+        if self._render_count % 1000 == 0:
+            # Full hardware refresh every 1000 renders -- clears ghosting
             logging.info("Performing full screen refresh...")
             self._display.init()
             self._display.display(buf)
             self._display.displayPartBaseImage(buf)
-        elif self._render_count % 20 == 0:
-            self._display.displayPartBaseImage(buf)
-            self._display.displayPartial(buf)
         else:
             self._display.displayPartial(buf)
 
