@@ -43,23 +43,17 @@ class WaveshareV4Portrait(DisplayImpl):
         self._display = EPD()
         self._display.init()
         self._display.Clear(self.bg_color)
-        self._display.displayPartBaseImage(
-            self._display.getbuffer(Image.new('1', (122, 250), self.bg_color))
-        )
+        logging.info("initializing waveshare v4 portrait driver done")
 
     def render(self, canvas):
         self._render_count += 1
-        image = canvas.convert('1')
-        buf = self._display.getbuffer(image)
+        buf = self._display.getbuffer(canvas)
 
-        if self._render_count % 100 == 0:
+        if self._render_count % 1000 == 0:
             logging.info("Performing full screen refresh...")
             self._display.init()
             self._display.display(buf)
             self._display.displayPartBaseImage(buf)
-        elif self._render_count % 20 == 0:
-            self._display.displayPartBaseImage(buf)
-            self._display.displayPartial(buf)
         else:
             self._display.displayPartial(buf)
 
