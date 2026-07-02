@@ -106,7 +106,8 @@ class View(object):
             self._ignore_changes = ()
         else:
             logging.warning("ui.fps is 0, the display will only update for major changes")
-            self._ignore_changes = ('uptime', 'name')
+            self._ignore_changes = ('uptime',)
+            _thread.start_new_thread(self._refresh_handler, ())
 
         ROOT = self
 
@@ -136,7 +137,7 @@ class View(object):
             self._render_cbs.append(cb)
 
     def _refresh_handler(self):
-        delay = 1.0 / self._config['ui']['fps']
+        delay = 1.0 / self._config['ui']['fps'] if self._config['ui']['fps'] > 0 else 1.0
         while True:
             try:
                 name = self._state.get('name')
@@ -144,7 +145,7 @@ class View(object):
                 self.update()
             except Exception as e:
                 logging.warning("non fatal error while updating view: %s" % e)
-
+        
             time.sleep(delay)
 
     def set(self, key, value):
