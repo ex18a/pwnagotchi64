@@ -154,8 +154,16 @@ strong, b {
   overflow-y: auto;
   overflow-x: hidden;
   background-color: var(--bg-color);
+}
+
+/* Home page only -- wraps the device UI image + control buttons so the
+   image can flex-grow to fill leftover space. Scoped to this wrapper
+   instead of .page-content itself so other pages (e.g. plugins.html's
+   CSS grid) aren't affected by being placed in a flex context. */
+.home-layout {
   display: flex;
   flex-direction: column;
+  height: 100%;
 }
 
 .page-footer {
@@ -1055,6 +1063,7 @@ code {
 .ui-container {
   flex: 1 1 auto;
   min-height: 0;
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: center;
