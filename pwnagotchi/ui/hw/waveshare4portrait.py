@@ -16,7 +16,7 @@ class WaveshareV4Portrait(DisplayImpl):
             pass
 
     def layout(self):
-        fonts.setup(10, 8, 10, 35, 25, 9)
+        fonts.setup(10, 8, 10, 35, 14, 9)
         self._layout['width'] = 122
         self._layout['height'] = 250
         self._layout['face'] = (0, 85)
