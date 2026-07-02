@@ -68,11 +68,11 @@ class PortraitMode(plugins.Plugin):
             portrait = WaveshareV4Portrait(pwnagotchi.config)
             portrait.initialize()
             # Full hardware wipe to clear landscape ghosting before switching to portrait
-            portrait._display.init()
             portrait._display.Clear(portrait.bg_color)
             portrait._display.displayPartBaseImage(
-                portrait._display.getbuffer(Image.new('1', (122, 250), portrait.bg_color))
+            portrait._display.getbuffer(Image.new('1', (122, 250), portrait.bg_color))
             )
+            
             new_layout = portrait.layout()
 
             ui._implementation = portrait
