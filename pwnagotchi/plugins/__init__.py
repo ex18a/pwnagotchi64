@@ -38,7 +38,7 @@ def toggle_plugin(name, enable=True):
     """
     import pwnagotchi
     from pwnagotchi.ui import view
-    from pwnagotchi.utils import save_config
+    import tomlkit
 
     global loaded, database
 
@@ -46,7 +46,26 @@ def toggle_plugin(name, enable=True):
         if not name in pwnagotchi.config['main']['plugins']:
             pwnagotchi.config['main']['plugins'][name] = dict()
         pwnagotchi.config['main']['plugins'][name]['enabled'] = enable
-        save_config(pwnagotchi.config, '/etc/pwnagotchi/config.toml')
+
+        # Targeted on-disk write: only touch this plugin's enabled key,
+        # leaving everything else in config.toml (comments, formatting,
+        # unrelated settings) exactly as it was -- instead of re-serializing
+        # the entire in-memory config over the file.
+        config_path = '/etc/pwnagotchi/config.toml'
+        with open(config_path, 'r') as fp:
+            doc = tomlkit.parse(fp.read())
+
+        if 'main' not in doc:
+            doc['main'] = tomlkit.table()
+        if 'plugins' not in doc['main']:
+            doc['main']['plugins'] = tomlkit.table()
+        if name not in doc['main']['plugins']:
+            doc['main']['plugins'][name] = tomlkit.table()
+
+        doc['main']['plugins'][name]['enabled'] = enable
+
+        with open(config_path, 'w') as fp:
+            fp.write(tomlkit.dumps(doc))
 
     if not enable and name in loaded:
         if getattr(loaded[name], 'on_unload', None):
@@ -138,4 +157,3 @@ def load(config):
 
     on('loaded')
     on('config_changed', config)
-

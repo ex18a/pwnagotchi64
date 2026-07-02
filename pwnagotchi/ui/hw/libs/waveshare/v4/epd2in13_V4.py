@@ -249,9 +249,9 @@ class EPD:
         imwidth, imheight = img.size
         if(imwidth == self.width and imheight == self.height):
             img = img.convert('1')
-#        elif(imwidth == self.height and imheight == self.width):
-# image has correct dimensions, but needs to be rotated
-#            img = img.rotate(90, expand=True).convert('1')
+        elif(imwidth == self.height and imheight == self.width):
+            # image has correct dimensions, but needs to be rotated
+            img = img.rotate(90, expand=True).convert('1')
         else:
             logger.warning("Wrong image dimensions: must be " + str(self.width) + "x" + str(self.height))
             # return a blank buffer

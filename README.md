@@ -43,7 +43,7 @@ This project uses Docker to create a clean, reproducible build environment. This
 
 **Requirements:**
 * Docker installed and configured.
-* Sufficient disk space (at least 6GB+ for the build process).
+* Sufficient disk space (at least 16GB+ for the build process).
 
 **Instructions:**
 1. Clone the repository.
@@ -53,10 +53,10 @@ make
 ```
 
 The build process will automatically:
-* Package your local source code.
+* Package the local source code.
 * Launch an isolated Debian container.
 * Download the official Kali base image and apply all security patches, Bluetooth drivers, and custom UI plugins.
-* Output the final, ready-to-flash image to the `pwnagotchi64/dist/` folder called pwnagotchi-0.0.0.0-64bit-kali.img
+* Output the final, ready-to-flash image to the `pwnagotchi64/dist/` folder called pwnagotchi64-0.0.0.0.img
 
 ---
 
