@@ -5,7 +5,7 @@ import pwnagotchi.plugins as plugins
 
 class PortraitMode(plugins.Plugin):
     __author__ = 'ex18a'
-    __version__ = '2.1.0'
+    __version__ = '2.0.1'
     __license__ = 'GPL3'
     __description__ = 'Switches to portrait driver and repositions plugin elements.'
 
