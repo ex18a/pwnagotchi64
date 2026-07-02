@@ -56,13 +56,13 @@ class Watchdog(plugins.Plugin):
         # failure that was already about to fix itself.
         if self._is_bettercap_service_down():
             logging.warning("[Watchdog] bettercap service not active -- giving systemd up to 60s to auto-restart it ...")
-            if self._is_bettercap_still_down_after_grace_period():
+            if self._is_bettercap_still_down_after_grace_period(agent):
                 logging.error("[Watchdog] bettercap still down after grace period! Executing lockdown reboot...")
                 self._save_crash_log("BETTERCAP_SERVICE_DOWN")
                 self._lockdown_reboot(agent, "bettercap crashed and didn't recover")
                 return
             else:
-                logging.info("[Watchdog] bettercap recovered on its own, no reboot needed.")
+                logging.info("[Watchdog] bettercap recovered and API is responding, no reboot needed.")
 
         # Ask agent for the blind counter
         try:
@@ -141,7 +141,7 @@ class Watchdog(plugins.Plugin):
             logging.error(f"[Watchdog] Error checking bettercap service status: {e}")
             return False  # don't false-trigger a reboot if systemctl itself is the thing failing
 
-    def _is_bettercap_still_down_after_grace_period(self, grace_seconds=60, poll_interval=5):
+    def _is_bettercap_still_down_after_grace_period(self, agent, grace_seconds=60, poll_interval=5):
         # Blocks on_epoch for up to grace_seconds -- only while bettercap is
         # already known to be down, in which case the agent's own REST calls
         # are failing anyway, so this isn't costing anything beyond what's
@@ -153,8 +153,17 @@ class Watchdog(plugins.Plugin):
             time.sleep(poll_interval)
             waited += poll_interval
             if not self._is_bettercap_service_down():
-                return False
-        return self._is_bettercap_service_down()
+                # Service is back -- now verify the REST API is actually
+                # responding before declaring recovery, since systemd marks
+                # the unit active before bettercap's API is ready
+                try:
+                    agent.session()
+                    logging.info("[Watchdog] bettercap service active and API responding after %ds." % waited)
+                    return False
+                except Exception:
+                    logging.warning("[Watchdog] bettercap service active but API not ready yet, waiting...")
+                    continue
+        return True
 
     def _is_interface_missing(self):
         try:
