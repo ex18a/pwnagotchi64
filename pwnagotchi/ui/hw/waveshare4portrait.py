@@ -3,11 +3,12 @@ import pwnagotchi.ui.fonts as fonts
 from pwnagotchi.ui.hw.base import DisplayImpl
 from PIL import Image
 
+
 class WaveshareV4Portrait(DisplayImpl):
     def __init__(self, config):
         super(WaveshareV4Portrait, self).__init__(config, 'waveshare_4_portrait')
         self._display = None
-        self._render_count = 0
+        self._last_channel = None
         self.bg_color = 0xFF
         try:
             if config['ui']['display']['color'].lower() == 'white':
@@ -46,11 +47,29 @@ class WaveshareV4Portrait(DisplayImpl):
         self._display.Clear(self.bg_color)
         logging.info("initializing waveshare v4 portrait driver done")
 
+    def _epoch_started(self):
+        # At the start of every real epoch the agent scans all channels
+        # before hopping, and the view's 'channel' state shows '*' during
+        # that scan -- a distinct, purpose-built state transition (not a
+        # value that happens to change for unrelated reasons), so catching
+        # the moment it flips *into* '*' is a reliable epoch-start marker.
+        try:
+            import pwnagotchi.ui.view as view_module
+            root = view_module.ROOT
+            if root is None:
+                return False
+            current_channel = root.get('channel')
+        except Exception:
+            return False
+
+        started = current_channel == '*' and self._last_channel != '*'
+        self._last_channel = current_channel
+        return started
+
     def render(self, canvas):
-        self._render_count += 1
         buf = self._display.getbuffer(canvas)
 
-        if self._render_count % 1000 == 0:
+        if self._epoch_started():
             logging.info("Performing full screen refresh...")
             self._display.init()
             self._display.display(buf)
