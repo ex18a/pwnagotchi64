@@ -29,6 +29,7 @@ class WaveshareV4Portrait(DisplayImpl):
         self._layout['friend_face'] = (85, 128)
         self._layout['friend_name'] = (4, 130)
         self._layout['shakes'] = (3, 223)
+        self._layout['last_pwnd_name'] = (3, 233)
         self._layout['mode'] = (93, 223)
         self._layout['status'] = {
             'pos': (4, 45),
