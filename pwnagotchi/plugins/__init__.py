@@ -13,6 +13,12 @@ locks = {}
 THREAD_POOL_SIZE = 10
 executor = ThreadPoolExecutor(max_workers=THREAD_POOL_SIZE)
 
+def _get_executor():
+    global executor
+    if executor._shutdown:
+        executor = ThreadPoolExecutor(max_workers=THREAD_POOL_SIZE)
+    return executor
+
 class Plugin:
     @classmethod
     def __init_subclass__(cls, **kwargs):
@@ -111,7 +117,7 @@ def one(plugin_name, event_name, *args, **kwargs):
             try:
                 lock_name = "%s::%s" % (plugin_name, cb_name)
                 locked_cb_args = (lock_name, callback, *args, *kwargs)
-                executor.submit(locked_cb, *locked_cb_args)
+                _get_executor().submit(locked_cb, *locked_cb_args)
             except Exception as e:
                 logging.error("error while running %s.%s : %s" % (plugin_name, cb_name, e))
                 logging.error(e, exc_info=True)
