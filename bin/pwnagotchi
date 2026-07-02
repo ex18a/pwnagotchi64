@@ -160,6 +160,7 @@ if __name__ == '__main__':
     pwnagotchi.config = config
     fs.setup_mounts(config)
     log.setup_logging(args, config)
+    _print_banner()
     fonts.init(config)
 
     pwnagotchi.set_name(config['main']['name'])
