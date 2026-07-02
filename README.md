@@ -2,7 +2,9 @@
 
 This is a specialized, high-performance fork of the Pwnagotchi project. This build is designed for 64-bit architecture, utilizing **PyTorch** for AI inference and training, providing a significant boost in intelligence and processing stability over the original A2C implementation.
 
-> **Hardware Support:** specifically optimized for the **Raspberry Pi Zero 2 W**. The **Raspberry Pi 3B+** is also supported.
+> **Hardware Support:** specifically optimized for the **Raspberry Pi Zero 2 W** with **waveshare eink 2.13 v4** and **pisugar 3**.
+>
+>  The **Raspberry Pi 3B+** is also supported.
 >
 > *Note: While this 64-bit image may run on other ARM64 devices, these two boards are the only platforms I actively test against.*
 
