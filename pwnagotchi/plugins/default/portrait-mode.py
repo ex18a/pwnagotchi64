@@ -93,16 +93,6 @@ class PortraitMode(plugins.Plugin):
             self.ready = True
             logging.info("[Portrait Mode] Switched to portrait driver.")
 
-            # Full refresh now everything is set up -- clears landscape ghosting
-            try:
-                portrait._display.init()
-                blank = Image.new('1', (122, 250), portrait.bg_color)
-                buf = portrait._display.getbuffer(blank)
-                portrait._display.display(buf)
-                portrait._display.displayPartBaseImage(buf)
-            except Exception as e:
-                logging.warning(f"[Portrait Mode] Full refresh failed: {e}")
-
         except Exception as e:
             logging.error(f"[Portrait Mode] Failed: {e}")
 
