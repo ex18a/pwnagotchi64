@@ -13,6 +13,10 @@ from pwnagotchi import log
 from pwnagotchi import restart
 from pwnagotchi import fs
 from pwnagotchi.utils import DottedTomlEncoder
+from pwnagotchi._version import __version__ as _pwnagotchi_version
+
+def _print_banner():
+    logging.info(" ═══════════════ (⌐■_■) pwnagotchi64 v%s started ═══════════════" % _pwnagotchi_version)
 
 
 def do_clear(display):
