@@ -67,12 +67,6 @@ class PortraitMode(plugins.Plugin):
 
             portrait = WaveshareV4Portrait(pwnagotchi.config)
             portrait.initialize()
-            # Full hardware wipe to clear landscape ghosting before switching to portrait
-            portrait._display.Clear(portrait.bg_color)
-            portrait._display.displayPartBaseImage(
-            portrait._display.getbuffer(Image.new('1', (122, 250), portrait.bg_color))
-            )
-            
             new_layout = portrait.layout()
 
             ui._implementation = portrait
@@ -99,6 +93,16 @@ class PortraitMode(plugins.Plugin):
             self.ready = True
             logging.info("[Portrait Mode] Switched to portrait driver.")
 
+            # Full refresh now everything is set up -- clears landscape ghosting
+            try:
+                portrait._display.init()
+                blank = Image.new('1', (122, 250), portrait.bg_color)
+                buf = portrait._display.getbuffer(blank)
+                portrait._display.display(buf)
+                portrait._display.displayPartBaseImage(buf)
+            except Exception as e:
+                logging.warning(f"[Portrait Mode] Full refresh failed: {e}")
+
         except Exception as e:
             logging.error(f"[Portrait Mode] Failed: {e}")
 
@@ -109,7 +113,6 @@ class PortraitMode(plugins.Plugin):
         elements = ui._state._state
         for key, pos in self.PORTRAIT_POSITIONS.items():
             if key in elements:
-                # Save original position and font the first time we see this element
                 if key not in self._original_plugin_positions:
                     self._original_plugin_positions[key] = tuple(elements[key].xy)
                     self._original_plugin_fonts[key] = getattr(elements[key], 'font', None)
@@ -139,7 +142,6 @@ class PortraitMode(plugins.Plugin):
 
             elements = ui._state._state
 
-            # Restore core elements
             for key, pos in landscape_layout.items():
                 if key in ('width', 'height', 'status'):
                     continue
@@ -153,7 +155,6 @@ class PortraitMode(plugins.Plugin):
                 if 'status' in self._original_fonts and self._original_fonts['status'] is not None:
                     elements['status'].font = self._original_fonts['status']
 
-            # Restore plugin elements to their original landscape positions
             for key, pos in self._original_plugin_positions.items():
                 if key in elements:
                     elements[key].xy = pos
