@@ -338,25 +338,19 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
     def _update_handshakes(self, new_shakes=0):
         if new_shakes > 0:
             self._epoch.track(handshake=True, inc=new_shakes)
-
         tot = utils.total_unique_handshakes(self._config['bettercap']['handshakes'])
         txt = '%d (%d)' % (len(self._handshakes), tot)
-
         self._view.set('shakes', txt)
-
-        # --- DYNAMIC POSITIONING ---
         try:
             shakes_x, shakes_y = self._view._state._state['shakes'].xy
-
             if self._view._width == 122:
-                pass
+            # Portrait mode -- static position on line below shakes
+                self._view._state._state['last_pwnd_name'].xy = (3, 233)
             else:
                 dynamic_offset = 32 + (len(txt) * 6)
                 self._view._state._state['last_pwnd_name'].xy = (shakes_x + dynamic_offset, shakes_y)
-
         except Exception:
             pass
-        # ---------------------------------
 
         if self._last_pwnd is None:
             self._last_pwnd = self._get_historical_last_pwnd()
