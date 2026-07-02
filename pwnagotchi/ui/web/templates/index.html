@@ -2,7 +2,9 @@
 title }} {% endblock %} {% block script %} pollResource("#ui", (el) =>
 el.src.split("?")[0] + "?" + new Date().getTime(), 1000); {% endblock %} {%
 block content %}
-<img class="ui-image pixelated" src="/ui" id="ui" alt="Device UI" />
+<div class="ui-container">
+  <img class="ui-image pixelated" src="/ui" id="ui" alt="Device UI" />
+</div>
 <div class="card">
   <div class="card-body">
     <div class="control-buttons">
