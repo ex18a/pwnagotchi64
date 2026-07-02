@@ -1051,10 +1051,15 @@ code {
 }
 
 .ui-image {
-  width: 100%;
+  display: block;
+  max-width: 100%;
+  max-height: 70vh;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  margin: 0 auto 16px auto;
   border-radius: 6px;
   box-shadow: var(--shadow-md);
-  margin-bottom: 16px;
 }
 
 .pixelated {
