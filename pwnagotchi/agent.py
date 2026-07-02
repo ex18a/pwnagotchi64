@@ -58,11 +58,11 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         self._access_points = []
         self._last_pwnd = None
         self._history = {}
-        # --- INTERACTION HISTORY DECAY: NEW ---
+        # --- INTERACTION HISTORY DECAY ---
         self._last_seen = {}     # mac -> last time we actually saw it on the radio
         self._last_decay = {}    # mac -> last time its history count was decremented
         self._history_lock = threading.Lock()
-        # ---------------------------------------
+        # ---------------------------------
         self._handshakes = {}
         self.last_session = LastSession(self._config)
         self.mode = 'auto'
@@ -423,15 +423,18 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
 
     def _fetch_stats(self):
         while True:
-            s = self.session()
-            self._update_uptime(s)
-            self._update_advertisement(s)
-            self._update_peers()
-            self._update_counters()
-            self._update_handshakes(0)
+            try:
+                s = self.session()
+                self._update_uptime(s)
+                self._update_advertisement(s)
+                self._update_peers()
+                self._update_counters()
+                self._update_handshakes(0)
+            except Exception as e:
+                logging.debug(f"[fetch_stats] bettercap unreachable, retrying in 1s: {e}")
             time.sleep(1)
 
-    # --- INTERACTION HISTORY DECAY: NEW ---
+    # --- INTERACTION HISTORY DECAY ---
     def start_history_decay(self):
         _thread.start_new_thread(self._history_decay_worker, ())
 
