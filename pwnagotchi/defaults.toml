@@ -147,7 +147,7 @@ on_frame = ""
 
 [ui.display]
 enabled = true
-orientation = 90
+rotation = 180
 type = "waveshare_4"
 color = "black"
 
