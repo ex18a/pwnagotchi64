@@ -137,7 +137,7 @@ class View(object):
             self._render_cbs.append(cb)
 
     def _refresh_handler(self):
-        delay = 1.0 / self._config['ui']['fps'] if self._config['ui']['fps'] > 0 else 1.0
+        delay = 2.0 / self._config['ui']['fps'] if self._config['ui']['fps'] > 0 else 1.0
         while True:
             try:
                 name = self._state.get('name')
