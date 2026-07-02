@@ -102,7 +102,7 @@ sad_num_epochs = 6
 bond_encounters_factor = 20000
 
 [ui]
-fps = 0.0
+fps = 0.1
 
 [ui.font]
 name = "DejaVuSansMono"  # for japanese: fonts-japanese-gothic
