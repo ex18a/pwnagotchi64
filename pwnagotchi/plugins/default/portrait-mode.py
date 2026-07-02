@@ -29,6 +29,8 @@ class PortraitMode(plugins.Plugin):
         self._original_height = None
         self._original_fonts = {}
         self._portrait_fonts = {}
+        self._original_plugin_positions = {}
+        self._original_plugin_fonts = {}
 
     def _load_fonts(self):
         self._portrait_fonts = {
@@ -41,7 +43,6 @@ class PortraitMode(plugins.Plugin):
             'shakes':           ImageFont.truetype(self.FONT_REGULAR, 11),
             'mode':             ImageFont.truetype(self.FONT_BOLD, 11),
             'status':           ImageFont.truetype(self.FONT_REGULAR, 10),
-            # plugin elements
             'ip1':              ImageFont.truetype(self.FONT_REGULAR, 10),
             'lifetime_trained': ImageFont.truetype(self.FONT_REGULAR, 10),
             'memtemp_header':   ImageFont.truetype(self.FONT_REGULAR, 10),
@@ -59,37 +60,31 @@ class PortraitMode(plugins.Plugin):
 
             self._load_fonts()
 
-            # Save original state
             self._original_impl = ui._implementation
             self._original_layout = ui._layout
             self._original_width = ui._width
             self._original_height = ui._height
 
-            # Build and initialise portrait driver
             portrait = WaveshareV4Portrait(pwnagotchi.config)
             portrait.initialize()
             new_layout = portrait.layout()
 
-            # Swap driver and canvas dimensions
             ui._implementation = portrait
             ui._layout = new_layout
             ui._width = new_layout['width']
             ui._height = new_layout['height']
             ui._canvas = Image.new('1', (ui._width, ui._height), 0xff)
 
-            # Reposition and refont core elements
             elements = ui._state._state
             for key, pos in new_layout.items():
                 if key in ('width', 'height', 'status'):
                     continue
                 if key in elements and isinstance(pos, (tuple, list)):
                     elements[key].xy = tuple(pos)
-                    # Save original font and apply portrait font
                     if key in self._portrait_fonts:
                         self._original_fonts[key] = getattr(elements[key], 'font', None)
                         elements[key].font = self._portrait_fonts[key]
 
-            # Handle status separately
             if 'status' in elements:
                 elements['status'].xy = new_layout['status']['pos']
                 self._original_fonts['status'] = getattr(elements['status'], 'font', None)
@@ -108,6 +103,11 @@ class PortraitMode(plugins.Plugin):
         elements = ui._state._state
         for key, pos in self.PORTRAIT_POSITIONS.items():
             if key in elements:
+                # Save original position and font the first time we see this element
+                if key not in self._original_plugin_positions:
+                    self._original_plugin_positions[key] = tuple(elements[key].xy)
+                    self._original_plugin_fonts[key] = getattr(elements[key], 'font', None)
+
                 if list(elements[key].xy) != list(pos):
                     elements[key].xy = pos
                 if key in self._portrait_fonts:
@@ -132,12 +132,13 @@ class PortraitMode(plugins.Plugin):
             ui._canvas = Image.new('1', (ui._width, ui._height), 0xff)
 
             elements = ui._state._state
+
+            # Restore core elements
             for key, pos in landscape_layout.items():
                 if key in ('width', 'height', 'status'):
                     continue
                 if key in elements and isinstance(pos, (tuple, list)):
                     elements[key].xy = tuple(pos)
-                    # Restore original font
                     if key in self._original_fonts and self._original_fonts[key] is not None:
                         elements[key].font = self._original_fonts[key]
 
@@ -146,7 +147,16 @@ class PortraitMode(plugins.Plugin):
                 if 'status' in self._original_fonts and self._original_fonts['status'] is not None:
                     elements['status'].font = self._original_fonts['status']
 
+            # Restore plugin elements to their original landscape positions
+            for key, pos in self._original_plugin_positions.items():
+                if key in elements:
+                    elements[key].xy = pos
+                    if key in self._original_plugin_fonts and self._original_plugin_fonts[key] is not None:
+                        elements[key].font = self._original_plugin_fonts[key]
+
             self._original_fonts.clear()
+            self._original_plugin_positions.clear()
+            self._original_plugin_fonts.clear()
             self.ready = False
             logging.info("[Portrait Mode] Reverted to landscape.")
 
