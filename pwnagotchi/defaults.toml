@@ -8,7 +8,7 @@ main.custom_plugin_repos = [
 main.iface = "mon0"                               # if using a supported usb wifi dongle change to wlan1
 main.mon_start_cmd = "/usr/bin/monstart"
 main.mon_stop_cmd = "/usr/bin/monstop"
-main.mon_max_blind_epochs = 12
+main.mon_max_blind_epochs = 5
 main.no_restart = false
 main.whitelist = ['home-wifi-name', 'example2',]  # cannot see or interact with theses wifi names
 main.filter = ""
@@ -68,7 +68,7 @@ orientation = "horizontal"
 [ai]
 enabled = true            # true lets ai tune personality through trial and error
 path = "/root/brain.nn"
-laziness = 0.5
+laziness = 0.2
 epochs_per_episode = 10
 
 [ai.params]
