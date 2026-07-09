@@ -32,7 +32,7 @@ class WaveshareV4Portrait(DisplayImpl):
         self._layout['name'] = (4, 25)   # aligned with status's x so the two columns line up
         self._layout['channel'] = (0, 207)
         self._layout['aps'] = (40, 207)
-        self._layout['uptime'] = (3, 3)
+        self._layout['uptime'] = (0, 3)
         self._layout['line1'] = [0, 17, 125, 17]
         self._layout['line2'] = [0, 221, 125, 221]
         self._layout['friend_face'] = (85, 128)
