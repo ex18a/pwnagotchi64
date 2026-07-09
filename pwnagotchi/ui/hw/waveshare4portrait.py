@@ -9,6 +9,7 @@ class WaveshareV4Portrait(DisplayImpl):
         self._display = None
         self._last_channel = None
         self._epoch_count = 0
+        self._did_first_refresh = False
         self.bg_color = 0xFF
         try:
             if config['ui']['display']['color'].lower() == 'white':
@@ -68,8 +69,15 @@ class WaveshareV4Portrait(DisplayImpl):
 
     def render(self, canvas):
         buf = self._display.getbuffer(canvas)
-        if self._epoch_started():
-            logging.info("Performing full screen refresh (epoch %d)..." % self._epoch_count)
+        # call unconditionally so its epoch-tracking side effects stay in sync,
+        # but the very first render always gets a full refresh regardless of what
+        # it returns -- otherwise the base image partial refreshes diff against
+        # is never properly set, and the screen stays washed out/ghosted until
+        # the epoch-count condition eventually triggers a real one
+        epoch_wants_refresh = self._epoch_started()
+        if not self._did_first_refresh or epoch_wants_refresh:
+            self._did_first_refresh = True
+            logging.info("Performing full screen refresh...")
             self._display.init()
             self._display.display(buf)
             self._display.displayPartBaseImage(buf)
