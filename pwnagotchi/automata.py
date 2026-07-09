@@ -157,14 +157,14 @@ class Automata(object):
                 # boot, before the wake branch below ever got a chance to run
                 logging.info("[AI SLEEP] Home network detected. Suspending AI and dropping to AUTO.")
                 self.mode = 'auto'
-                self._view.set('mode', 'AUTO')
-                self.pause_ai()          # stops inference/training
+                self.pause_ai()          # stops inference/training -- view label updates once the
+                                          # worker actually goes idle (see train.py _ai_worker), not here,
+                                          # since a training batch already in flight runs to completion first
 
             elif self.mode == 'ai' and self._epoch.bored_for >= 1:
                 logging.info("[AI SLEEP] Pwnagotchi is Bored. Suspending AI and dropping to AUTO.")
                 self.mode = 'auto'
-                self._view.set('mode', 'AUTO')
-                self.pause_ai()          # stops inference/training
+                self.pause_ai()          # stops inference/training -- see comment above
 
             elif self.mode == 'auto' and not home_visible and not home_on_cooldown \
                     and self._epoch.inactive_for == 0 and self._epoch.active_for > 0:

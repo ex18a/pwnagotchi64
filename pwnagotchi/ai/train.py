@@ -189,10 +189,20 @@ class AsyncTrainer(object):
             epochs_per_episode = self._config['ai']['epochs_per_episode']
 
             obs = None
+            was_paused = False
             while True:
                 if self._ai_paused.is_set():
+                    if not was_paused:
+                        # only reached once any batch that was already in flight has
+                        # finished, so this is when the AI has actually gone idle --
+                        # update the on-screen label here rather than at the moment
+                        # pause was requested, so it doesn't lie about still training
+                        logging.info("[ai] idle")
+                        self._view.set('mode', 'AUTO')
+                        was_paused = True
                     time.sleep(1)
                     continue
+                was_paused = False
                 self._render_env_safe()
 
                 if random.random() > self._config['ai']['laziness']:
