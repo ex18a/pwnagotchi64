@@ -151,11 +151,11 @@ class View(object):
         # Portrait: center the name and pin the cursor to the screen's
         # rightmost character column instead of just trailing the name, so
         # neither one moves as the name/cursor change. The cursor is drawn
-        # in its own, smaller font -- the full block glyph is much taller/
-        # denser than the surrounding text at the same size, and an e-ink
-        # partial refresh visibly kicks back into the row when that much
-        # ink toggles right next to it, making the name appear to jitter
-        # up/down each time the cursor blinks.
+        # as its own separate draw call rather than appended to the name
+        # string -- that's what stops the name from jittering as the cursor
+        # blinks (the name's own draw call is now byte-for-byte identical
+        # between blink states); same font/size as the name itself, just
+        # decoupled from it.
         name_elem = self._state._state.get('name')
         if self._width == 122 and name_elem is not None:
             try:
@@ -167,21 +167,19 @@ class View(object):
                 main_char_px = main_font.getlength('0')
                 if main_char_px <= 0:
                     raise ValueError("non-positive char width")
-                cursor_font = fonts.BoldSmall
-                cursor_px = cursor_font.getlength('█')
 
                 name_x = self._layout['name'][0]
                 avail_px = self._width - name_x
-                # reserve room for the (smaller) cursor glyph itself, plus a
-                # couple spare pixels for its ink bleed, then fit as many
-                # main-font columns as remain for the name
-                name_avail_px = max(0, avail_px - cursor_px - 2)
+                # reserve room for the cursor glyph itself, plus a couple
+                # spare pixels for its ink bleed past the nominal advance
+                # width, then fit as many columns as remain for the name
+                name_avail_px = max(0, avail_px - main_char_px - 2)
                 total_cols = max(1, int(name_avail_px // main_char_px))
                 pad = max(0, total_cols - len(base_name))
                 left = pad // 2
                 right = pad - left
 
-                name_elem.suffix_font = cursor_font
+                name_elem.suffix_font = main_font
                 name_elem.suffix = '█' if cursor_on else ''
                 return (' ' * left) + base_name + (' ' * right)
             except Exception:
