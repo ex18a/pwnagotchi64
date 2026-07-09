@@ -47,6 +47,9 @@ def restart_services():
     log.info("Reloading systemd daemon...")
     os.system("systemctl daemon-reload")
     os.system("systemctl enable fstrim.timer")
+    # --now: an existing device picking this up via an in-place update should
+    # start getting covered right away, not just on its next reboot
+    os.system("systemctl enable --now pwnagotchi-syswatchdog.timer")
 
 class CustomInstall(install):
     def run(self):
