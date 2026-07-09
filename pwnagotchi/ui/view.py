@@ -298,6 +298,10 @@ class View(object):
     def on_bored(self):
         self.set('face', faces.BORED)
         self.set('status', self._voice.on_bored())
+
+    def on_blind(self, blind_for):
+        self.set('face', faces.BLIND)
+        self.set('status', self._voice.on_blind(blind_for))
         self.update()
 
     def on_sad(self):

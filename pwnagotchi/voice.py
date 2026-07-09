@@ -65,6 +65,12 @@ class Voice:
             self._('I\'m bored ...'),
             self._('Let\'s go for a walk!')])
 
+    def on_blind(self, blind_for):
+        return random.choice([
+            self._('I\'m BLIND! ({blind_for})').format(blind_for=blind_for),
+            self._('I can\'t see anything! ({blind_for})').format(blind_for=blind_for),
+            self._('Where did the Wi-Fi go? ({blind_for})').format(blind_for=blind_for)])
+
     def on_motivated(self, reward):
         return random.choice([
             self._('This is the best day of my life!'),

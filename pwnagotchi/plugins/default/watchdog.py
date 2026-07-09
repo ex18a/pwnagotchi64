@@ -15,8 +15,6 @@ class Watchdog(plugins.Plugin):
         self.interface = pwnagotchi.config['main']['iface']
         self.lockdown_triggered = False
         self.crash_log_path = '/var/log/pwnagotchi_crashes.log'
-        self._blind_override_active = False
-        self._original_view_set = None
 
     def on_loaded(self):
         logging.info(f"[Watchdog] Active. Monitoring {self.interface}")
@@ -26,24 +24,13 @@ class Watchdog(plugins.Plugin):
         if self.lockdown_triggered:
             return
 
-        # Pin a "blind" face/status to the screen for as long as blind_for
-        # stays above 0, regardless of what the normal recon/wait status
-        # cycling would otherwise be showing. Cleared the moment blind_for
-        # drops back to 0, or superseded by _lockdown_reboot()'s own crash
-        # message if things escalate that far.
         try:
             blind_now = agent._epoch.blind_for
         except AttributeError:
             blind_now = 0
 
         if blind_now > 0:
-            self._enable_blind_override(agent)
-            # write straight through the saved original setter -- the
-            # filter we just installed would otherwise swallow this too
-            self._original_view_set('face', "(\u2613\u203f\u203f\u2613)")
-            self._original_view_set('status', f"I'm BLIND ({blind_now})")
-        else:
-            self._disable_blind_override(agent)
+            agent.view().on_blind(blind_now)
 
         # If bettercap's systemd unit isn't active, give systemd's own
         # Restart=on-failure policy a chance to bring it back on its own
@@ -100,34 +87,6 @@ class Watchdog(plugins.Plugin):
                 logging.error(f"[Watchdog] blind={blind_epochs}: {self.interface} present but bettercap is unresponsive! Executing lockdown reboot...")
                 self._save_crash_log("BETTERCAP_UNRESPONSIVE")
                 self._lockdown_reboot(agent, "bettercap unresponsive")
-
-    def _enable_blind_override(self, agent):
-        if self._blind_override_active:
-            return
-        self._blind_override_active = True
-        self._original_view_set = agent.view().set
-
-        original = self._original_view_set
-
-        def _filtered_set(key, value, *args, **kwargs):
-            if key in ('face', 'status'):
-                # swallow everything else trying to touch face/status while
-                # the blind overlay is up -- only our own writes (made
-                # directly through `original`, bypassing this filter) get
-                # through, which is what keeps it pinned on screen instead
-                # of getting stomped by the normal "Waiting for Xs..." cycling.
-                return
-            return original(key, value, *args, **kwargs)
-
-        agent.view().set = _filtered_set
-
-    def _disable_blind_override(self, agent):
-        if not self._blind_override_active:
-            return
-        self._blind_override_active = False
-        if self._original_view_set is not None:
-            agent.view().set = self._original_view_set
-            self._original_view_set = None
 
     def _is_bettercap_service_down(self):
         try:
@@ -191,11 +150,6 @@ class Watchdog(plugins.Plugin):
 
     def _lockdown_reboot(self, agent, reason_text):
         self.lockdown_triggered = True
-
-        # Restore the real view.set() first -- otherwise the blind-overlay
-        # filter we may have installed would swallow this very crash
-        # message too, since it's also writing to 'status'.
-        self._disable_blind_override(agent)
 
         # Trigger native reboot face
         agent.set_rebooting()
