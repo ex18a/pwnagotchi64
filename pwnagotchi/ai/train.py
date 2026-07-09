@@ -82,6 +82,14 @@ class Stats(object):
 
 
 class AsyncTrainer(object):
+    # epochs since boot before the first training batch is allowed to start.
+    # A batch already in flight only stops between batches (see _ai_worker),
+    # so starting one immediately on boot means a home-network (or any other)
+    # pause can't actually take effect until that whole first batch finishes.
+    # Holding off gives other startup-time pause conditions a window to kick
+    # in before the AI ever commits to one.
+    MIN_EPOCHS_BEFORE_TRAINING = 10
+
     def __init__(self, config):
         self._config = config
         self._model = None
@@ -205,7 +213,7 @@ class AsyncTrainer(object):
                 was_paused = False
                 self._render_env_safe()
 
-                if random.random() > self._config['ai']['laziness']:
+                if self._epoch.epoch >= self.MIN_EPOCHS_BEFORE_TRAINING and random.random() > self._config['ai']['laziness']:
                     logging.info("[ai] learning for %d epochs ..." % epochs_per_episode)
                     try:
                         self.set_training(True, epochs_per_episode)
