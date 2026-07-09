@@ -16,8 +16,10 @@ class Automata(object):
         # Track if the user originally wanted AI enabled
         self._ai_base_enabled = config.get('ai', {}).get('enabled', False)
         self._default_personality = copy.deepcopy(config['personality'])   # baseline snapshot
-        # consecutive epochs since a whitelisted AP was last seen (see set_bored-style AI toggle below)
-        self._home_absent_for = 0
+        # consecutive epochs since a whitelisted AP was last seen (see set_bored-style AI toggle below).
+        # starts past the threshold so a fresh boot that never sees the home network
+        # doesn't impose an artificial cooldown on the normal wake-on-activity path
+        self._home_absent_for = config['personality'].get('home_absent_epochs', 5)
 
     def _on_miss(self, who):
         logging.info("it looks like %s is not in range anymore :/", who)
