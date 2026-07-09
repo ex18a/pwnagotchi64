@@ -103,20 +103,22 @@ class View(object):
 
         plugins.on('ui_setup', self)
 
-        # the blinking name cursor used to only run as a side effect of the
-        # fps-based refresh loop, which forced e-ink users to raise fps (bad
-        # for the display) just to get it. It's its own config now, and
-        # forces its own redraw each tick so it works regardless of fps.
-        if config['ui'].get('cursor', True):
-            _thread.start_new_thread(self._refresh_handler, ())
-        else:
-            logging.warning("ui.cursor is disabled, the name cursor will not blink")
-
         if config['ui']['fps'] > 0.0:
             self._ignore_changes = ()
         else:
             logging.warning("ui.fps is 0, the display will only update for major changes")
             self._ignore_changes = ('uptime', 'name')
+
+        # the blinking name cursor used to only run as a side effect of the
+        # fps-based refresh loop, which forced e-ink users to raise fps (bad
+        # for the display) just to get it. It's its own config now, and
+        # forces its own redraw each tick so it works regardless of fps.
+        # _ignore_changes must already be set before this starts, since the
+        # thread can begin running before __init__ finishes otherwise.
+        if config['ui'].get('cursor', True):
+            _thread.start_new_thread(self._refresh_handler, ())
+        else:
+            logging.warning("ui.cursor is disabled, the name cursor will not blink")
 
         ROOT = self
 
