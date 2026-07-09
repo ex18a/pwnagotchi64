@@ -28,8 +28,8 @@ class PortraitMode(plugins.Plugin):
     SUPPORTED_DISPLAYS = tuple(DISPLAY_IMPL.keys())
 
     PORTRAIT_POSITIONS = {
-        'ip1':              (0, 140),
-        'lifetime_trained': (5, 187),
+        'ip1':              (0, 19),    # between the top line (y=17) and name (y=30)
+        'lifetime_trained': (5, 196),   # just above the channel/aps row (y=207)
         'memtemp_header':   (16, 157),
         'memtemp_data':     (16, 167),
         'sugar_lbl':        (70, 3),
