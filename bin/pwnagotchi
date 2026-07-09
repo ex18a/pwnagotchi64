@@ -167,7 +167,7 @@ if __name__ == '__main__':
 
     plugins.load(config)
 
-    display = Display(config=config, state={'name': '%s>' % pwnagotchi.name()})
+    display = Display(config=config, state={'name': pwnagotchi.name()})
 
     if args.do_clear:
         do_clear(display)

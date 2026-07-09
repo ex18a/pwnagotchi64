@@ -75,7 +75,7 @@ class View(object):
             'friend_name': Text(value=None, position=self._layout['friend_name'], font=fonts.BoldSmall,
                                 color=BLACK),
 
-            'name': Text(value='%s>' % 'pwnagotchi', position=self._layout['name'], color=BLACK, font=fonts.Bold),
+            'name': Text(value='pwnagotchi', position=self._layout['name'], color=BLACK, font=fonts.Bold),
 
             'status': Text(value=self._voice.default(),
                            position=self._layout['status']['pos'],
