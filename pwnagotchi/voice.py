@@ -220,6 +220,54 @@ class Voice:
     def on_downloading(self, name):
         return self._("Downloading from {name} ...").format(name=name)
 
+    def on_update_available(self, version):
+        return self._("Update available: {version}!").format(version=version)
+
+    def on_update_cleaning(self):
+        return self._("Cleaning up tmp ...")
+
+    def on_update_installing(self, version):
+        return random.choice([
+            self._("Installing {version} ...").format(version=version),
+            self._("Upgrading myself to {version} ...").format(version=version),
+        ])
+
+    def on_update_downloading(self, version):
+        return random.choice([
+            self._("Downloading {version} ...").format(version=version),
+            self._("Fetching {version} from the mothership ...").format(version=version),
+        ])
+
+    def on_update_extracting(self, version):
+        return self._("Extracting {version} ...").format(version=version)
+
+    def on_update_checking_deps(self):
+        return self._("Checking sys deps ...")
+
+    def on_update_installing_deps(self):
+        return self._("Installing sys deps ...")
+
+    def on_update_installing_core(self):
+        return self._("Installing Python core ...")
+
+    def on_update_verifying_deps(self):
+        return self._("Verifying package installations ...")
+
+    def on_update_installed(self, version):
+        return random.choice([
+            self._("Installed {version}, restarting service ...").format(version=version),
+            self._("All done! Restarting on {version} ...").format(version=version),
+        ])
+
+    def on_update_restarting(self):
+        return self._("Restarting to apply update ...")
+
+    def on_update_failed(self, version):
+        return random.choice([
+            self._("Install failed, staying on {version}").format(version=version),
+            self._("Update failed! Staying on {version} for now.").format(version=version),
+        ])
+
     def on_last_session_data(self, last_session):
         status = self._('Kicked {num} stations\n').format(num=last_session.deauthed)
         if last_session.associated > 999:

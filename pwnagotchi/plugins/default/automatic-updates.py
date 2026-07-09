@@ -5,7 +5,6 @@ import requests
 import shutil
 import glob
 import time
-import threading
 from threading import Lock
 
 import pwnagotchi
@@ -25,9 +24,6 @@ class AutomaticUpdates(plugins.Plugin):
         self.ready = False
         self.status = StatusFile('/root/.automatic-updates')
         self.lock = Lock()
-        self._ui_override_active = False
-        self._original_view_set = None
-        self._animating = False
 
     def on_loaded(self):
         missing = [k for k in ('repo', 'interval') if k not in self.options or not self.options[k]]
@@ -61,29 +57,27 @@ class AutomaticUpdates(plugins.Plugin):
                 logging.warning(f"[automatic-updates] update available: {info['current']} -> {info['available']}")
 
                 if not self.options['install']:
-                    agent.view().update(force=True, new_data={'status': f"Update available: {info['available']}!"})
+                    agent.view().on_update_available(info['available'])
                     return
 
-                # --- START UI OVERRIDE & ANIMATION ---
-                self._enable_ui_override(agent)
-                self._set_update_status(agent, f"Installing {info['available']} ...")
+                logging.info(f"[automatic-updates] Installing {info['available']} ...")
+                agent.view().on_update_installing(info['available'])
 
                 if self._install(agent, info):
-                    self._set_update_status(agent, f"Installed {info['available']}, restarting service ...")
+                    logging.info(f"[automatic-updates] Installed {info['available']}, restarting service ...")
+                    agent.view().on_update_installed(info['available'])
                     time.sleep(2)  # Let the user read the success message
-                    self._set_update_status(agent, "Restarting to apply update ...")
-                    self._disable_ui_override(agent)
+                    logging.info("[automatic-updates] Restarting to apply update ...")
+                    agent.view().on_update_restarting()
                     self._apply()
                     return  # process is about to be killed by the restart anyway
                 else:
-                    self._set_update_status(agent, f"Install failed, staying on {info['current']}")
+                    agent.view().on_update_failed(info['current'])
                     logging.error(f"[automatic-updates] install of {info['available']} failed, staying on {info['current']}")
                     time.sleep(10)  # Let the user read the failure message
-                    self._disable_ui_override(agent)
 
             except Exception as e:
                 logging.error(f"[automatic-updates] {e}")
-                self._disable_ui_override(agent)  # Failsafe unlock
 
     def _check_latest(self):
         repo = self.options['repo']
@@ -116,13 +110,15 @@ class AutomaticUpdates(plugins.Plugin):
 
         zip_path = os.path.join(work_dir, 'source.zip')
 
-        self._set_update_status(agent, f"Downloading {info['available']} ...")
+        logging.info(f"[automatic-updates] Downloading {info['available']} ...")
+        agent.view().on_update_downloading(info['available'])
         r = requests.get(info['zip_url'], timeout=60)
         r.raise_for_status()
         with open(zip_path, 'wb') as fp:
             fp.write(r.content)
 
-        self._set_update_status(agent, f"Extracting {info['available']} ...")
+        logging.info(f"[automatic-updates] Extracting {info['available']} ...")
+        agent.view().on_update_extracting(info['available'])
         shutil.unpack_archive(zip_path, work_dir, format='zip')
 
         source_dir = next((d for d in glob.glob(os.path.join(work_dir, '*')) if os.path.isdir(d)), None)
@@ -143,7 +139,7 @@ class AutomaticUpdates(plugins.Plugin):
             if packages:
                 # Check first -- only pay the apt-get update + install cost
                 # if something is actually missing
-                self._set_update_status(agent, "Checking sys deps ...")
+                agent.view().on_update_checking_deps()
                 logging.info(f"[automatic-updates] checking apt-requirements.txt against installed packages: {', '.join(packages)}")
 
                 missing = []
@@ -153,7 +149,7 @@ class AutomaticUpdates(plugins.Plugin):
                         missing.append(pkg)
 
                 if missing:
-                    self._set_update_status(agent, "Installing sys deps ...")
+                    agent.view().on_update_installing_deps()
                     logging.info(f"[automatic-updates] missing packages, installing: {', '.join(missing)}")
 
                     # Clone the current environment variables and force non-interactive mode
@@ -177,7 +173,7 @@ class AutomaticUpdates(plugins.Plugin):
                     # =========================================================
                     # THE SAFEGUARD: Verify packages are actually on the system
                     # =========================================================
-                    self._set_update_status(agent, "Verifying package installations...")
+                    agent.view().on_update_verifying_deps()
                     for pkg in missing:
                         verify_cmd = subprocess.run(['dpkg', '-s', pkg], capture_output=True, text=True)
                         if 'Status: install ok installed' not in verify_cmd.stdout:
@@ -189,7 +185,8 @@ class AutomaticUpdates(plugins.Plugin):
                     logging.info("[automatic-updates] all apt dependencies already present, skipping apt-get entirely.")
         # =========================================================
 
-        self._set_update_status(agent, "Installing Python core ...")
+        logging.info("[automatic-updates] Installing Python core ...")
+        agent.view().on_update_installing_core()
         result = subprocess.run(['pip3', 'install', '--break-system-packages', '--no-deps', '.'], cwd=source_dir,
                                 capture_output=True, text=True)
         if result.returncode != 0:
@@ -203,68 +200,3 @@ class AutomaticUpdates(plugins.Plugin):
         # and the kernel/drivers are untouched, so restarting the service
         # is enough to load the new code. No full device reboot needed.
         os.system('systemctl restart pwnagotchi')
-
-    # =======================================================================
-    # UI OVERRIDE & ANIMATION HELPERS
-    # =======================================================================
-    def _enable_ui_override(self, agent):
-        if getattr(self, '_ui_override_active', False):
-            return
-        self._ui_override_active = True
-        self._original_view_set = agent.view().set
-        self._current_status = "Initializing update..."
-        self._faces = ['(1__0)', '(1__1)', '(0__1)']
-
-        original = self._original_view_set
-
-        # Intercept all incoming screen writes from other core routines/plugins
-        def _filtered_set(key, value, *args, **kwargs):
-            if key in ('face', 'status'):
-                # Swallow everything else trying to touch face or status
-                return
-            return original(key, value, *args, **kwargs)
-
-        agent.view().set = _filtered_set
-
-        # Spin up an independent thread to animate your custom upload faces
-        self._animating = True
-        self._animation_thread = threading.Thread(target=self._animate_frames, args=(agent,))
-        self._animation_thread.daemon = True
-        self._animation_thread.start()
-
-    def _disable_ui_override(self, agent):
-        self._animating = False
-        if hasattr(self, '_animation_thread') and self._animation_thread.is_alive():
-            self._animation_thread.join(timeout=2)
-
-        if not getattr(self, '_ui_override_active', False):
-            return
-        self._ui_override_active = False
-
-        if hasattr(self, '_original_view_set') and self._original_view_set is not None:
-            agent.view().set = self._original_view_set
-            self._original_view_set = None
-
-    def _set_update_status(self, agent, status_text):
-        """Safely writes straight through the interceptor to update screen text"""
-        self._current_status = status_text
-        if getattr(self, '_ui_override_active', False) and getattr(self, '_original_view_set', None):
-            self._original_view_set('status', status_text)
-            agent.view().update(force=True)
-        logging.info(f"[automatic-updates] {status_text}")
-
-    def _animate_frames(self, agent):
-        """Background animation loop that respects E-ink refresh limits"""
-        face_idx = 0
-        while getattr(self, '_animating', False):
-            if getattr(self, '_original_view_set', None):
-                current_face = self._faces[face_idx]
-                # Write face and preserve current status line simultaneously
-                self._original_view_set('face', current_face)
-                if getattr(self, '_current_status', None):
-                    self._original_view_set('status', self._current_status)
-                agent.view().update(force=True)
-
-                face_idx = (face_idx + 1) % len(self._faces)
-            # 0.5-second sleep keeps the animation looking active without lagging the screen
-            time.sleep(0.5)

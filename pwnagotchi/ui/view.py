@@ -370,6 +370,65 @@ class View(object):
         self.set('status', self._voice.on_uploading(to))
         self.update(force=True)
 
+    def on_update_available(self, version):
+        self.set('status', self._voice.on_update_available(version))
+        self.update(force=True)
+
+    def on_update_cleaning(self):
+        self.set('face', faces.UPLOAD)
+        self.set('status', self._voice.on_update_cleaning())
+        self.update(force=True)
+
+    def on_update_installing(self, version):
+        self.set('face', faces.UPLOAD)
+        self.set('status', self._voice.on_update_installing(version))
+        self.update(force=True)
+
+    def on_update_downloading(self, version):
+        self.set('face', faces.UPLOAD1)
+        self.set('status', self._voice.on_update_downloading(version))
+        self.update(force=True)
+
+    def on_update_extracting(self, version):
+        self.set('face', faces.UPLOAD2)
+        self.set('status', self._voice.on_update_extracting(version))
+        self.update(force=True)
+
+    def on_update_checking_deps(self):
+        self.set('face', faces.SMART)
+        self.set('status', self._voice.on_update_checking_deps())
+        self.update(force=True)
+
+    def on_update_installing_deps(self):
+        self.set('face', faces.UPLOAD)
+        self.set('status', self._voice.on_update_installing_deps())
+        self.update(force=True)
+
+    def on_update_installing_core(self):
+        self.set('face', faces.UPLOAD)
+        self.set('status', self._voice.on_update_installing_core())
+        self.update(force=True)
+
+    def on_update_verifying_deps(self):
+        self.set('face', faces.SMART)
+        self.set('status', self._voice.on_update_verifying_deps())
+        self.update(force=True)
+
+    def on_update_installed(self, version):
+        self.set('face', faces.COOL)
+        self.set('status', self._voice.on_update_installed(version))
+        self.update(force=True)
+
+    def on_update_restarting(self):
+        self.set('face', faces.SLEEP)
+        self.set('status', self._voice.on_update_restarting())
+        self.update(force=True)
+
+    def on_update_failed(self, version):
+        self.set('face', faces.BROKEN)
+        self.set('status', self._voice.on_update_failed(version))
+        self.update(force=True)
+
     def on_rebooting(self):
         self.set('face', faces.BROKEN)
         self.set('status', self._voice.on_rebooting())
