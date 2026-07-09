@@ -22,7 +22,7 @@ class WaveshareV4Portrait(DisplayImpl):
         self._layout['width'] = 122
         self._layout['height'] = 250
         self._layout['face'] = (0, 90)
-        self._layout['name'] = (13, 30)
+        self._layout['name'] = (13, 25)
         self._layout['channel'] = (5, 207)
         self._layout['aps'] = (40, 207)
         self._layout['uptime'] = (3, 3)
@@ -34,10 +34,10 @@ class WaveshareV4Portrait(DisplayImpl):
         self._layout['last_pwnd_name'] = (3, 233)
         self._layout['mode'] = (93, 223)
         self._layout['status'] = {
-            'pos': (4, 50),
+            'pos': (4, 45),
             'font': fonts.status_font(fonts.Medium),
             'max': 20,
-            'lines': 3   # face starts at y=90, only ~40px below status -- cap so long text can't grow into it
+            'lines': 3   # face starts at y=90, only ~45px below status -- cap so long text can't grow into it
         }
         return self._layout
 
