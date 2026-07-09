@@ -36,7 +36,8 @@ class WaveshareV4Portrait(DisplayImpl):
         self._layout['status'] = {
             'pos': (4, 45),
             'font': fonts.status_font(fonts.Medium),
-            'max': 20
+            'max': 20,
+            'lines': 3   # face starts at y=85, only ~40px below status -- cap so long text can't grow into it
         }
         return self._layout
 

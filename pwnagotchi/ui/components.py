@@ -40,12 +40,13 @@ class FilledRect(Widget):
 
 
 class Text(Widget):
-    def __init__(self, value="", position=(0, 0), font=None, color=0, wrap=False, max_length=0):
+    def __init__(self, value="", position=(0, 0), font=None, color=0, wrap=False, max_length=0, max_lines=0):
         super().__init__(position, color)
         self.value = value
         self.font = font
         self.wrap = wrap
         self.max_length = max_length
+        self.max_lines = max_lines
         self.wrapper = TextWrapper(width=self.max_length, replace_whitespace=False) if wrap else None
 
     def draw(self, canvas, drawer):
@@ -54,6 +55,13 @@ class Text(Widget):
                 text = '\n'.join(self.wrapper.wrap(self.value))
             else:
                 text = self.value
+            if self.max_lines:
+                # cap the number of *rendered* lines regardless of whether they
+                # came from wrapping or were already embedded newlines in value,
+                # so long status text can't grow into whatever's drawn below it
+                lines = text.split('\n')
+                if len(lines) > self.max_lines:
+                    text = '\n'.join(lines[:self.max_lines])
             drawer.text(self.xy, text, font=self.font, fill=self.color)
 
 
