@@ -147,15 +147,39 @@ class View(object):
         if cb not in self._render_cbs:
             self._render_cbs.append(cb)
 
+    def _name_cursor_frame(self, base_name, cursor_on):
+        # Portrait: center the name and pin the cursor to the screen's
+        # rightmost character column instead of just trailing the name, so
+        # neither one moves as the name/cursor change. 6px/char is this
+        # font's actual measured glyph width at this size (DejaVuSansMono
+        # Bold 10pt), same assumption the shakes/mode fix relies on.
+        if self._width == 122:
+            name_x = self._layout['name'][0]
+            total_cols = max(1, (self._width - name_x) // 6)
+            name_area = max(0, total_cols - 1)  # last column reserved for the cursor
+            pad = max(0, name_area - len(base_name))
+            left = pad // 2
+            right = pad - left
+            cursor_char = '█' if cursor_on else ' '
+            return (' ' * left) + base_name + (' ' * right) + cursor_char
+
+        # landscape: unchanged from before
+        return (base_name + ' █') if cursor_on else base_name
+
     def _refresh_handler(self):
         fps = self._config['ui']['fps']
         # a real fps still governs the blink rate if one's configured (e.g.
         # a fast OLED/LCD); otherwise blink at a fixed, e-ink-friendly 1s rate
         delay = 1.0 / fps if fps > 0 else 1.0
+        cursor_on = False
         while True:
             try:
-                name = self._state.get('name')
-                self.set('name', name.rstrip('█').strip() if '█' in name else (name + ' █'))
+                cursor_on = not cursor_on
+                # recover the real name fresh each tick (strip any cursor
+                # char and centering padding from last tick) so padding can
+                # never compound across iterations
+                base_name = self._state.get('name').replace('█', '').strip()
+                self.set('name', self._name_cursor_frame(base_name, cursor_on))
                 # force=True: bypasses ignore_changes, which normally skips
                 # redraws for 'name' alone when fps is 0 -- that's what made
                 # the cursor invisible without raising fps in the first place
