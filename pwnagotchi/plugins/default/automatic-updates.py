@@ -6,10 +6,11 @@ import shutil
 import glob
 import time
 from datetime import datetime
-from threading import Lock
+from threading import Lock, Thread
 
 import pwnagotchi
 import pwnagotchi.plugins as plugins
+import pwnagotchi.ui.faces as faces
 from pwnagotchi.utils import StatusFile, parse_version as version_to_tuple
 
 
@@ -26,12 +27,22 @@ class AutomaticUpdates(plugins.Plugin):
     DEV_BRANCH = 'dev'
     DEV_FLAG_PATH = '/root/dev'
 
+    # frames the progress animation cycles through for the "in progress"
+    # stages that don't have their own distinct face (checking/verifying
+    # deps and the terminal states keep theirs -- see _install() and
+    # on_internet_available())
+    PROGRESS_FACES = (faces.UPLOAD, faces.UPLOAD1, faces.UPLOAD2)
+    PROGRESS_FRAME_INTERVAL = 0.5
+
     def __init__(self):
         self.ready = False
         self.status = StatusFile('/root/.automatic-updates')
         self.lock = Lock()
         self._sha_file = '/root/.automatic-updates-sha'
         self._tmp_base_dir = '/tmp/automatic-updates'
+        self._animating = False
+        self._anim_paused = False
+        self._anim_thread = None
 
     def on_loaded(self):
         missing = [k for k in ('repo', 'interval') if k not in self.options or not self.options[k]]
@@ -49,6 +60,40 @@ class AutomaticUpdates(plugins.Plugin):
 
     def _dev_mode(self):
         return os.path.exists(self.DEV_FLAG_PATH)
+
+    def _start_progress(self, agent):
+        # pins face/status so nothing else (bored, AI reward pings, etc.) can
+        # interrupt the install sequence, and keeps the face animating in the
+        # background for the whole thing rather than sitting on one static
+        # frame -- pause/resume it around the moments that want their own
+        # distinct face (see _install()). Stays pinned past the animation
+        # itself, through the final installed/failed message, until
+        # _end_progress() -- see on_internet_available().
+        agent.view().pin()
+        self._animating = True
+        self._anim_paused = False
+
+        def _loop():
+            idx = 0
+            while self._animating:
+                if not self._anim_paused:
+                    agent.view().set('face', self.PROGRESS_FACES[idx], force=True)
+                    agent.view().update(force=True)
+                    idx = (idx + 1) % len(self.PROGRESS_FACES)
+                time.sleep(self.PROGRESS_FRAME_INTERVAL)
+
+        self._anim_thread = Thread(target=_loop, daemon=True)
+        self._anim_thread.start()
+
+    def _stop_animation(self):
+        self._animating = False
+        if self._anim_thread is not None and self._anim_thread.is_alive():
+            self._anim_thread.join(timeout=2)
+        self._anim_thread = None
+
+    def _end_progress(self, agent):
+        self._stop_animation()
+        agent.view().unpin()
 
     def on_internet_available(self, agent):
         if not self.ready or self.lock.locked():
@@ -75,9 +120,18 @@ class AutomaticUpdates(plugins.Plugin):
                     return
 
                 logging.info(f"[automatic-updates] Installing {info['label']} ...")
+                self._start_progress(agent)
                 agent.view().on_update_installing(info['label'])
 
-                if self._install(agent, info):
+                try:
+                    installed = self._install(agent, info)
+                finally:
+                    # animation stops here -- the terminal face below takes
+                    # over, but stays pinned until the user's had a chance
+                    # to actually read it
+                    self._stop_animation()
+
+                if installed:
                     if info['kind'] == 'commit':
                         with open(self._sha_file, 'w') as f:
                             f.write(info['sha'])
@@ -86,14 +140,17 @@ class AutomaticUpdates(plugins.Plugin):
                     time.sleep(2)  # Let the user read the success message
                     logging.info("[automatic-updates] Restarting to apply update ...")
                     agent.view().on_update_restarting()
+                    agent.view().unpin()
                     self._apply()
                     return  # process is about to be killed by the restart anyway
                 else:
                     agent.view().on_update_failed(info['label'])
                     logging.error(f"[automatic-updates] install of {info['label']} failed")
                     time.sleep(10)  # Let the user read the failure message
+                    agent.view().unpin()
 
             except Exception as e:
+                self._end_progress(agent)
                 logging.error(f"[automatic-updates] {e}")
 
     def _check_latest(self):
@@ -224,7 +281,9 @@ class AutomaticUpdates(plugins.Plugin):
 
             if packages:
                 # Check first -- only pay the apt-get update + install cost
-                # if something is actually missing
+                # if something is actually missing. Pause the progress
+                # animation for this bit -- it has its own distinct face.
+                self._anim_paused = True
                 agent.view().on_update_checking_deps()
                 logging.info(f"[automatic-updates] checking apt-requirements.txt against installed packages: {', '.join(packages)}")
 
@@ -235,6 +294,7 @@ class AutomaticUpdates(plugins.Plugin):
                         missing.append(pkg)
 
                 if missing:
+                    self._anim_paused = False
                     agent.view().on_update_installing_deps()
                     logging.info(f"[automatic-updates] missing packages, installing: {', '.join(missing)}")
 
@@ -259,6 +319,7 @@ class AutomaticUpdates(plugins.Plugin):
                     # =========================================================
                     # THE SAFEGUARD: Verify packages are actually on the system
                     # =========================================================
+                    self._anim_paused = True
                     agent.view().on_update_verifying_deps()
                     for pkg in missing:
                         verify_cmd = subprocess.run(['dpkg', '-s', pkg], capture_output=True, text=True)
@@ -271,6 +332,10 @@ class AutomaticUpdates(plugins.Plugin):
                     logging.info("[automatic-updates] all apt dependencies already present, skipping apt-get entirely.")
         # =========================================================
 
+        # resume the progress animation -- covers every path above, whether
+        # deps were missing, already present, or there was no apt-requirements
+        # file at all
+        self._anim_paused = False
         logging.info("[automatic-updates] Installing Python core ...")
         agent.view().on_update_installing_core()
         logging.info("[automatic-updates] running pip install -- output goes to /tmp/pip-install.log")

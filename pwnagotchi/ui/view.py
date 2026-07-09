@@ -47,6 +47,7 @@ class View(object):
         self._config = config
         self._canvas = None
         self._frozen = False
+        self._pinned_keys = set()
         self._lock = Lock()
         self._voice = Voice(lang=config['main']['lang'])
         self._implementation = impl
@@ -147,7 +148,11 @@ class View(object):
                 logging.warning("non fatal error while updating view: %s" % e)
             time.sleep(delay)
 
-    def set(self, key, value):
+    def set(self, key, value, force=False):
+        if not force and key in self._pinned_keys:
+            # something (e.g. a long-running plugin flow) has pinned this key
+            # against ordinary writers -- only a force=True write gets through
+            return
         if key == 'status':
             if not hasattr(self, '_last_logged_status') or self._last_logged_status != value:
                 import logging
@@ -159,6 +164,17 @@ class View(object):
 
     def get(self, key):
         return self._state.get(key)
+
+    def pin(self, keys=('face', 'status')):
+        # blocks ordinary set() writers from touching these keys until unpin() --
+        # meant for a plugin driving a long multi-step flow (e.g. an install) that
+        # needs its own status/face sequence to not get stomped by whatever else
+        # is happening in the meantime. Callers that need to write while pinned
+        # (the thing that pinned it) pass force=True to set().
+        self._pinned_keys = set(keys)
+
+    def unpin(self):
+        self._pinned_keys = set()
 
     def on_starting(self):
         self.set('status', self._voice.on_starting() + ("\n(v%s)" % pwnagotchi.display_version()))
@@ -375,59 +391,60 @@ class View(object):
         self.set('status', self._voice.on_update_available(version))
         self.update(force=True)
 
+    # --- the following on_update_* calls all run while automatic-updates has
+    # the view pinned (see that plugin), so every write needs force=True to
+    # get through. The plain "in progress" stages below leave 'face' alone --
+    # the plugin's own animation loop owns it for those -- while the ones with
+    # a distinct face (checking/verifying deps, installed/restarting/failed)
+    # still set it directly, same as before.
+
     def on_update_cleaning(self):
-        self.set('face', faces.UPLOAD)
-        self.set('status', self._voice.on_update_cleaning())
+        self.set('status', self._voice.on_update_cleaning(), force=True)
         self.update(force=True)
 
     def on_update_installing(self, version):
-        self.set('face', faces.UPLOAD)
-        self.set('status', self._voice.on_update_installing(version))
+        self.set('status', self._voice.on_update_installing(version), force=True)
         self.update(force=True)
 
     def on_update_downloading(self, version):
-        self.set('face', faces.UPLOAD1)
-        self.set('status', self._voice.on_update_downloading(version))
+        self.set('status', self._voice.on_update_downloading(version), force=True)
         self.update(force=True)
 
     def on_update_extracting(self, version):
-        self.set('face', faces.UPLOAD2)
-        self.set('status', self._voice.on_update_extracting(version))
+        self.set('status', self._voice.on_update_extracting(version), force=True)
         self.update(force=True)
 
     def on_update_checking_deps(self):
-        self.set('face', faces.SMART)
-        self.set('status', self._voice.on_update_checking_deps())
+        self.set('face', faces.SMART, force=True)
+        self.set('status', self._voice.on_update_checking_deps(), force=True)
         self.update(force=True)
 
     def on_update_installing_deps(self):
-        self.set('face', faces.UPLOAD)
-        self.set('status', self._voice.on_update_installing_deps())
+        self.set('status', self._voice.on_update_installing_deps(), force=True)
         self.update(force=True)
 
     def on_update_installing_core(self):
-        self.set('face', faces.UPLOAD)
-        self.set('status', self._voice.on_update_installing_core())
+        self.set('status', self._voice.on_update_installing_core(), force=True)
         self.update(force=True)
 
     def on_update_verifying_deps(self):
-        self.set('face', faces.SMART)
-        self.set('status', self._voice.on_update_verifying_deps())
+        self.set('face', faces.SMART, force=True)
+        self.set('status', self._voice.on_update_verifying_deps(), force=True)
         self.update(force=True)
 
     def on_update_installed(self, version):
-        self.set('face', faces.COOL)
-        self.set('status', self._voice.on_update_installed(version))
+        self.set('face', faces.COOL, force=True)
+        self.set('status', self._voice.on_update_installed(version), force=True)
         self.update(force=True)
 
     def on_update_restarting(self):
-        self.set('face', faces.SLEEP)
-        self.set('status', self._voice.on_update_restarting())
+        self.set('face', faces.SLEEP, force=True)
+        self.set('status', self._voice.on_update_restarting(), force=True)
         self.update(force=True)
 
     def on_update_failed(self, version):
-        self.set('face', faces.BROKEN)
-        self.set('status', self._voice.on_update_failed(version))
+        self.set('face', faces.BROKEN, force=True)
+        self.set('status', self._voice.on_update_failed(version), force=True)
         self.update(force=True)
 
     def on_rebooting(self):
