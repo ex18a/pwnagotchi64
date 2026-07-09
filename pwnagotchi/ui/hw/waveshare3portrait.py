@@ -29,7 +29,7 @@ class WaveshareV3Portrait(DisplayImpl):
         self._layout['width'] = 122
         self._layout['height'] = 250
         self._layout['face'] = (0, 90)
-        self._layout['name'] = (13, 25)
+        self._layout['name'] = (4, 25)   # aligned with status's x so the two columns line up
         self._layout['channel'] = (5, 207)
         self._layout['aps'] = (40, 207)
         self._layout['uptime'] = (3, 3)
