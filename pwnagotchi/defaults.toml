@@ -10,7 +10,7 @@ main.mon_start_cmd = "/usr/bin/monstart"
 main.mon_stop_cmd = "/usr/bin/monstop"
 main.mon_max_blind_epochs = 5
 main.no_restart = false
-main.whitelist = ['home-wifi-name', 'example2',]  # cannot see or interact with theses wifi names
+main.whitelist = ['home-wifi-name', 'example2',]  # cannot see or interact with theses wifi names. if ai is enabled, seeing one of these also pauses ai (see personality.home_absent_epochs)
 main.filter = ""
 
 [main.log]
@@ -100,6 +100,7 @@ excited_num_epochs = 3
 bored_num_epochs = 4
 sad_num_epochs = 6
 bond_encounters_factor = 20000
+home_absent_epochs = 5         # epochs a whitelisted AP must be gone before AI is eligible to resume
 
 [ui]
 fps = 0.0

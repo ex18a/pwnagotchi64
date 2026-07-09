@@ -16,6 +16,8 @@ class Automata(object):
         # Track if the user originally wanted AI enabled
         self._ai_base_enabled = config.get('ai', {}).get('enabled', False)
         self._default_personality = copy.deepcopy(config['personality'])   # baseline snapshot
+        # consecutive epochs since a whitelisted AP was last seen (see set_bored-style AI toggle below)
+        self._home_absent_for = 0
 
     def _on_miss(self, who):
         logging.info("it looks like %s is not in range anymore :/", who)
@@ -136,13 +138,28 @@ class Automata(object):
             if self.mode == 'auto' and self.is_ai_paused():
                 self._restore_default_personality()
 
-            if self.mode == 'ai' and self._epoch.bored_for >= 1:
-                logging.info("[AI SLEEP] Pwnagotchi is Bored. Suspending AI and dropping to AUTO.")
+            # home-network guard: whitelisted APs are never attacked, but if any
+            # is currently visible we also treat that like being bored -- pause
+            # the AI and keep it down until none have been seen for
+            # personality.home_absent_epochs epochs in a row
+            whitelist = self._config['main']['whitelist']
+            home_visible = bool(whitelist) and self.is_whitelisted_ap_visible()
+            if whitelist:
+                self._home_absent_for = 0 if home_visible else self._home_absent_for + 1
+            home_absent_epochs = self._config['personality'].get('home_absent_epochs', 5)
+            home_on_cooldown = bool(whitelist) and self._home_absent_for < home_absent_epochs
+
+            if self.mode == 'ai' and (home_visible or self._epoch.bored_for >= 1):
+                if home_visible:
+                    logging.info("[AI SLEEP] Home network detected. Suspending AI and dropping to AUTO.")
+                else:
+                    logging.info("[AI SLEEP] Pwnagotchi is Bored. Suspending AI and dropping to AUTO.")
                 self.mode = 'auto'
                 self._view.set('mode', 'AUTO')
                 self.pause_ai()          # stops inference/training
 
-            elif self.mode == 'auto' and self._epoch.inactive_for == 0 and self._epoch.active_for > 0:
+            elif self.mode == 'auto' and not home_visible and not home_on_cooldown \
+                    and self._epoch.inactive_for == 0 and self._epoch.active_for > 0:
                 logging.info("[AI WAKE] Target engaged! Resuming AI mode.")
                 self.mode = 'ai'
                 self._view.set('mode', '  AI')

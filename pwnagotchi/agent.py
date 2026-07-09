@@ -66,6 +66,8 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         self._handshakes = {}
         self.last_session = LastSession(self._config)
         self.mode = 'auto'
+        # true if any whitelisted AP was visible as of the last get_access_points() call
+        self._whitelist_ap_visible = False
 
         if not os.path.exists(config['bettercap']['handshakes']):
             os.makedirs(config['bettercap']['handshakes'])
@@ -236,6 +238,12 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         try:
             s = self.session()
             plugins.on("unfiltered_ap_list", self, s['wifi']['aps'])
+            # checked against the unfiltered list, so this still catches whitelisted
+            # APs even though they never make it into the aps list below
+            self._whitelist_ap_visible = bool(whitelist) and any(
+                ap['hostname'] in whitelist or ap['mac'].lower() in whitelist or ap['mac'][:8].lower() in whitelist
+                for ap in s['wifi']['aps']
+            )
             for ap in s['wifi']['aps']:
                 if ap['encryption'] == '' or ap['encryption'] == 'OPEN':
                     continue
@@ -249,6 +257,9 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
 
         aps.sort(key=lambda ap: ap['channel'])
         return self.set_access_points(aps)
+
+    def is_whitelisted_ap_visible(self):
+        return self._whitelist_ap_visible
 
     def get_total_aps(self):
         return self._tot_aps
