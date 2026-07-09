@@ -29,7 +29,7 @@ class PortraitMode(plugins.Plugin):
 
     PORTRAIT_POSITIONS = {
         'ip1':              (0, 185),   # under the face, just above lifetime_trained (y=196)
-        'lifetime_trained': (5, 196),   # just above the channel/aps row (y=207)
+        'lifetime_trained': (0, 196),   # just above the channel/aps row (y=207)
         'memtemp_header':   (16, 157),
         'memtemp_data':     (16, 167),
         'sugar_lbl':        (70, 3),
