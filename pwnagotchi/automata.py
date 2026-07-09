@@ -151,11 +151,17 @@ class Automata(object):
             home_absent_epochs = self._config['personality'].get('home_absent_epochs', 5)
             home_on_cooldown = bool(whitelist) and self._home_absent_for < home_absent_epochs
 
-            if self.mode == 'ai' and (home_visible or self._epoch.bored_for >= 1):
-                if home_visible:
-                    logging.info("[AI SLEEP] Home network detected. Suspending AI and dropping to AUTO.")
-                else:
-                    logging.info("[AI SLEEP] Pwnagotchi is Bored. Suspending AI and dropping to AUTO.")
+            if home_visible and not self.is_ai_paused():
+                # gated on is_ai_paused() rather than mode == 'ai': mode can still be
+                # stuck on 'auto' here if the home network was already visible at
+                # boot, before the wake branch below ever got a chance to run
+                logging.info("[AI SLEEP] Home network detected. Suspending AI and dropping to AUTO.")
+                self.mode = 'auto'
+                self._view.set('mode', 'AUTO')
+                self.pause_ai()          # stops inference/training
+
+            elif self.mode == 'ai' and self._epoch.bored_for >= 1:
+                logging.info("[AI SLEEP] Pwnagotchi is Bored. Suspending AI and dropping to AUTO.")
                 self.mode = 'auto'
                 self._view.set('mode', 'AUTO')
                 self.pause_ai()          # stops inference/training
