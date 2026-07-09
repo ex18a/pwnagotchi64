@@ -103,11 +103,18 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         self.run('set wifi.handshakes.file %s' % self._config['bettercap']['handshakes'])
         self.run('set wifi.handshakes.aggregate false')
 
+    # consecutive failed monitor-interface start attempts before giving up
+    # and rebooting -- a single failed attempt used to raise straight out of
+    # this method uncaught, crashing the whole process (silently, since the
+    # systemd unit discards stderr) and losing the one-shot auto-mode flag
+    MAX_MON_START_ATTEMPTS = 5
+
     def start_monitor_mode(self):
         mon_iface = self._config['main']['iface']
         mon_start_cmd = self._config['main']['mon_start_cmd']
         restart = not self._config['main']['no_restart']
         has_mon = False
+        failed_attempts = 0
 
         while has_mon is False:
             s = self.session()
@@ -120,7 +127,20 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             if has_mon is False:
                 if mon_start_cmd is not None and mon_start_cmd != '':
                     logging.info("starting monitor interface ...")
-                    self.run('!%s' % mon_start_cmd)
+                    try:
+                        self.run('!%s' % mon_start_cmd)
+                        failed_attempts = 0
+                    except Exception as e:
+                        failed_attempts += 1
+                        logging.warning("failed to start monitor interface (attempt %d/%d): %s",
+                                         failed_attempts, self.MAX_MON_START_ATTEMPTS, e)
+                        if failed_attempts >= self.MAX_MON_START_ATTEMPTS:
+                            logging.critical(
+                                "monitor interface failed to start %d times in a row -- "
+                                "rebooting to clear driver state", failed_attempts)
+                            pwnagotchi.reboot(mode='AUTO')
+                            return
+                        time.sleep(3)
                 else:
                     logging.info("waiting for monitor interface %s ...", mon_iface)
                     time.sleep(1)
