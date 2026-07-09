@@ -95,4 +95,12 @@ class LabeledValue(Widget):
         else:
             pos = self.xy
             drawer.text(pos, self.label, font=self.label_font, fill=self.color)
-            drawer.text((pos[0] + self.label_spacing + 5 * len(self.label), pos[1]), self.value, font=self.text_font, fill=self.color)
+            # measure the label's *actual* rendered width instead of assuming
+            # a fixed 5px/char -- that assumption is wrong for most fonts
+            # (e.g. this UI's Bold is 6px/char), and the error compounds with
+            # label length, so longer labels end up crowding into the value
+            if self.label_font is not None:
+                label_width = self.label_font.getlength(self.label)
+            else:
+                label_width = 5 * len(self.label)
+            drawer.text((pos[0] + self.label_spacing + label_width, pos[1]), self.value, font=self.text_font, fill=self.color)

@@ -380,7 +380,7 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             shakes = self._view._state._state['shakes']
             mode = self._view._state._state['mode']
             # matches LabeledValue.draw()'s own value x-offset formula exactly
-            label_px = 5 + 5 * len(shakes.label)
+            label_px = shakes.label_spacing + shakes.label_font.getlength(shakes.label)
             available_px = mode.xy[0] - shakes.xy[0] - label_px
             value_budget = max(0, available_px // 6)  # 6px per monospace char
         except Exception:
