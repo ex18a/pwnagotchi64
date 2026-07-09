@@ -346,11 +346,38 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             logging.debug(f"[UI System] Could not read last handshake from disk: {e}")
             return None
 
+    def _format_shakes_text(self, session, tot):
+        # On portrait, 'shakes' (label "PWND ") and 'mode' share row y=223 with
+        # 'mode' starting at x=93 -- if the value grows too wide it draws right
+        # into the mode text. Preserve the lifetime total in full always, and
+        # cap the session count to whatever digits still fit, so the two never
+        # overlap regardless of how large either number gets.
+        total_str = str(tot)
+        session_str = str(session)
+        try:
+            if self._view._width != 122:
+                raise ValueError("not portrait")
+            shakes = self._view._state._state['shakes']
+            mode = self._view._state._state['mode']
+            # matches LabeledValue.draw()'s own value x-offset formula exactly
+            label_px = 5 + 5 * len(shakes.label)
+            available_px = mode.xy[0] - shakes.xy[0] - label_px
+            value_budget = max(0, available_px // 6)  # 6px per monospace char
+        except Exception:
+            value_budget = 0  # unknown/non-portrait layout -- don't truncate
+
+        overhead = 3  # " (" + ")"
+        session_budget = value_budget - overhead - len(total_str)
+        if value_budget and 0 < session_budget < len(session_str):
+            session_str = '9' * (session_budget - 1) + '+' if session_budget > 1 else '+'
+
+        return '%s (%s)' % (session_str, total_str)
+
     def _update_handshakes(self, new_shakes=0):
         if new_shakes > 0:
             self._epoch.track(handshake=True, inc=new_shakes)
         tot = utils.total_unique_handshakes(self._config['bettercap']['handshakes'])
-        txt = '%d (%d)' % (len(self._handshakes), tot)
+        txt = self._format_shakes_text(len(self._handshakes), tot)
         self._view.set('shakes', txt)
         try:
             shakes_x, shakes_y = self._view._state._state['shakes'].xy
