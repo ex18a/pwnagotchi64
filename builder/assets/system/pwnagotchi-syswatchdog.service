@@ -1,0 +1,7 @@
+[Unit]
+Description=pwnagotchi system-level watchdog (recovers from failures the Python process can't see or fix itself)
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/pwnagotchi-syswatchdog

@@ -156,10 +156,17 @@ chmod 755 /etc/pwnagotchi/
 echo "  -> [Chroot] Seeding initial config.toml..."
 cp /tmp/pwn_source/pwnagotchi/defaults.toml /etc/pwnagotchi/config.toml
 
+echo "  -> [Chroot] Installing system-level watchdog..."
+cp /tmp/system/pwnagotchi-syswatchdog /usr/bin/pwnagotchi-syswatchdog
+cp /tmp/system/pwnagotchi-syswatchdog.service /etc/systemd/system/pwnagotchi-syswatchdog.service
+cp /tmp/system/pwnagotchi-syswatchdog.timer /etc/systemd/system/pwnagotchi-syswatchdog.timer
+chmod +x /usr/bin/pwnagotchi-syswatchdog
+
 echo "  -> [Chroot] Registering systemd network unit configurations..."
 systemctl enable bettercap.service
 systemctl enable pwnagotchi.service
 systemctl enable pwngrid-peer.service
+systemctl enable pwnagotchi-syswatchdog.timer
 
 if ! id "$NEW_USER" &>/dev/null; then
     useradd -m -G sudo,video,input,netdev,plugdev -s /bin/bash "$NEW_USER"
