@@ -48,10 +48,12 @@ class Text(Widget):
         self.wrap = wrap
         self.max_length = max_length
         self.max_lines = max_lines
-        # optional trailing text drawn in its own font right after value --
-        # e.g. a cursor glyph that needs to be smaller than the main text
+        # optional extra text drawn in its own font, independent of value --
+        # e.g. a cursor glyph pinned to a fixed position regardless of how
+        # long value is. Defaults to right after value if suffix_xy is unset.
         self.suffix = suffix
         self.suffix_font = suffix_font
+        self.suffix_xy = None
         self.wrapper = TextWrapper(width=self.max_length, replace_whitespace=False) if wrap else None
 
     def draw(self, canvas, drawer):
@@ -70,8 +72,12 @@ class Text(Widget):
             drawer.text(self.xy, text, font=self.font, fill=self.color)
             if self.suffix:
                 suffix_font = self.suffix_font or self.font
-                offset_x = self.font.getlength(text)
-                drawer.text((self.xy[0] + offset_x, self.xy[1]), self.suffix, font=suffix_font, fill=self.color)
+                if self.suffix_xy is not None:
+                    suffix_pos = self.suffix_xy
+                else:
+                    offset_x = self.font.getlength(text)
+                    suffix_pos = (self.xy[0] + offset_x, self.xy[1])
+                drawer.text(suffix_pos, self.suffix, font=suffix_font, fill=self.color)
 
 
 class LabeledValue(Widget):
