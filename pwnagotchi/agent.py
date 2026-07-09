@@ -161,7 +161,19 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
 
         self.start_advertising()
 
+    # matches watchdog's own grace period for a bettercap-down check mid-run
+    # (see watchdog.py's _is_bettercap_still_down_after_grace_period)
+    BETTERCAP_WAIT_TIMEOUT = 60
+
     def _wait_bettercap(self):
+        # this runs before the first epoch, so watchdog's on_epoch-based
+        # bettercap-down detection never gets a chance to fire if bettercap
+        # never comes up at all (e.g. the wifi chip's firmware crashed and
+        # the SDIO card dropped off the bus -- confirmed on-device: bettercap
+        # can't even start without its interface, and no shell-level retry
+        # brings a vanished kernel device back, only a reboot does). Without
+        # a bound this loop waits forever and the device just sits there.
+        waited = 0
         while True:
             try:
                 _s = self.session()
@@ -169,6 +181,12 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             except Exception:
                 logging.info("waiting for bettercap API to be available ...")
                 time.sleep(1)
+                waited += 1
+                if waited >= self.BETTERCAP_WAIT_TIMEOUT:
+                    logging.critical(
+                        "bettercap API did not come up after %ds -- rebooting to recover", waited)
+                    pwnagotchi.reboot(mode='AUTO')
+                    return
 
     def start(self):
         self.start_ai()
