@@ -40,13 +40,18 @@ class FilledRect(Widget):
 
 
 class Text(Widget):
-    def __init__(self, value="", position=(0, 0), font=None, color=0, wrap=False, max_length=0, max_lines=0):
+    def __init__(self, value="", position=(0, 0), font=None, color=0, wrap=False, max_length=0, max_lines=0,
+                 suffix="", suffix_font=None):
         super().__init__(position, color)
         self.value = value
         self.font = font
         self.wrap = wrap
         self.max_length = max_length
         self.max_lines = max_lines
+        # optional trailing text drawn in its own font right after value --
+        # e.g. a cursor glyph that needs to be smaller than the main text
+        self.suffix = suffix
+        self.suffix_font = suffix_font
         self.wrapper = TextWrapper(width=self.max_length, replace_whitespace=False) if wrap else None
 
     def draw(self, canvas, drawer):
@@ -63,6 +68,10 @@ class Text(Widget):
                 if len(lines) > self.max_lines:
                     text = '\n'.join(lines[:self.max_lines])
             drawer.text(self.xy, text, font=self.font, fill=self.color)
+            if self.suffix:
+                suffix_font = self.suffix_font or self.font
+                offset_x = self.font.getlength(text)
+                drawer.text((self.xy[0] + offset_x, self.xy[1]), self.suffix, font=suffix_font, fill=self.color)
 
 
 class LabeledValue(Widget):

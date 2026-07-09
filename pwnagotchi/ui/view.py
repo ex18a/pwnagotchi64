@@ -150,33 +150,47 @@ class View(object):
     def _name_cursor_frame(self, base_name, cursor_on):
         # Portrait: center the name and pin the cursor to the screen's
         # rightmost character column instead of just trailing the name, so
-        # neither one moves as the name/cursor change.
-        if self._width == 122:
+        # neither one moves as the name/cursor change. The cursor is drawn
+        # in its own, smaller font -- the full block glyph is much taller/
+        # denser than the surrounding text at the same size, and an e-ink
+        # partial refresh visibly kicks back into the row when that much
+        # ink toggles right next to it, making the name appear to jitter
+        # up/down each time the cursor blinks.
+        name_elem = self._state._state.get('name')
+        if self._width == 122 and name_elem is not None:
             try:
                 # measure the *actual* font currently on the element, not an
                 # assumed pixel-per-char constant -- portrait-mode.py swaps
                 # this element's font out for its own size after layout()
                 # runs, so a hardcoded assumption here silently goes stale
-                font = self._state._state['name'].font
-                char_px = font.getlength('0')
-                if char_px <= 0:
+                main_font = name_elem.font
+                main_char_px = main_font.getlength('0')
+                if main_char_px <= 0:
                     raise ValueError("non-positive char width")
+                cursor_font = fonts.BoldSmall
+                cursor_px = cursor_font.getlength('█')
+
                 name_x = self._layout['name'][0]
                 avail_px = self._width - name_x
-                total_cols = max(1, int(avail_px // char_px))
-                # leave one extra spare column: the block cursor's ink bleeds
-                # ~1px past its nominal advance width on each side, so the
-                # literal last column isn't safe to use
-                name_area = max(0, total_cols - 2)
-                pad = max(0, name_area - len(base_name))
+                # reserve room for the (smaller) cursor glyph itself, plus a
+                # couple spare pixels for its ink bleed, then fit as many
+                # main-font columns as remain for the name
+                name_avail_px = max(0, avail_px - cursor_px - 2)
+                total_cols = max(1, int(name_avail_px // main_char_px))
+                pad = max(0, total_cols - len(base_name))
                 left = pad // 2
                 right = pad - left
-                cursor_char = '█' if cursor_on else ' '
-                return (' ' * left) + base_name + (' ' * right) + cursor_char
+
+                name_elem.suffix_font = cursor_font
+                name_elem.suffix = '█' if cursor_on else ''
+                return (' ' * left) + base_name + (' ' * right)
             except Exception:
                 pass  # fall through to the simple landscape-style framing below
 
-        # landscape (or portrait if measuring the font above failed): unchanged
+        # landscape (or portrait if measuring the fonts above failed): cursor
+        # baked directly into the string, same font as the name, as before
+        if name_elem is not None:
+            name_elem.suffix = ''
         return (base_name + ' █') if cursor_on else base_name
 
     def _refresh_handler(self):
