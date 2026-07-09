@@ -180,10 +180,8 @@ class View(object):
         return (base_name + ' █') if cursor_on else base_name
 
     def _refresh_handler(self):
-        fps = self._config['ui']['fps']
-        # a real fps still governs the blink rate if one's configured (e.g.
-        # a fast OLED/LCD); otherwise blink at a fixed, e-ink-friendly 1s rate
-        delay = 1.0 / fps if fps > 0 else 1.0
+        # cursor blink rate is its own setting, independent of fps
+        delay = self._config['ui'].get('cursor_interval', 3)
         cursor_on = False
         while True:
             try:

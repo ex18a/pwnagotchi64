@@ -105,6 +105,7 @@ home_absent_epochs = 5         # epochs a whitelisted AP must be gone before AI 
 [ui]
 fps = 0.0
 cursor = true                  # blink the cursor after the name -- independent of fps, safe to leave on for e-ink
+cursor_interval = 3            # seconds between blinks
 
 [ui.font]
 name = "DejaVuSansMono"  # for japanese: fonts-japanese-gothic
