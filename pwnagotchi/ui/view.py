@@ -150,20 +150,33 @@ class View(object):
     def _name_cursor_frame(self, base_name, cursor_on):
         # Portrait: center the name and pin the cursor to the screen's
         # rightmost character column instead of just trailing the name, so
-        # neither one moves as the name/cursor change. 6px/char is this
-        # font's actual measured glyph width at this size (DejaVuSansMono
-        # Bold 10pt), same assumption the shakes/mode fix relies on.
+        # neither one moves as the name/cursor change.
         if self._width == 122:
-            name_x = self._layout['name'][0]
-            total_cols = max(1, (self._width - name_x) // 6)
-            name_area = max(0, total_cols - 1)  # last column reserved for the cursor
-            pad = max(0, name_area - len(base_name))
-            left = pad // 2
-            right = pad - left
-            cursor_char = '█' if cursor_on else ' '
-            return (' ' * left) + base_name + (' ' * right) + cursor_char
+            try:
+                # measure the *actual* font currently on the element, not an
+                # assumed pixel-per-char constant -- portrait-mode.py swaps
+                # this element's font out for its own size after layout()
+                # runs, so a hardcoded assumption here silently goes stale
+                font = self._state._state['name'].font
+                char_px = font.getlength('0')
+                if char_px <= 0:
+                    raise ValueError("non-positive char width")
+                name_x = self._layout['name'][0]
+                avail_px = self._width - name_x
+                total_cols = max(1, int(avail_px // char_px))
+                # leave one extra spare column: the block cursor's ink bleeds
+                # ~1px past its nominal advance width on each side, so the
+                # literal last column isn't safe to use
+                name_area = max(0, total_cols - 2)
+                pad = max(0, name_area - len(base_name))
+                left = pad // 2
+                right = pad - left
+                cursor_char = '█' if cursor_on else ' '
+                return (' ' * left) + base_name + (' ' * right) + cursor_char
+            except Exception:
+                pass  # fall through to the simple landscape-style framing below
 
-        # landscape: unchanged from before
+        # landscape (or portrait if measuring the font above failed): unchanged
         return (base_name + ' █') if cursor_on else base_name
 
     def _refresh_handler(self):
