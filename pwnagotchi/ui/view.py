@@ -160,7 +160,7 @@ class View(object):
         return self._state.get(key)
 
     def on_starting(self):
-        self.set('status', self._voice.on_starting() + ("\n(v%s)" % pwnagotchi.__version__))
+        self.set('status', self._voice.on_starting() + ("\n(v%s)" % pwnagotchi.display_version()))
         self.set('face', faces.AWAKE)
         self.update()
 
