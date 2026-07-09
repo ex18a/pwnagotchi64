@@ -5,6 +5,7 @@ import requests
 import shutil
 import glob
 import time
+from datetime import datetime
 from threading import Lock
 
 import pwnagotchi
@@ -14,16 +15,23 @@ from pwnagotchi.utils import StatusFile, parse_version as version_to_tuple
 
 class AutomaticUpdates(plugins.Plugin):
     __author__ = 'ex18a'
-    __version__ = '1.0.1'
+    __version__ = '1.0.2'
     __name__ = 'automatic-updates'
     __license__ = 'GPL3'
     __description__ = ('Checks GitHub Releases on a configured fork and self-updates the '
                         'pwnagotchi package files when a newer tag is published.')
 
+    # hardcoded rather than a config option -- there's only ever one branch
+    # this cares about, and the /root/dev flag is what turns it on
+    DEV_BRANCH = 'dev'
+    DEV_FLAG_PATH = '/root/dev'
+
     def __init__(self):
         self.ready = False
         self.status = StatusFile('/root/.automatic-updates')
         self.lock = Lock()
+        self._sha_file = '/root/.automatic-updates-sha'
+        self._tmp_base_dir = '/tmp/automatic-updates'
 
     def on_loaded(self):
         missing = [k for k in ('repo', 'interval') if k not in self.options or not self.options[k]]
@@ -35,6 +43,12 @@ class AutomaticUpdates(plugins.Plugin):
         self.ready = True
         logging.info(f"[automatic-updates] watching {self.options['repo']} for new releases "
                      f"every {self.options['interval']}h (install={self.options['install']})")
+        if self._dev_mode():
+            logging.info(f"[automatic-updates] {self.DEV_FLAG_PATH} present -- also tracking "
+                         f"{self.options['repo']}@{self.DEV_BRANCH} for new commits")
+
+    def _dev_mode(self):
+        return os.path.exists(self.DEV_FLAG_PATH)
 
     def on_internet_available(self, agent):
         if not self.ready or self.lock.locked():
@@ -44,7 +58,7 @@ class AutomaticUpdates(plugins.Plugin):
             if self.status.newer_then_hours(self.options['interval']):
                 return
 
-            logging.info("[automatic-updates] checking for a new release ...")
+            logging.info("[automatic-updates] checking for updates ...")
 
             try:
                 info = self._check_latest()
@@ -54,32 +68,51 @@ class AutomaticUpdates(plugins.Plugin):
                     logging.debug("[automatic-updates] no update found")
                     return
 
-                logging.warning(f"[automatic-updates] update available: {info['current']} -> {info['available']}")
+                logging.warning(f"[automatic-updates] update available: {info['label']} ({info['kind']})")
 
                 if not self.options['install']:
-                    agent.view().on_update_available(info['available'])
+                    agent.view().on_update_available(info['label'])
                     return
 
-                logging.info(f"[automatic-updates] Installing {info['available']} ...")
-                agent.view().on_update_installing(info['available'])
+                logging.info(f"[automatic-updates] Installing {info['label']} ...")
+                agent.view().on_update_installing(info['label'])
 
                 if self._install(agent, info):
-                    logging.info(f"[automatic-updates] Installed {info['available']}, restarting service ...")
-                    agent.view().on_update_installed(info['available'])
+                    if info['kind'] == 'commit':
+                        with open(self._sha_file, 'w') as f:
+                            f.write(info['sha'])
+                    logging.info(f"[automatic-updates] Installed {info['label']}, restarting service ...")
+                    agent.view().on_update_installed(info['label'])
                     time.sleep(2)  # Let the user read the success message
                     logging.info("[automatic-updates] Restarting to apply update ...")
                     agent.view().on_update_restarting()
                     self._apply()
                     return  # process is about to be killed by the restart anyway
                 else:
-                    agent.view().on_update_failed(info['current'])
-                    logging.error(f"[automatic-updates] install of {info['available']} failed, staying on {info['current']}")
+                    agent.view().on_update_failed(info['label'])
+                    logging.error(f"[automatic-updates] install of {info['label']} failed")
                     time.sleep(10)  # Let the user read the failure message
 
             except Exception as e:
                 logging.error(f"[automatic-updates] {e}")
 
     def _check_latest(self):
+        release_candidate = self._check_latest_release()
+
+        if not self._dev_mode():
+            return release_candidate
+
+        commit_candidate = self._check_latest_commit()
+
+        if release_candidate and commit_candidate:
+            # both have something new -- install whichever is actually more recent
+            if release_candidate['published_at'] >= commit_candidate['published_at']:
+                return release_candidate
+            return commit_candidate
+
+        return release_candidate or commit_candidate
+
+    def _check_latest_release(self):
         repo = self.options['repo']
         resp = requests.get(f"https://api.github.com/repos/{repo}/releases/latest", timeout=15)
         if resp.status_code == 404:
@@ -95,30 +128,83 @@ class AutomaticUpdates(plugins.Plugin):
             return None
 
         return {
-            'repo': repo,
+            'kind': 'release',
+            'label': available,
             'current': current,
-            'available': available,
-            'tag': latest['tag_name'],
+            'published_at': datetime.fromisoformat(latest['published_at']),
             'zip_url': f"https://github.com/{repo}/archive/refs/tags/{latest['tag_name']}.zip",
         }
 
+    def _check_latest_commit(self):
+        repo = self.options['repo']
+        branch = self.DEV_BRANCH
+
+        resp = requests.get(
+            f"https://api.github.com/repos/{repo}/commits/{branch}",
+            timeout=15,
+            headers={'Accept': 'application/vnd.github.v3+json'}
+        )
+        if resp.status_code == 404:
+            return None
+        resp.raise_for_status()
+
+        data = resp.json()
+        sha = data['sha']
+        message = data['commit']['message'].split('\n')[0]
+        committed_at = datetime.fromisoformat(data['commit']['committer']['date'])
+
+        # Load last known SHA from disk so restarts don't lose state
+        last_sha = None
+        if os.path.exists(self._sha_file):
+            with open(self._sha_file, 'r') as f:
+                last_sha = f.read().strip()
+
+        # First run -- seed SHA to disk and don't trigger an install
+        if last_sha is None:
+            with open(self._sha_file, 'w') as f:
+                f.write(sha)
+            logging.info(f"[automatic-updates] seeded current dev SHA: {sha[:7]} - {message}")
+            return None
+
+        # No change
+        if sha == last_sha:
+            logging.debug(f"[automatic-updates] no new commits since {sha[:7]}")
+            return None
+
+        return {
+            'kind': 'commit',
+            'label': sha[:7],
+            'sha': sha,
+            'message': message,
+            'published_at': committed_at,
+            'zip_url': f"https://github.com/{repo}/archive/refs/heads/{branch}.zip",
+        }
+
     def _install(self, agent, info):
-        work_dir = f"/tmp/automatic-updates/{info['available']}"
-        if os.path.exists(work_dir):
-            shutil.rmtree(work_dir, ignore_errors=True)
+        # Previous attempts each leave their own /tmp/automatic-updates/<label>
+        # folder behind (zip + extracted source + pip build artifacts) and
+        # nothing ever cleaned those up -- wipe the whole parent dir here so
+        # every install starts from a clean, empty /tmp regardless of how
+        # many prior attempts have run before.
+        logging.info("[automatic-updates] Cleaning up tmp ...")
+        agent.view().on_update_cleaning()
+        if os.path.exists(self._tmp_base_dir):
+            shutil.rmtree(self._tmp_base_dir, ignore_errors=True)
+
+        work_dir = os.path.join(self._tmp_base_dir, info['label'])
         os.makedirs(work_dir)
 
         zip_path = os.path.join(work_dir, 'source.zip')
 
-        logging.info(f"[automatic-updates] Downloading {info['available']} ...")
-        agent.view().on_update_downloading(info['available'])
+        logging.info(f"[automatic-updates] Downloading {info['label']} ...")
+        agent.view().on_update_downloading(info['label'])
         r = requests.get(info['zip_url'], timeout=60)
         r.raise_for_status()
         with open(zip_path, 'wb') as fp:
             fp.write(r.content)
 
-        logging.info(f"[automatic-updates] Extracting {info['available']} ...")
-        agent.view().on_update_extracting(info['available'])
+        logging.info(f"[automatic-updates] Extracting {info['label']} ...")
+        agent.view().on_update_extracting(info['label'])
         shutil.unpack_archive(zip_path, work_dir, format='zip')
 
         source_dir = next((d for d in glob.glob(os.path.join(work_dir, '*')) if os.path.isdir(d)), None)
@@ -157,14 +243,14 @@ class AutomaticUpdates(plugins.Plugin):
                     env['DEBIAN_FRONTEND'] = 'noninteractive'
 
                     # Update apt sources first so it can actually find the packages
-                    update_result = subprocess.run(['apt-get', 'update'], capture_output=True, text=True, env=env)
+                    update_result = subprocess.run(['apt-get', 'update'], capture_output=True, text=True, env=env, timeout=120)
                     if update_result.returncode != 0:
                         logging.error(f"[automatic-updates] apt-get update failed: {update_result.stderr.strip()}")
                         return False
 
                     # Install only the packages that were actually missing
                     apt_cmd = ['apt-get', 'install', '-y'] + missing
-                    apt_result = subprocess.run(apt_cmd, capture_output=True, text=True, env=env)
+                    apt_result = subprocess.run(apt_cmd, capture_output=True, text=True, env=env, timeout=300)
 
                     if apt_result.returncode != 0:
                         logging.error(f"[automatic-updates] apt install failed: {apt_result.stderr.strip()}")
@@ -187,12 +273,32 @@ class AutomaticUpdates(plugins.Plugin):
 
         logging.info("[automatic-updates] Installing Python core ...")
         agent.view().on_update_installing_core()
-        result = subprocess.run(['pip3', 'install', '--break-system-packages', '--no-deps', '.'], cwd=source_dir,
-                                capture_output=True, text=True)
-        if result.returncode != 0:
-            logging.error(f"[automatic-updates] pip install failed: {result.stderr.strip()}")
+        logging.info("[automatic-updates] running pip install -- output goes to /tmp/pip-install.log")
+
+        # Write pip output to a log file instead of capturing it -- capturing
+        # into a pipe buffer and never reading it can deadlock once the
+        # output exceeds the OS pipe buffer size.
+        pip_log_path = '/tmp/pip-install.log'
+        try:
+            with open(pip_log_path, 'w') as pip_log:
+                result = subprocess.run(
+                    ['pip3', 'install', '--break-system-packages', '--no-deps', '.'],
+                    cwd=source_dir,
+                    stdout=pip_log,
+                    stderr=pip_log,
+                    timeout=300  # 5 minute hard limit
+                )
+            if result.returncode != 0:
+                with open(pip_log_path, 'r') as f:
+                    lines = f.readlines()
+                tail = ''.join(lines[-10:]).strip()
+                logging.error(f"[automatic-updates] pip install failed:\n{tail}")
+                return False
+        except subprocess.TimeoutExpired:
+            logging.error("[automatic-updates] pip install timed out after 5 minutes")
             return False
 
+        logging.info("[automatic-updates] pip install completed successfully")
         return True
 
     def _apply(self):
