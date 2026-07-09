@@ -1,7 +1,13 @@
+import time
 import logging
 import pwnagotchi.ui.fonts as fonts
 from pwnagotchi.ui.hw.base import DisplayImpl
 from PIL import Image
+
+# safety net for manual mode only: channel never becomes '*' there, so
+# _epoch_started() never fires and the screen would otherwise never get a
+# full refresh at all. Auto/ai keep using the epoch-count trigger untouched.
+FULL_REFRESH_INTERVAL = 15 * 60
 
 class WaveshareV3Portrait(DisplayImpl):
     def __init__(self, config):
@@ -10,6 +16,7 @@ class WaveshareV3Portrait(DisplayImpl):
         self._last_channel = None
         self._epoch_count = 0
         self._did_first_refresh = False
+        self._last_full_refresh = time.time()
         self.bg_color = 0xFF
         try:
             if config['ui']['display']['color'].lower() == 'white':
@@ -68,6 +75,16 @@ class WaveshareV3Portrait(DisplayImpl):
         # Full refresh every 3rd epoch
         return started and self._epoch_count % 3 == 0
 
+    def _is_manual_mode(self):
+        try:
+            import pwnagotchi.ui.view as view_module
+            root = view_module.ROOT
+            if root is None:
+                return False
+            return root.get('mode') == 'MANU'
+        except Exception:
+            return False
+
     def render(self, canvas):
         buf = self._display.getbuffer(canvas)
         # call unconditionally so its epoch-tracking side effects stay in sync,
@@ -76,8 +93,18 @@ class WaveshareV3Portrait(DisplayImpl):
         # is never properly set, and the screen stays washed out/ghosted until
         # the epoch-count condition eventually triggers a real one
         epoch_wants_refresh = self._epoch_started()
-        if not self._did_first_refresh or epoch_wants_refresh:
+
+        # manual mode never sets channel to '*', so _epoch_started() can never
+        # fire there -- fall back to a time-based refresh, but only in manual
+        # mode; auto/ai keep relying on the epoch-count trigger exactly as before
+        manual_wants_refresh = (
+            self._is_manual_mode()
+            and time.time() - self._last_full_refresh >= FULL_REFRESH_INTERVAL
+        )
+
+        if not self._did_first_refresh or epoch_wants_refresh or manual_wants_refresh:
             self._did_first_refresh = True
+            self._last_full_refresh = time.time()
             logging.info("Performing full screen refresh...")
             self._display.init()
             self._display.display(buf)
