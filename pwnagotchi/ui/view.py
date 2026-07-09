@@ -103,8 +103,16 @@ class View(object):
 
         plugins.on('ui_setup', self)
 
-        if config['ui']['fps'] > 0.0:
+        # the blinking name cursor used to only run as a side effect of the
+        # fps-based refresh loop, which forced e-ink users to raise fps (bad
+        # for the display) just to get it. It's its own config now, and
+        # forces its own redraw each tick so it works regardless of fps.
+        if config['ui'].get('cursor', True):
             _thread.start_new_thread(self._refresh_handler, ())
+        else:
+            logging.warning("ui.cursor is disabled, the name cursor will not blink")
+
+        if config['ui']['fps'] > 0.0:
             self._ignore_changes = ()
         else:
             logging.warning("ui.fps is 0, the display will only update for major changes")
@@ -138,12 +146,18 @@ class View(object):
             self._render_cbs.append(cb)
 
     def _refresh_handler(self):
-        delay = 1.0 / self._config['ui']['fps']
+        fps = self._config['ui']['fps']
+        # a real fps still governs the blink rate if one's configured (e.g.
+        # a fast OLED/LCD); otherwise blink at a fixed, e-ink-friendly 1s rate
+        delay = 1.0 / fps if fps > 0 else 1.0
         while True:
             try:
                 name = self._state.get('name')
                 self.set('name', name.rstrip('█').strip() if '█' in name else (name + ' █'))
-                self.update()
+                # force=True: bypasses ignore_changes, which normally skips
+                # redraws for 'name' alone when fps is 0 -- that's what made
+                # the cursor invisible without raising fps in the first place
+                self.update(force=True)
             except Exception as e:
                 logging.warning("non fatal error while updating view: %s" % e)
             time.sleep(delay)
