@@ -153,6 +153,7 @@ enabled = true
 rotation = 180
 type = "waveshare_4"
 color = "black"
+full_refresh_every = 50        # portrait drivers only: partial refreshes between each forced full one (resets e-ink fade)
 
 [bettercap]
 scheme = "http"
