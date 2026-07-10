@@ -76,10 +76,13 @@ class AutomaticUpdates(plugins.Plugin):
         def _loop():
             idx = 0
             while self._animating:
-                if not self._anim_paused:
-                    agent.view().set('face', self.PROGRESS_FACES[idx], force=True)
-                    agent.view().update(force=True)
-                    idx = (idx + 1) % len(self.PROGRESS_FACES)
+                try:
+                    if not self._anim_paused:
+                        agent.view().set('face', self.PROGRESS_FACES[idx], force=True)
+                        agent.view().update(force=True)
+                        idx = (idx + 1) % len(self.PROGRESS_FACES)
+                except Exception as e:
+                    logging.error(f"[automatic-updates] error while animating progress: {e}")
                 time.sleep(self.PROGRESS_FRAME_INTERVAL)
 
         self._anim_thread = Thread(target=_loop, daemon=True)

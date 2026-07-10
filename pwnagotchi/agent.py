@@ -522,7 +522,10 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
     def _history_decay_worker(self):
         while True:
             time.sleep(HISTORY_DECAY_CHECK_INTERVAL)
-            self._decay_history()
+            try:
+                self._decay_history()
+            except Exception as e:
+                logging.exception("error while decaying interaction history: %s" % e)
 
     def _decay_history(self):
         now = time.time()

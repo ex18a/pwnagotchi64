@@ -118,7 +118,16 @@ class Display(View):
         while True:
             self._canvas_next_event.wait()
             self._canvas_next_event.clear()
-            self._implementation.render(self._canvas_next)
+            try:
+                self._implementation.render(self._canvas_next)
+            except Exception as e:
+                # this thread drives the physical screen for the entire
+                # process lifetime -- a single bad render (SPI hiccup,
+                # transient driver error) used to kill it silently forever,
+                # freezing the display on whatever was last drawn while the
+                # rest of pwnagotchi kept running normally underneath it,
+                # with zero indication anything was wrong
+                logging.error("error while rendering: %s" % e)
 
     def _on_view_rendered(self, img):
         try:
