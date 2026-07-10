@@ -90,6 +90,17 @@ class AsyncTrainer(object):
     # in before the AI ever commits to one.
     MIN_EPOCHS_BEFORE_TRAINING = 10
 
+    # ai.load() can transiently fail for reasons that clear up on their own
+    # within seconds -- e.g. supported_channels() coming back empty because
+    # mon0 hasn't finished coming up yet at that exact instant, which makes
+    # the freshly-built action space not match a saved brain.nn that does
+    # have channel dimensions. Confirmed on-device: this happened right as
+    # a nexmon/mon0 dropout was being recovered from, and without a retry
+    # here the AI simply never started for the rest of that boot -- no
+    # crash, no log beyond the one failure, just silently inert.
+    AI_LOAD_MAX_ATTEMPTS = 5
+    AI_LOAD_RETRY_DELAY = 10
+
     def __init__(self, config):
         self._config = config
         self._model = None
@@ -189,7 +200,18 @@ class AsyncTrainer(object):
         plugins.on('ai_worst_reward', self, r)
 
     def _ai_worker(self):
-        self._model = ai.load(self._config, self, self._epoch)
+        self._model = False
+        for attempt in range(1, self.AI_LOAD_MAX_ATTEMPTS + 1):
+            self._model = ai.load(self._config, self, self._epoch)
+            if self._model:
+                break
+            if attempt < self.AI_LOAD_MAX_ATTEMPTS:
+                logging.warning("[ai] load attempt %d/%d failed, retrying in %ds ..." %
+                                 (attempt, self.AI_LOAD_MAX_ATTEMPTS, self.AI_LOAD_RETRY_DELAY))
+                time.sleep(self.AI_LOAD_RETRY_DELAY)
+            else:
+                logging.error("[ai] giving up after %d attempts, AI will not run this boot" %
+                               self.AI_LOAD_MAX_ATTEMPTS)
 
         if self._model:
             self.on_ai_ready()
