@@ -114,6 +114,20 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         self.run('set wifi.handshakes.file %s' % self._config['bettercap']['handshakes'])
         self.run('set wifi.handshakes.aggregate false')
 
+        # experimental: bettercap's own default is 250ms/channel during
+        # passive multi-channel recon, meaning brcmf_cfg80211_nexmon_set_channel
+        # (the exact function named in the original, still-unresolved
+        # evilsocket/pwnagotchi#267 "nexmon blindness bug") gets hammered
+        # continuously. Every nexmon firmware crash observed on this device
+        # so far happened during pure passive recon with zero deauth/assoc
+        # activity in flight, never mid-attack -- so slowing the hop rate
+        # down is a plausible, low-risk way to reduce how often that call
+        # path gets exercised. Not a confirmed fix, just the most concrete,
+        # evidence-based lever available short of patching bettercap itself.
+        hop_period = self._config['personality'].get('wifi_hop_period_ms', 250)
+        if hop_period != 250:
+            self.run('set wifi.hop.period %d' % hop_period)
+
     # consecutive failed monitor-interface start attempts before giving up
     # and rebooting -- a single failed attempt used to raise straight out of
     # this method uncaught, crashing the whole process (silently, since the

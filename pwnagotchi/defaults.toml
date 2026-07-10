@@ -101,6 +101,7 @@ bored_num_epochs = 4
 sad_num_epochs = 6
 bond_encounters_factor = 20000
 home_absent_epochs = 5         # epochs a whitelisted AP must be gone before AI is eligible to resume
+wifi_hop_period_ms = 250       # ms bettercap spends per channel during passive recon (bettercap default: 250) -- try raising this (e.g. 500-1000) if nexmon/mon0 crashes are frequent, see agent.py's _reset_wifi_settings()
 
 [ui]
 fps = 0.0
