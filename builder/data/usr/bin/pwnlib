@@ -79,6 +79,9 @@ is_interface_up() {
 }
 
 # returns 0 if conditions for AUTO mode are met
+# always boots AUTO regardless of usb0/eth0 state -- the only way to get
+# MANU is the explicit one-shot override file (e.g. from the web UI's
+# "restart in manual mode" action)
 is_auto_mode() {
   # check override file first
   if [ -f /root/.pwnagotchi-manual ]; then
@@ -94,17 +97,7 @@ is_auto_mode() {
     return 0
   fi
 
-  # if usb0 is up, we're in MANU
-  if is_interface_up usb0; then
-    return 1
-  fi
-
-  # if eth0 is up (for other boards), we're in MANU
-  if is_interface_up eth0; then
-    return 1
-  fi
-
-  # no override, but none of the interfaces is up -> AUTO
+  # no override -> AUTO
   return 0
 }
 
@@ -120,17 +113,7 @@ is_auto_mode_no_delete() {
     return 0
   fi
 
-  # if usb0 is up, we're in MANU
-  if is_interface_up usb0; then
-    return 1
-  fi
-
-  # if eth0 is up (for other boards), we're in MANU
-  if is_interface_up eth0; then
-    return 1
-  fi
-
-  # no override, but none of the interfaces is up -> AUTO
+  # no override -> AUTO
   return 0
 }
 
