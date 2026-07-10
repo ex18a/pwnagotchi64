@@ -53,14 +53,31 @@ reload_brcm() {
 start_monitor_interface() {
   rfkill unblock all
   iw dev wlan0 set power_save off
-  
+
   ifconfig wlan0 up
-  
-  iw phy "$(iw phy | head -1 | cut -d" " -f2)" interface add mon0 type monitor && ifconfig mon0 up
-  
+
+  if ip link show mon0 &>/dev/null; then
+    # mon0 already exists -- e.g. a plain 'systemctl restart pwnagotchi'
+    # doesn't tear it down first, it's still there from the previous
+    # process's start_monitor_mode(). This chipset's driver only supports
+    # one monitor interface at a time, so trying to add a second "mon0"
+    # fails every time with "command failed: Operation not supported (-95)",
+    # not "already exists" -- confirmed by reproducing it directly. That
+    # used to burn all 5 of agent.py's start_monitor_mode() retries and
+    # force a full reboot on every restart after the first. Just bring the
+    # existing one up instead of trying to add it again.
+    ifconfig mon0 up
+  else
+    iw phy "$(iw phy | head -1 | cut -d" " -f2)" interface add mon0 type monitor && ifconfig mon0 up
+  fi
+
   # If wlan0 is NOT taken down after bringing up mon0, then when switching to AUTO you will get:
   # error 400: error while initializing mon0 to channel 1: iw: out=command failed: Device or resource busy (-16) err=exit status 240
   ifconfig wlan0 down
+
+  # reflect whether mon0 actually ended up present and up, rather than
+  # whatever the last command above happened to exit with
+  ip link show mon0 up &>/dev/null
 }
 
 # stops mon0
