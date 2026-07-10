@@ -66,8 +66,14 @@ class HashVault(plugins.Plugin):
         filename = os.path.basename(pcap_path)
         hash_filename = filename.replace('.pcap', '.22000')
         output_hash = os.path.join(self.hash_dir, hash_filename)
+        # a pcap with no full handshake in it never gets an output_hash
+        # written, so without tracking that a conversion was already tried
+        # and came up empty, _startup_cleanup() re-attempts it on literally
+        # every single boot forever -- this marker remembers "already
+        # tried, no handshake in it" so it's only ever attempted once
+        failed_marker = output_hash + '.noshake'
 
-        if os.path.exists(output_hash):
+        if os.path.exists(output_hash) or os.path.exists(failed_marker):
             return
 
         logging.info(f"[HashVault] Analyzing: {filename}")
@@ -79,6 +85,11 @@ class HashVault(plugins.Plugin):
 
         if os.path.exists(output_hash):
             logging.info(f"[HashVault] Vaulted: {hash_filename}")
+        else:
+            try:
+                open(failed_marker, 'w').close()
+            except Exception:
+                pass
 
         if current_mtime is None:
             try:
