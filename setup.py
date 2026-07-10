@@ -51,6 +51,16 @@ def restart_services():
     # start getting covered right away, not just on its next reboot
     os.system("systemctl enable --now pwnagotchi-syswatchdog.timer")
 
+    # opt-in only: pwnagotchi-soaktest deliberately reboots a healthy device
+    # every hour, which is only ever wanted for overnight soak-testing on a
+    # specific device -- never as default behavior for every user. Enabled
+    # only if /root/.soaktest exists, disabled (not just left alone)
+    # otherwise so removing that flag file actually turns it back off.
+    if os.path.exists('/root/.soaktest'):
+        os.system("systemctl enable --now pwnagotchi-soaktest.timer")
+    else:
+        os.system("systemctl disable --now pwnagotchi-soaktest.timer")
+
 class CustomInstall(install):
     def run(self):
         super().run()
