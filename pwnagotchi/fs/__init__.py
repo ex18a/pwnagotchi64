@@ -146,7 +146,10 @@ class MemoryFS:
     def daemonize(self, interval=60):
         logging.debug("[FS] Daemonized...")
         while True:
-            self.sync()
+            try:
+                self.sync()
+            except Exception as e:
+                logging.exception("[FS] error while syncing %s: %s" % (self.mountpoint, e))
             sleep(interval)
 
 
