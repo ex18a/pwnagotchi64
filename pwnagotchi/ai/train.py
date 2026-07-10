@@ -213,19 +213,36 @@ class AsyncTrainer(object):
                 was_paused = False
                 self._render_env_safe()
 
-                if self._epoch.epoch >= self.MIN_EPOCHS_BEFORE_TRAINING and random.random() > self._config['ai']['laziness']:
-                    logging.info("[ai] learning for %d epochs ..." % epochs_per_episode)
-                    try:
-                        self.set_training(True, epochs_per_episode)
-                        self._model.learn(total_timesteps=epochs_per_episode, callback=self.on_ai_training_step)
-                    except Exception as e:
-                        logging.exception("[ai] error while training (%s)", e)
-                    finally:
-                        self.set_training(False)
+                # this whole block -- including plain predict()/step(), not just
+                # learn() -- ends up calling on_ai_policy(), which pushes settings
+                # to bettercap over its API. A transient bettercap hiccup there
+                # used to raise straight out of this method uncaught; since this
+                # runs on a bare _thread (not threading.Thread), an uncaught
+                # exception here silently kills the whole AI worker for the rest
+                # of the process's life -- no crash log, no restart, nothing (the
+                # traceback goes to stderr, which the systemd unit discards) --
+                # the AI just permanently stops updating its policy until next
+                # boot. Confirmed on-device: a policy set right after boot, then
+                # nothing for the next ~24 epochs/38 minutes, until the next
+                # restart. predict()/step() run unguarded on every epoch before
+                # MIN_EPOCHS_BEFORE_TRAINING is reached (learn() never even gets
+                # called yet), so this window is hit on every single boot.
+                try:
+                    if self._epoch.epoch >= self.MIN_EPOCHS_BEFORE_TRAINING and random.random() > self._config['ai']['laziness']:
+                        logging.info("[ai] learning for %d epochs ..." % epochs_per_episode)
+                        try:
+                            self.set_training(True, epochs_per_episode)
+                            self._model.learn(total_timesteps=epochs_per_episode, callback=self.on_ai_training_step)
+                        finally:
+                            self.set_training(False)
+                            obs = self._model.env.reset()
+
+                    elif obs is None:
                         obs = self._model.env.reset()
 
-                elif obs is None:
-                    obs = self._model.env.reset()
-
-                action, _ = self._model.predict(obs)
-                obs, _, _, _ = self._model.env.step(action)
+                    action, _ = self._model.predict(obs)
+                    obs, _, _, _ = self._model.env.step(action)
+                except Exception as e:
+                    logging.exception("[ai] error during AI step (%s)", e)
+                    obs = None
+                    time.sleep(1)
