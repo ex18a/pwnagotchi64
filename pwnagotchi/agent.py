@@ -83,6 +83,17 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         return self._view
 
     def supported_channels(self):
+        # this is first populated in __init__, which runs before
+        # start_monitor_mode() has necessarily brought mon_iface up yet --
+        # if the interface didn't exist at that exact moment, iface_channels()
+        # silently returns [] and (without this) that empty result would be
+        # cached forever for the rest of the process's life, permanently
+        # starving the AI's action space of any channel parameters and
+        # making its saved brain.nn fail to load on every future boot until
+        # the next lucky race. Retry here instead of trusting the one-shot
+        # value from construction time.
+        if not self._supported_channels:
+            self._supported_channels = utils.iface_channels(self._config['main']['iface'])
         return self._supported_channels
 
     def setup_events(self):
@@ -145,7 +156,7 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
                     logging.info("waiting for monitor interface %s ...", mon_iface)
                     time.sleep(1)
 
-        logging.info("supported channels: %s", self._supported_channels)
+        logging.info("supported channels: %s", self.supported_channels())
         logging.info("handshakes will be collected inside %s", self._config['bettercap']['handshakes'])
 
         self._reset_wifi_settings()

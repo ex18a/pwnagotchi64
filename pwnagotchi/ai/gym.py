@@ -38,7 +38,12 @@ class Environment(gym.Env):
         self._extended_spectrum = any(ch > 140 for ch in self._supported_channels)
         self._histogram_size, self._observation_shape = featurizer.describe(self._extended_spectrum)
 
-        Environment.params += [
+        # instance attribute, not Environment.params -- that's a shared
+        # class-level list, and appending the per-device channel params to
+        # it in-place would duplicate (or, if supported_channels() came back
+        # empty due to the interface not being up yet, permanently omit) them
+        # on every subsequent Environment() constructed in the same process
+        self.params = Environment.params + [
             Parameter('_channel_%d' % ch, min_value=0, max_value=1, meta=ch + 1) for ch in
             range(self._histogram_size) if ch + 1 in self._supported_channels
         ]
@@ -52,25 +57,23 @@ class Environment(gym.Env):
             'state_v': None
         }
 
-        self.action_space = spaces.MultiDiscrete([p.space_size() for p in Environment.params if p.trainable])
+        self.action_space = spaces.MultiDiscrete([p.space_size() for p in self.params if p.trainable])
         self.observation_space = spaces.Box(low=0, high=1, shape=self._observation_shape, dtype=np.float32)
         self.reward_range = reward.range
 
-    @staticmethod
-    def policy_size():
-        return len(list(p for p in Environment.params if p.trainable))
+    def policy_size(self):
+        return len(list(p for p in self.params if p.trainable))
 
-    @staticmethod
-    def policy_to_params(policy):
+    def policy_to_params(self, policy):
         num = len(policy)
         params = {}
 
-        assert len(Environment.params) == num
+        assert len(self.params) == num
 
         channels = []
 
         for i in range(num):
-            param = Environment.params[i]
+            param = self.params[i]
 
             if '_channel' not in param.name:
                 params[param.name] = param.to_param_value(policy[i])
@@ -88,7 +91,7 @@ class Environment(gym.Env):
         return self._epoch.wait_for_epoch_data()
 
     def _apply_policy(self, policy):
-        new_params = Environment.policy_to_params(policy)
+        new_params = self.policy_to_params(policy)
         self.last['policy'] = policy
         self.last['params'] = new_params
         self._agent.on_ai_policy(new_params)
