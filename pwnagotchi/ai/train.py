@@ -201,6 +201,17 @@ class AsyncTrainer(object):
 
     def _ai_worker(self):
         self._model = False
+
+        # ai.load() returning False because ai.enabled=false in config is
+        # not a failure worth retrying -- it's never going to succeed by
+        # design, so retrying it just burns AI_LOAD_MAX_ATTEMPTS *
+        # AI_LOAD_RETRY_DELAY seconds logging a misleading "load attempt
+        # failed, retrying" warning for something that isn't actually a
+        # transient hiccup at all.
+        if not self._config['ai']['enabled']:
+            ai.load(self._config, self, self._epoch)  # logs "ai disabled" and returns False
+            return
+
         for attempt in range(1, self.AI_LOAD_MAX_ATTEMPTS + 1):
             self._model = ai.load(self._config, self, self._epoch)
             if self._model:
