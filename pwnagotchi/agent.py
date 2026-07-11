@@ -114,19 +114,19 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         self.run('set wifi.handshakes.file %s' % self._config['bettercap']['handshakes'])
         self.run('set wifi.handshakes.aggregate false')
 
-        # experimental: bettercap's own default is 250ms/channel during
-        # passive multi-channel recon, meaning brcmf_cfg80211_nexmon_set_channel
-        # (the exact function named in the original, still-unresolved
-        # evilsocket/pwnagotchi#267 "nexmon blindness bug") gets hammered
-        # continuously. Every nexmon firmware crash observed on this device
-        # so far happened during pure passive recon with zero deauth/assoc
-        # activity in flight, never mid-attack -- so slowing the hop rate
-        # down is a plausible, low-risk way to reduce how often that call
-        # path gets exercised. Not a confirmed fix, just the most concrete,
-        # evidence-based lever available short of patching bettercap itself.
+        # bettercap's own default is 250ms/channel during passive
+        # multi-channel recon; configurable here in case a slower hop rate
+        # is ever wanted again (e.g. as a nexmon-crash mitigation
+        # experiment -- see git history). Always issued, even when it
+        # equals bettercap's own default: skipping the call specifically
+        # when it matched 250 (the old behavior here) meant a *previous*
+        # boot's non-default value could never be reverted back to 250,
+        # since bettercap has no way to know the config changed back
+        # without being told again -- confirmed live on-device: set to
+        # 750 one boot, changed back to 250 in config, bettercap stayed
+        # at 750 across the next restart because this line never re-ran.
         hop_period = self._config['personality'].get('wifi_hop_period_ms', 250)
-        if hop_period != 250:
-            self.run('set wifi.hop.period %d' % hop_period)
+        self.run('set wifi.hop.period %d' % hop_period)
 
     # consecutive failed monitor-interface start attempts before giving up
     # and rebooting -- a single failed attempt used to raise straight out of
