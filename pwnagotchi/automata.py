@@ -20,6 +20,13 @@ class Automata(object):
         # starts past the threshold so a fresh boot that never sees the home network
         # doesn't impose an artificial cooldown on the normal wake-on-activity path
         self._home_absent_for = config['personality'].get('home_absent_epochs', 5)
+        # min consecutive active epochs required before AI wakes back up from a
+        # bored-triggered AUTO pause -- without this, a single deauth/assoc
+        # attempt against one faint, unattackable-in-practice AP (anything
+        # above min_rssi counts, however marginal) was enough to flip straight
+        # back to AI, undoing the whole point of pausing on boredom in the
+        # first place
+        self._ai_wake_epochs = config['personality'].get('ai_wake_epochs', 2)
 
     def _on_miss(self, who):
         logging.info("it looks like %s is not in range anymore :/", who)
@@ -167,7 +174,7 @@ class Automata(object):
                 self.pause_ai()          # stops inference/training -- see comment above
 
             elif self.mode == 'auto' and not home_visible and not home_on_cooldown \
-                    and self._epoch.inactive_for == 0 and self._epoch.active_for > 0:
+                    and self._epoch.inactive_for == 0 and self._epoch.active_for >= self._ai_wake_epochs:
                 logging.info("[AI WAKE] Target engaged! Resuming AI mode.")
                 self.mode = 'ai'
                 self._view.set('mode', '  AI')
