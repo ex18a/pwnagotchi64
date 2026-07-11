@@ -13,22 +13,24 @@ import warnings
 
 log = logging.getLogger(__name__)
 
-# Kali's apt-packaged bettercap has a real, unpatched, still-open upstream
-# bug (bettercap/bettercap#803): Station.WPS (a map[string]string) is
-# written from the packet-processing goroutine with zero synchronization
-# while being read concurrently by AccessPoint.MarshalJSON() every time the
-# REST API streams an event -- confirmed on-device to panic and crash the
-# whole bettercap process under real deauth-heavy traffic. Fixed in
+# Kali's apt-packaged bettercap has real, unpatched, still-open upstream
+# concurrency bugs (bettercap/bettercap#803 and a related, previously
+# unreported one): several Station fields (WPS, and separately
+# Encryption/Cipher/Authentication) are written from the packet-processing
+# goroutine with zero synchronization while being read concurrently by
+# AccessPoint.MarshalJSON() every time the REST API streams an event --
+# confirmed on-device to panic and crash the whole bettercap process under
+# real deauth-heavy traffic, twice, on two different fields. Fixed in
 # ex18a/bettercap (see branch pwnagotchi-wps-fix for the root-cause
 # writeup); this installs that patched arm64 build in place of whatever
 # apt-requirements.txt pulled in, rather than trying to get the fix
 # upstream into Kali's package first.
-BETTERCAP_PATCH_VERSION = "v2.41.5-pwnagotchi1"
+BETTERCAP_PATCH_VERSION = "v2.41.5-pwnagotchi2"
 BETTERCAP_PATCH_URL = (
     "https://github.com/ex18a/bettercap/releases/download/"
-    f"{BETTERCAP_PATCH_VERSION}/bettercap-arm64-pwnagotchi1"
+    f"{BETTERCAP_PATCH_VERSION}/bettercap-arm64-pwnagotchi2"
 )
-BETTERCAP_PATCH_SHA256 = "32648cb8709b4424231ee691d5b2f24ac10f31acd26a7bced6527c9f51bcf6a4"
+BETTERCAP_PATCH_SHA256 = "ac208c2c31b49407f210f7fe791bb418339bde27f70daac2b03a587f83799099"
 
 def install_file(source_filename, dest_filename):
     # do not overwrite network configuration if it exists already
