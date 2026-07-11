@@ -3,13 +3,32 @@
 from setuptools import setup, find_packages
 from setuptools.command.install import install
 import glob
+import hashlib
 import logging
 import os
 import re
 import shutil
+import urllib.request
 import warnings
 
 log = logging.getLogger(__name__)
+
+# Kali's apt-packaged bettercap has a real, unpatched, still-open upstream
+# bug (bettercap/bettercap#803): Station.WPS (a map[string]string) is
+# written from the packet-processing goroutine with zero synchronization
+# while being read concurrently by AccessPoint.MarshalJSON() every time the
+# REST API streams an event -- confirmed on-device to panic and crash the
+# whole bettercap process under real deauth-heavy traffic. Fixed in
+# ex18a/bettercap (see branch pwnagotchi-wps-fix for the root-cause
+# writeup); this installs that patched arm64 build in place of whatever
+# apt-requirements.txt pulled in, rather than trying to get the fix
+# upstream into Kali's package first.
+BETTERCAP_PATCH_VERSION = "v2.41.5-pwnagotchi1"
+BETTERCAP_PATCH_URL = (
+    "https://github.com/ex18a/bettercap/releases/download/"
+    f"{BETTERCAP_PATCH_VERSION}/bettercap-arm64-pwnagotchi1"
+)
+BETTERCAP_PATCH_SHA256 = "32648cb8709b4424231ee691d5b2f24ac10f31acd26a7bced6527c9f51bcf6a4"
 
 def install_file(source_filename, dest_filename):
     # do not overwrite network configuration if it exists already
@@ -26,6 +45,75 @@ def install_file(source_filename, dest_filename):
     shutil.copyfile(source_filename, dest_filename)
     if dest_filename.startswith("/usr/bin/"):
         os.chmod(dest_filename, 0o755)
+
+def _sha256_of(path):
+    h = hashlib.sha256()
+    with open(path, 'rb') as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b''):
+            h.update(chunk)
+    return h.hexdigest()
+
+def install_patched_bettercap():
+    bettercap_path = "/usr/bin/bettercap"
+
+    # Compare the *live binary's own hash* rather than trusting a separate
+    # version-marker file -- self-healing if anything else (an apt upgrade,
+    # a manual reinstall) ever silently reverts /usr/bin/bettercap back to
+    # stock, and naturally a no-op on every unrelated dev-branch commit
+    # once the patch is already in place, without needing to re-download
+    # ~75MB on every single auto-update.
+    if os.path.exists(bettercap_path):
+        try:
+            if _sha256_of(bettercap_path) == BETTERCAP_PATCH_SHA256:
+                return
+        except Exception as e:
+            log.warning(f"could not hash existing bettercap binary, reinstalling to be safe: {e}")
+
+    log.info(f"installing patched bettercap {BETTERCAP_PATCH_VERSION} (fixes bettercap/bettercap#803) ...")
+    tmp_path = "/tmp/bettercap-pwnagotchi-patch"
+    try:
+        urllib.request.urlretrieve(BETTERCAP_PATCH_URL, tmp_path)
+
+        digest = _sha256_of(tmp_path)
+        if digest != BETTERCAP_PATCH_SHA256:
+            log.error(f"patched bettercap checksum mismatch (expected {BETTERCAP_PATCH_SHA256}, got {digest}) -- "
+                       "keeping existing binary, not installing")
+            return
+
+        # keep exactly one backup of whatever was there before our first
+        # patch install (almost always the apt-packaged stock binary) --
+        # if this already exists, a prior run already made it, so don't
+        # clobber it with what might by now be our own patched binary
+        stock_backup = bettercap_path + ".stock-backup"
+        if os.path.exists(bettercap_path) and not os.path.exists(stock_backup):
+            shutil.copy2(bettercap_path, stock_backup)
+
+        shutil.move(tmp_path, bettercap_path)
+        os.chmod(bettercap_path, 0o755)
+
+        # the go-built binary's default caplet search path
+        # (/usr/local/share/bettercap/caplets/) differs from where the apt
+        # package and this repo's own builder/assets/bettercap/*.cap get
+        # installed (/usr/share/bettercap/caplets/) -- confirmed on-device
+        # this binary otherwise fails to start with "caplet
+        # pwnagotchi-auto.cap not found". Duplicate the caplets already on
+        # disk into the second location rather than changing where they're
+        # installed from, so nothing else needs to change.
+        caplets_src = "/usr/share/bettercap/caplets"
+        caplets_dst = "/usr/local/share/bettercap/caplets"
+        if os.path.isdir(caplets_src):
+            os.makedirs(caplets_dst, exist_ok=True)
+            for fname in ("pwnagotchi-auto.cap", "pwnagotchi-manual.cap"):
+                src = os.path.join(caplets_src, fname)
+                if os.path.exists(src):
+                    shutil.copy2(src, os.path.join(caplets_dst, fname))
+
+        log.info(f"patched bettercap {BETTERCAP_PATCH_VERSION} installed.")
+    except Exception as e:
+        log.error(f"failed to install patched bettercap: {e} -- keeping existing binary")
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
 def install_system_files():
     setup_path = os.path.dirname(__file__)
@@ -70,6 +158,12 @@ class CustomInstall(install):
             )
             return
         install_system_files()
+        # deliberately not gated behind restart_services()'s chroot/Docker
+        # guard -- downloading and swapping a binary needs no running
+        # systemd, so this must also apply during a fresh image build
+        # (builder/pwnagotchi.sh runs this same `pip install` inside a
+        # qemu-aarch64-static chroot, no systemd PID 1 present there)
+        install_patched_bettercap()
         restart_services()
 
 def version(version_file):

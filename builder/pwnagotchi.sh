@@ -140,13 +140,25 @@ python3 -m pip install --break-system-packages --no-cache-dir --ignore-installed
 echo "  -> [Chroot] Installing unified Python dependencies & Modern AI Environment..."
 python3 -m pip install --break-system-packages --no-cache-dir -r /tmp/pwn_source/requirements.txt
 
-echo "  -> [Chroot] Installing Pwnagotchi core..."
-python3 -m pip install --break-system-packages --no-deps /tmp/pwnagotchi64-${VERSION}.tar.gz
-
 echo "  -> [Chroot] Configuring Bettercap caplets..."
+# must happen BEFORE "Installing Pwnagotchi core" below -- that pip install
+# runs setup.py's install_patched_bettercap(), which duplicates whatever
+# caplets already exist at /usr/share/bettercap/caplets/ into the patched
+# (go-built) binary's own default search path. If these haven't been
+# copied in yet at that point, the patched binary starts with no caplets
+# to find at all.
 mkdir -p /usr/share/bettercap/caplets
 cp /tmp/bettercap_assets/pwnagotchi-manual.cap /usr/share/bettercap/caplets/
 cp /tmp/bettercap_assets/pwnagotchi-auto.cap /usr/share/bettercap/caplets/
+
+echo "  -> [Chroot] Installing Pwnagotchi core..."
+# this pip install also downloads and installs a patched bettercap build
+# (fixes bettercap/bettercap#803, a real upstream crash) in place of the
+# apt-packaged one from apt-requirements.txt -- see
+# install_patched_bettercap() in setup.py for the actual logic; nothing
+# further is needed here since setup.py's CustomInstall runs on every
+# `pip install`, including this one.
+python3 -m pip install --break-system-packages --no-deps /tmp/pwnagotchi64-${VERSION}.tar.gz
 
 chmod +x /usr/bin/pwnagotchi-launcher /usr/bin/bettercap-launcher /usr/bin/monstart /usr/bin/monstop
 
