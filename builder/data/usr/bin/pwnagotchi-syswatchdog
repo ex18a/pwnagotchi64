@@ -17,6 +17,9 @@ WATCHDOG_LOG="/var/log/pwnagotchi-syswatchdog.log"
 BOOT_GRACE_SECONDS=300       # don't act on anything for the first 5 min after boot
 LOG_STALE_SECONDS=600        # pwnagotchi.log should never go this long with no write
 BETTERCAP_MAX_RESTARTS=3     # more than this while currently inactive = crash-looping
+CPU_TEMP_MAX_C=60            # normal running temp is under 50C -- 80C+ has been seen
+                              # during bad bluetooth tether sessions; this is a blunt
+                              # safety net, not a diagnosis of the actual cause
 
 log() {
     logger -t pwnagotchi-syswatchdog "$1"
@@ -46,6 +49,17 @@ reboot_with_reason() {
 
 uptime_seconds=$(awk '{print int($1)}' /proc/uptime)
 if [ "$uptime_seconds" -lt "$BOOT_GRACE_SECONDS" ]; then
+    exit 0
+fi
+
+# CPU overtemp: same thermal_zone0 source pwnagotchi.temperature() reads, checked
+# independently of whether pwnagotchi/bettercap are even responsive -- this is a
+# hardware safety net, not tied to any particular cause (e.g. bluetooth tethering
+# contention on the wifi/bt combo chip)
+temp_millic=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null || echo 0)
+temp_c=$(( temp_millic / 1000 ))
+if [ "$temp_c" -ge "$CPU_TEMP_MAX_C" ]; then
+    reboot_with_reason "CPU temp ${temp_c}C >= ${CPU_TEMP_MAX_C}C -- rebooting to be safe"
     exit 0
 fi
 
