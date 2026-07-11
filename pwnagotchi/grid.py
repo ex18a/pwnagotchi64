@@ -1,5 +1,4 @@
 import subprocess
-import socket
 import requests
 import json
 import logging
@@ -11,9 +10,21 @@ import pwnagotchi
 # pwngrid-peer is running on port 8666
 API_ADDRESS = "http://127.0.0.1:8666/api/v1"
 
-# THE BOOT DELAY FIX
-# Set the timer to the exact moment the Pi powers on and loads the plugin!
-LAST_RESTART_TIME = time.time()
+# Cooldown between automatic pwngrid-peer restarts, so a burst of failed
+# calls while it's down doesn't trigger a restart storm.
+_RESTART_COOLDOWN = 180
+_last_restart_time = 0.0
+_restart_lock = threading.Lock()
+
+# Endpoints whose response is a list rather than an object -- used to pick
+# a safe fallback value when a call fails, so callers never have to
+# separately handle "call failed" as a distinct case from "call succeeded
+# with an empty result".
+_LIST_ENDPOINTS = ("peers", "memory", "inbox")
+
+
+def _safe_default(path):
+    return [] if any(marker in path for marker in _LIST_ENDPOINTS) else {}
 
 
 def is_connected():
@@ -25,43 +36,26 @@ def is_connected():
         return False
 
 
-def _auto_heal_grid():
-    def heal_task():
-        try:
-            logging.warning("[Grid Auto-Heal] 422 Detected. Stopping corrupted pwngrid-peer...")
-            subprocess.run(['sudo', 'systemctl', 'stop', 'pwngrid-peer'])
-
-            logging.warning("[Grid Auto-Heal] Nudging corrupted database into the void...")
-            subprocess.run(['sudo', 'rm', '-rf', '/root/.pwngrid/'])
-
-            logging.warning("[Grid Auto-Heal] Booting fresh pwngrid-peer instance...")
-            subprocess.run(['sudo', 'systemctl', 'start', 'pwngrid-peer'])
-
-            logging.info("[Grid Auto-Heal] Database factory reset complete!")
-        except Exception as e:
-            logging.error(f"[Grid Auto-Heal] Failed to execute recovery sequence: {e}")
-
-    # Launch this in background so the UI ticker doesn't freeze waiting for systemctl!
-    heal_thread = threading.Thread(target=heal_task)
-    heal_thread.daemon = True
-    heal_thread.start()
-
-
 def _auto_start_grid():
-    global LAST_RESTART_TIME
-    current_time = time.time()
-
-    # Cooldown Lock (180 seconds)
-    if current_time - LAST_RESTART_TIME < 180:
-        return False  # Tell the main script we are on cooldown so it stays silent
-
-    LAST_RESTART_TIME = current_time
+    # Restarts pwngrid-peer when it's simply not running (connection
+    # refused) -- this is the one case worth an automatic recovery
+    # attempt, since the daemon being down is unambiguous and restarting
+    # it is non-destructive. Distinct from a 422 response, which means
+    # pwngrid-peer IS running and rejected something about the specific
+    # request it received (see call()'s comment) -- restarting the daemon
+    # wouldn't fix that, so this is deliberately not triggered for 422s.
+    global _last_restart_time
+    with _restart_lock:
+        now = time.time()
+        if now - _last_restart_time < _RESTART_COOLDOWN:
+            return False
+        _last_restart_time = now
 
     def start_task():
         try:
             logging.warning("[Grid Auto-Starter] Connection Refused! Daemon is dead. Booting it back up...")
             subprocess.run(['sudo', 'systemctl', 'restart', 'pwngrid-peer'])
-            logging.info("[Grid Auto-Starter] pwngrid-peer revived and on 2-minute cooldown.")
+            logging.info("[Grid Auto-Starter] pwngrid-peer revived and on cooldown.")
         except Exception as e:
             logging.error(f"[Grid Auto-Starter] Failed to execute startup sequence: {e}")
 
@@ -76,7 +70,9 @@ def call(path, obj=None):
     try:
         if obj is None:
             logging.debug(f"grid.call GET {url}")
-            # Slashed timeout from 60s down to 3s to prevent UI thread lockups
+            # cut down from the original 30s/60s connect/read timeout,
+            # which could block the calling thread for up to a minute on
+            # a slow or wedged pwngrid-peer
             r = requests.get(url, timeout=(1.0, 3.0))
         else:
             logging.debug(f"grid.call POST {url} with data")
@@ -87,35 +83,40 @@ def call(path, obj=None):
             else:
                 r = requests.post(url, json=obj, timeout=(1.0, 3.0))
 
-        # AUTO-HEAL INTERCEPTOR
         if r.status_code == 200:
             return r.json()
-        elif r.status_code == 422:
-            logging.error(f"grid.call caught 422 Unprocessable Entity! Triggering Auto-Heal...")
-            _auto_heal_grid()
-            # Return safe structures to prevent UI thread crashes while healing
-            if "peers" in path or "memory" in path or "inbox" in path:
-                return []
-            return {}
-        else:
-            logging.error(f"grid.call unexpected status code {r.status_code} for {url}")
 
+        # every 422 in pwngrid-peer's own source (checked directly:
+        # github.com/jayofelony/pwngrid, every http.StatusUnprocessableEntity
+        # call site) means it couldn't parse/validate the specific request
+        # it just received -- an empty body, invalid JSON, a bad page
+        # number, a signature check failing, etc. It is never about
+        # server-side state being corrupted, so there's nothing to "heal"
+        # by wiping pwngrid-peer's identity/database and restarting it --
+        # that was tried previously and didn't address the actual cause,
+        # since the next request with the same bug would just 422 again
+        # against a fresh identity. r.text carries pwngrid-peer's actual
+        # error message (see its ERROR() helper), which is the useful
+        # diagnostic signal here.
+        logging.error(f"grid.call unexpected status code {r.status_code} for {url}: {r.text}")
+
+    except requests.exceptions.ConnectionError as e:
+        # matches both "connection refused" (daemon not running) and other
+        # connection-level failures; only the former is worth auto-starting
+        # for, but there's no clean way to distinguish them from the
+        # exception alone, and restarting an already-running-but-otherwise
+        # unreachable daemon is harmless
+        if _auto_start_grid():
+            logging.error(f"grid.call caught a connection error, triggering Auto-Starter: {e}")
+    except requests.exceptions.Timeout:
+        # the daemon is alive but busy (e.g. syncing to the cloud) -- stay
+        # quiet, this is expected occasionally and not worth logging every
+        # time
+        pass
     except Exception as e:
-        error_str = str(e)
-        if "Connection refused" in error_str:
-            # Trigger the auto-starter only if the cooldown has finished
-            if _auto_start_grid():
-                logging.error(f"grid.call caught Connection Refused! Triggering Auto-Starter...")
-        elif "Read timed out" in error_str:
-            # The daemon is alive but busy syncing to the cloud. Stay completely silent!
-            pass
-        else:
-            logging.error(f"grid.call communication error for {url}: {e}")
+        logging.error(f"grid.call communication error for {url}: {e}")
 
-    # Return safe structures to prevent UI thread crashes if communication drops
-    if "peers" in path or "memory" in path or "inbox" in path:
-        return []
-    return {}
+    return _safe_default(path)
 
 
 def advertise(enabled=True):
