@@ -122,7 +122,23 @@ class Automata(object):
 
     # --- AI AUTO-TOGGLE HELPER ---
     def _restore_default_personality(self):
+        # only log (and only once, right when it actually happens) the fields
+        # that differ from baseline -- this runs every epoch while paused, and
+        # after the first restore there's nothing left to change, so logging
+        # unconditionally would just spam "[AUTO] setting new policy:" forever
+        changed = {
+            name: (self._config['personality'].get(name), value)
+            for name, value in self._default_personality.items()
+            if self._config['personality'].get(name) != value
+        }
+
         self._config['personality'].update(self._default_personality)
+
+        if changed:
+            logging.info("[AUTO] setting new policy:")
+            for name, (old, new) in changed.items():
+                logging.info("[AUTO] ! %s: %s -> %s" % (name, old, new))
+
         # bettercap doesn't re-read the config dict on its own for these three —
         # they were pushed to it live by on_ai_policy(), so they need to be
         # pushed back the same way or bettercap stays on a stale/bad AI value
