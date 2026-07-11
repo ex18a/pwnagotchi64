@@ -28,6 +28,16 @@ HISTORY_DECAY_CHECK_INTERVAL = 60
 HISTORY_DECAY_INTERVAL = 30 * 60  # 30 minutes
 # ----------------------------------
 
+# --- FORGET-HANDSHAKE (live testing aid) ---
+# drop one MAC (or any substring of one, same matching rule _has_handshake
+# already uses) per line into this file and it's picked up on the next
+# decay-worker tick: removes any matching _handshakes/_history entries so
+# the agent treats it as never having been touched, without needing a
+# process restart (which would also throw away every other MAC's history/
+# handshake state and the current uptime/session, not just the one target).
+FORGET_HANDSHAKE_FILE = '/root/.pwnagotchi-forget'
+# --------------------------------------------
+
 
 class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
     def __init__(self, view, config, keypair):
@@ -64,6 +74,7 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         self._history_lock = threading.Lock()
         # ---------------------------------
         self._handshakes = {}
+        self._handshakes_lock = threading.Lock()
         self.last_session = LastSession(self._config)
         self.mode = 'auto'
         # true if any whitelisted AP was visible as of the last get_access_points() call
@@ -540,6 +551,10 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
                 self._decay_history()
             except Exception as e:
                 logging.exception("error while decaying interaction history: %s" % e)
+            try:
+                self._check_forget_requests()
+            except Exception as e:
+                logging.exception("error while processing forget requests: %s" % e)
 
     def _decay_history(self):
         now = time.time()
@@ -567,6 +582,40 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
                         logging.info("[history] %s interaction count decayed %d -> %d", mac, old, new)
     # ---------------------------------------
 
+    # --- FORGET-HANDSHAKE (live testing aid) ---
+    def _check_forget_requests(self):
+        if not os.path.exists(FORGET_HANDSHAKE_FILE):
+            return
+
+        try:
+            with open(FORGET_HANDSHAKE_FILE, 'rt') as fp:
+                targets = [line.strip().lower() for line in fp if line.strip()]
+        finally:
+            os.unlink(FORGET_HANDSHAKE_FILE)
+
+        for target in targets:
+            with self._handshakes_lock:
+                forgotten_shakes = [key for key in self._handshakes if target in key.lower()]
+                for key in forgotten_shakes:
+                    del self._handshakes[key]
+
+            with self._history_lock:
+                forgotten_history = [mac for mac in self._history if target in mac.lower()]
+                for mac in forgotten_history:
+                    del self._history[mac]
+                    self._last_seen.pop(mac, None)
+                    self._last_decay.pop(mac, None)
+
+            if forgotten_shakes or forgotten_history:
+                logging.warning("[forget] %s -- cleared handshake(s) %s and history %s, eligible for interaction again",
+                                 target, forgotten_shakes, forgotten_history)
+            else:
+                logging.warning("[forget] %s -- no matching handshake or history entry found", target)
+
+        if targets:
+            self._update_handshakes(0)
+    # --------------------------------------------
+
     async def _on_event(self, msg):
         found_handshake = False
         jmsg = json.loads(msg)
@@ -582,8 +631,12 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             ap_mac = jmsg['data']['ap']
             key = "%s -> %s" % (sta_mac, ap_mac)
 
-            if key not in self._handshakes:
-                self._handshakes[key] = jmsg
+            with self._handshakes_lock:
+                is_new = key not in self._handshakes
+                if is_new:
+                    self._handshakes[key] = jmsg
+
+            if is_new:
                 s = self.session()
                 ap_and_station = self._find_ap_sta_in(sta_mac, ap_mac, s)
                 if ap_and_station is None:
@@ -634,9 +687,10 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         self.run('%s off; %s on' % (module, module))
 
     def _has_handshake(self, bssid):
-        for key, jmsg in self._handshakes.items():
-            if bssid.lower() in key.lower():
-                return True
+        with self._handshakes_lock:
+            for key in self._handshakes:
+                if bssid.lower() in key.lower():
+                    return True
         return False
 
     def _should_interact(self, who):
