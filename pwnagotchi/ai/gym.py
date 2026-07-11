@@ -10,15 +10,31 @@ from pwnagotchi.ai.parameter import Parameter
 
 class Environment(gym.Env):
     metadata = {'render.modes': ['human']}
+    # Ranges narrowed from evilsocket's original general-purpose values to
+    # bracket what actually worked well during real walking-speed field
+    # testing (see git history), rather than the wide, stationary-use
+    # ranges upstream ships with. With as little training data as this
+    # device sees, a search space that includes clearly-bad-for-walking
+    # extremes (e.g. multi-minute TTLs, 90s recon windows) mostly just
+    # slows down converging on values that fit the actual use case.
     params = [
         Parameter('min_rssi', min_value=-200, max_value=-50),
-        Parameter('ap_ttl', min_value=15, max_value=600),
-        Parameter('sta_ttl', min_value=15, max_value=600),
+        # 15-600 -> 15-180: a multi-minute memory of a station/AP makes
+        # little sense while continuously moving into new coverage areas
+        Parameter('ap_ttl', min_value=15, max_value=180),
+        Parameter('sta_ttl', min_value=15, max_value=180),
 
-        Parameter('recon_time', min_value=5, max_value=90),
+        # 5-90 -> 10-45: brackets the ~30-40s that worked well in
+        # practice, while still leaving room to explore around it
+        Parameter('recon_time', min_value=10, max_value=45),
         Parameter('max_inactive_scale', min_value=3, max_value=10),
-        Parameter('recon_inactive_multiplier', min_value=1, max_value=5),
-        Parameter('hop_recon_time', min_value=5, max_value=90),
+        # 1-5 -> 1-3 (back to evilsocket's original): a large multiplier
+        # means waiting even longer in a dead zone, which just wastes
+        # more of a walk that's already producing nothing
+        Parameter('recon_inactive_multiplier', min_value=1, max_value=3),
+        # 5-90 -> 10-45: same reasoning as recon_time above -- brackets
+        # the ~30s that worked well for waiting on a reply
+        Parameter('hop_recon_time', min_value=10, max_value=45),
         Parameter('min_recon_time', min_value=1, max_value=30),
         Parameter('max_interactions', min_value=1, max_value=25),
         Parameter('max_misses_for_recon', min_value=3, max_value=10),
