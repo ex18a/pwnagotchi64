@@ -49,7 +49,8 @@ class Watchdog(plugins.Plugin):
                 self._lockdown_reboot(agent, "bettercap crashed and didn't recover")
                 return
             else:
-                logging.info("[Watchdog] bettercap recovered and API is responding, no reboot needed.")
+                logging.info("[Watchdog] bettercap recovered and API is responding.")
+                self._ensure_wifi_recon_running(agent)
 
         # Ask agent for the blind counter
         try:
@@ -68,6 +69,8 @@ class Watchdog(plugins.Plugin):
         if blind_epochs == 1:
             if is_missing:
                 logging.warning(f"[Watchdog] blind=1: {self.interface} is missing! Nexmon firmware likely crashed. Waiting 1 epoch...")
+            else:
+                self._ensure_wifi_recon_running(agent)
             return
 
         # STAGE 2: The Kill
@@ -87,6 +90,16 @@ class Watchdog(plugins.Plugin):
                 logging.error(f"[Watchdog] blind={blind_epochs}: {self.interface} present but bettercap is unresponsive! Executing lockdown reboot...")
                 self._save_crash_log("BETTERCAP_UNRESPONSIVE")
                 self._lockdown_reboot(agent, "bettercap unresponsive")
+            else:
+                # bettercap is up and responsive, mon0 is present, yet
+                # blind_for keeps climbing -- last-resort safety net for
+                # any reason wifi.recon might silently not be running
+                # (confirmed cause on this device: a bettercap process
+                # crash+restart -- see the grace-period recovery path
+                # above -- but this catches it even if that path is
+                # somehow skipped, e.g. a crash+restart cycle that
+                # completes between epoch checks)
+                self._ensure_wifi_recon_running(agent)
 
     def _is_bettercap_service_down(self):
         try:
@@ -147,6 +160,35 @@ class Watchdog(plugins.Plugin):
         except Exception as e:
             logging.error(f"[Watchdog] bettercap session() check failed: {e}")
             return True
+
+    def _ensure_wifi_recon_running(self, agent):
+        # A bettercap process crash+restart (confirmed on-device: an
+        # internal Go panic in bettercap's own JSON marshaling code,
+        # completely unrelated to nexmon/hardware) starts fresh -- every
+        # module off, every wifi.* setting reverted to bettercap's own
+        # bare defaults. Watchdog's crash-recovery check only confirms
+        # the REST API responds again; that says nothing about whether
+        # the wifi.recon module (the thing actually doing the scanning)
+        # survived. Confirmed on-device: a device can sit indefinitely
+        # "healthy" by every other check here -- mon0 present, API
+        # responding -- while genuinely blind for 90+ minutes because
+        # nothing is actually listening, fixed instantly the moment
+        # wifi.recon is manually turned back on.
+        try:
+            session = agent.session()
+            wifi_module = next((m for m in session.get('modules', []) if m.get('name') == 'wifi'), None)
+            if wifi_module is not None and wifi_module.get('running'):
+                return  # already running, nothing to do
+        except Exception as e:
+            logging.error(f"[Watchdog] Error checking wifi.recon module state: {e}")
+            return
+
+        logging.warning("[Watchdog] wifi.recon module is not running -- restarting it and re-applying wifi settings")
+        try:
+            agent._reset_wifi_settings()
+            agent.start_module('wifi.recon')
+        except Exception as e:
+            logging.error(f"[Watchdog] Failed to restart wifi.recon: {e}")
 
     def _lockdown_reboot(self, agent, reason_text):
         self.lockdown_triggered = True
