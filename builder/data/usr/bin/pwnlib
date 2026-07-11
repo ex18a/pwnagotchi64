@@ -56,18 +56,37 @@ start_monitor_interface() {
 
   ifconfig wlan0 up
 
-  if ip link show mon0 &>/dev/null; then
-    # mon0 already exists -- e.g. a plain 'systemctl restart pwnagotchi'
-    # doesn't tear it down first, it's still there from the previous
-    # process's start_monitor_mode(). This chipset's driver only supports
-    # one monitor interface at a time, so trying to add a second "mon0"
-    # fails every time with "command failed: Operation not supported (-95)",
-    # not "already exists" -- confirmed by reproducing it directly. That
-    # used to burn all 5 of agent.py's start_monitor_mode() retries and
-    # force a full reboot on every restart after the first. Just bring the
-    # existing one up instead of trying to add it again.
+  # 'ip link show mon0' only proves a netlink object with that name
+  # exists, not that the interface is actually backed by working
+  # hardware -- confirmed on-device: right as the nexmon firmware crashes
+  # and the SDIO card drops off the bus, mon0's netlink entry can briefly
+  # still be there (mid-unregistration) while 'iw mon0 info' already
+  # fails, since that has to reach the wireless subsystem/phy, not just
+  # the netlink table. Trusting the netlink check alone in that window
+  # made this function think mon0 could just be brought back up, when
+  # it was actually an orphaned entry pointing at hardware that was
+  # already gone -- bettercap then failed to start with "error getting
+  # mon0 phy index", 5 times, before the escalation reboot (which does
+  # fix it, since a reboot resets the SDIO bus) kicked in. Requiring 'iw
+  # mon0 info' to also succeed catches that zombie case and falls
+  # through to a full recreate instead.
+  if ip link show mon0 &>/dev/null && iw dev mon0 info &>/dev/null; then
+    # mon0 already exists and is functional -- e.g. a plain
+    # 'systemctl restart pwnagotchi' doesn't tear it down first, it's
+    # still there from the previous process's start_monitor_mode(). This
+    # chipset's driver only supports one monitor interface at a time, so
+    # trying to add a second "mon0" fails every time with "command
+    # failed: Operation not supported (-95)", not "already exists" --
+    # confirmed by reproducing it directly. That used to burn all 5 of
+    # agent.py's start_monitor_mode() retries and force a full reboot on
+    # every restart after the first. Just bring the existing one up
+    # instead of trying to add it again.
     ifconfig mon0 up
   else
+    # tear down whatever's left of a non-functional mon0 first (a no-op
+    # if it doesn't exist at all) so the add below isn't rejected as a
+    # duplicate
+    iw dev mon0 del &>/dev/null
     iw phy "$(iw phy | head -1 | cut -d" " -f2)" interface add mon0 type monitor && ifconfig mon0 up
   fi
 
