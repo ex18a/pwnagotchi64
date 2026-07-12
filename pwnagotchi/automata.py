@@ -27,6 +27,11 @@ class Automata(object):
         # back to AI, undoing the whole point of pausing on boredom in the
         # first place
         self._ai_wake_epochs = config['personality'].get('ai_wake_epochs', 2)
+        # BSSIDs visible at the moment the AI last went bored -- compared
+        # against what's currently visible to detect a genuine location
+        # change (see _environment_changed_enough()), rather than waking on
+        # any random activity against the same static set of nearby APs
+        self._env_snapshot_at_bored = set()
 
     def _on_miss(self, who):
         logging.info("it looks like %s is not in range anymore :/", who)
@@ -145,6 +150,29 @@ class Automata(object):
         self.run('set wifi.ap.ttl %d' % self._config['personality']['ap_ttl'])
         self.run('set wifi.sta.ttl %d' % self._config['personality']['sta_ttl'])
         self.run('set wifi.rssi.min %d' % self._config['personality']['min_rssi'])
+
+    def _snapshot_environment(self):
+        return {ap['mac'] for ap in self._access_points}
+
+    def _environment_changed_enough(self):
+        # compares what's visible right now against the snapshot taken the
+        # moment the AI went bored -- e.g. sitting still at home, your own
+        # AP and a few neighbors' get snapshotted; a stranger's hotspot
+        # passing by doesn't touch that set at all (still 100% present), but
+        # walking away drops the ORIGINAL APs out of range one by one. Once
+        # enough of the original set is gone, that's a real location change,
+        # regardless of whatever new APs have or haven't shown up in the
+        # meantime.
+        current = self._snapshot_environment()
+        if not self._env_snapshot_at_bored:
+            # bored fired with nothing visible at all (a true dead zone) --
+            # anything showing up now is unambiguously a change, since there
+            # was nothing before for a stray AP to be mistaken for
+            return bool(current)
+        still_present = self._env_snapshot_at_bored & current
+        remaining_fraction = len(still_present) / len(self._env_snapshot_at_bored)
+        threshold = self._config['personality'].get('environment_change_threshold', 0.5)
+        return remaining_fraction <= (1 - threshold)
     # ------------------------------
 
     def next_epoch(self):
@@ -203,10 +231,12 @@ class Automata(object):
             elif self.mode == 'ai' and self._epoch.bored_for >= 1:
                 logging.info("[AI SLEEP] Pwnagotchi is Bored. Suspending AI and dropping to AUTO.")
                 self.mode = 'auto'
+                self._env_snapshot_at_bored = self._snapshot_environment()
                 self.pause_ai()          # stops inference/training -- see comment above
 
             elif self.mode == 'auto' and not home_visible and not home_on_cooldown \
-                    and self._epoch.inactive_for == 0 and self._epoch.active_for >= self._ai_wake_epochs:
+                    and self._epoch.inactive_for == 0 and self._epoch.active_for >= self._ai_wake_epochs \
+                    and self._environment_changed_enough():
                 logging.info("[AI WAKE] Target engaged! Resuming AI mode.")
                 self.mode = 'ai'
                 self._view.set('mode', '  AI')
