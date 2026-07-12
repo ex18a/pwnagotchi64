@@ -61,6 +61,28 @@ class AutomaticUpdates(plugins.Plugin):
     def _dev_mode(self):
         return os.path.exists(self.DEV_FLAG_PATH)
 
+    def _bluetooth_only_connectivity(self):
+        # bluetooth PAN tethers are slow/unreliable enough that downloading an
+        # update over one often just fails partway -- only skip if EVERY
+        # current default route goes over a bluetooth interface (conventionally
+        # named bnep*); any other connection (usb0, wifi, ethernet) being up
+        # at the same time is fine, and requests/urllib will follow whichever
+        # route the kernel actually picks for the request
+        try:
+            out = subprocess.check_output(['ip', '-o', 'route', 'show', 'default'],
+                                           text=True, timeout=5)
+        except Exception as e:
+            logging.debug(f"[automatic-updates] couldn't check default routes, assuming ok: {e}")
+            return False
+
+        ifaces = set()
+        for line in out.splitlines():
+            parts = line.split()
+            if 'dev' in parts:
+                ifaces.add(parts[parts.index('dev') + 1])
+
+        return bool(ifaces) and all(iface.startswith('bnep') for iface in ifaces)
+
     def _start_progress(self, agent):
         # pins face/status so nothing else (bored, AI reward pings, etc.) can
         # interrupt the install sequence, and keeps the face animating in the
@@ -100,6 +122,17 @@ class AutomaticUpdates(plugins.Plugin):
 
     def on_internet_available(self, agent):
         if not self.ready or self.lock.locked():
+            return
+
+        if self._bluetooth_only_connectivity():
+            # deliberately doesn't touch self.status -- this isn't "checked
+            # and found nothing", it's "couldn't check at all", so the normal
+            # interval shouldn't apply. The very next on_internet_available()
+            # over a real connection (usb0/wifi/ethernet) should retry
+            # immediately rather than potentially waiting out a multi-hour
+            # interval that only ever failed because of the bluetooth tether
+            logging.debug("[automatic-updates] only bluetooth tether connectivity available, "
+                           "skipping (too slow/unreliable for update downloads)")
             return
 
         with self.lock:

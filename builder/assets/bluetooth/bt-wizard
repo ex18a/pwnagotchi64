@@ -66,7 +66,11 @@ nmcli connection add con-name "$BT_NAME" \
   connection.autoconnect-retries 0 \
   ipv4.method auto \
   ipv4.dns "8.8.8.8 1.1.1.1" \
-  ipv4.route-metric 200 > /dev/null
+  ipv4.route-metric 700 > /dev/null
+# 700 is deliberately far higher (lower priority) than any typical NM default
+# for ethernet/wifi/usb-gadget links, so if a usb0/wifi/ethernet connection is
+# ever also up, the kernel picks it over the bluetooth tether automatically --
+# no need to special-case any specific interface
 
 # Force it up just in case
 nmcli connection up "$BT_NAME" > /dev/null 2>&1
