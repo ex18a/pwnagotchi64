@@ -379,11 +379,36 @@ class AutomaticUpdates(plugins.Plugin):
         # Write pip output to a log file instead of capturing it -- capturing
         # into a pipe buffer and never reading it can deadlock once the
         # output exceeds the OS pipe buffer size.
+        #
+        # --no-build-isolation: without this, pip builds an entire separate,
+        # ephemeral build environment (its own copy of setuptools/wheel/etc)
+        # just to package this plain Python module -- pure overhead on a
+        # ~400MB device, since the real build deps are already installed
+        # system-wide (see apt-requirements.txt). Confirmed live on-device:
+        # a plain `pip3 install .` here left the device with 26MB free RAM
+        # and 292MB already swapped in, 2 minutes into a fresh boot, with
+        # bettercap/AI training/bluetooth all still fully running at the
+        # same time -- the whole system became unresponsive to SSH for over
+        # 9 minutes (the process itself was still running, not deadlocked,
+        # just starved), well past the 5-minute timeout below, which never
+        # got to fire because the thread checking it was itself starved.
+        #
+        # Also pause AI training for the duration -- it's one of the
+        # heaviest concurrent memory users, and a fresh training batch
+        # starting mid-install (confirmed happening in the same incident)
+        # only makes the exact problem above worse. Only resume afterward
+        # if this call is the one that paused it, so an unrelated pause
+        # already in effect (e.g. bored, home network) isn't clobbered.
+        was_ai_paused = agent.is_ai_paused()
+        if not was_ai_paused:
+            agent.pause_ai()
+
         pip_log_path = '/tmp/pip-install.log'
         try:
             with open(pip_log_path, 'w') as pip_log:
                 result = subprocess.run(
-                    ['pip3', 'install', '--break-system-packages', '--no-deps', '.'],
+                    ['pip3', 'install', '--break-system-packages', '--no-deps',
+                     '--no-build-isolation', '.'],
                     cwd=source_dir,
                     stdout=pip_log,
                     stderr=pip_log,
@@ -398,6 +423,9 @@ class AutomaticUpdates(plugins.Plugin):
         except subprocess.TimeoutExpired:
             logging.error("[automatic-updates] pip install timed out after 5 minutes")
             return False
+        finally:
+            if not was_ai_paused:
+                agent.resume_ai()
 
         logging.info("[automatic-updates] pip install completed successfully")
         return True
