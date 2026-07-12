@@ -141,6 +141,16 @@ def restart_services():
     # start getting covered right away, not just on its next reboot
     os.system("systemctl enable --now pwnagotchi-syswatchdog.timer")
 
+    # krnbt=on (boot/config.txt) makes the kernel attach the BT UART chip
+    # directly at boot; hciuart.service (userspace btuart/hciattach) does the
+    # same job the traditional way and ships enabled by default on the base
+    # image. Left enabled alongside krnbt, both fight over the same UART
+    # connection to the combo WiFi+BT chip -- suspected contributor to
+    # nexmon/mon0 instability whenever bluetooth is actually in use.
+    # Fresh images no longer enable it (see builder/pwnagotchi.sh); this
+    # covers already-provisioned devices picking it up via an in-place update.
+    os.system("systemctl disable --now hciuart.service 2>/dev/null")
+
     # opt-in only: pwnagotchi-soaktest deliberately reboots a healthy device
     # every hour, which is only ever wanted for overnight soak-testing on a
     # specific device -- never as default behavior for every user. Enabled

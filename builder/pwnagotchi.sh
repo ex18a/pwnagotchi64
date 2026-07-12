@@ -130,6 +130,17 @@ chmod +x /usr/local/bin/bt-wizard
 echo "  -> [Chroot] Patching SAP plugin crash in bluetoothd..."
 sed -i 's|^ExecStart=.*bluetoothd.*|ExecStart=/usr/libexec/bluetooth/bluetoothd --noplugin=sap|' /lib/systemd/system/bluetooth.service
 
+echo "  -> [Chroot] Disabling hciuart.service (superseded by dtparam=krnbt=on)..."
+# krnbt=on (see boot/config.txt) makes the kernel attach the BT UART chip
+# directly at boot. hciuart.service (userspace btuart/hciattach) does the
+# same job the traditional way and ships enabled by default on the base
+# image -- left enabled, both fight over the same UART connection to the
+# combo WiFi+BT chip, which is suspected to be contributing to nexmon
+# instability whenever bluetooth is actually in use (same physical chip
+# handles WiFi monitor mode). Only one attach mechanism should ever be
+# active; krnbt is the one actually in use here.
+systemctl disable hciuart.service 2>/dev/null || true
+
 echo "  -> [Chroot] Unpacking application core..."
 mkdir -p /tmp/pwn_source
 tar -xzf /tmp/pwnagotchi64-${VERSION}.tar.gz -C /tmp/pwn_source --strip-components=1
