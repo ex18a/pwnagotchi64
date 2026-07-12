@@ -207,6 +207,11 @@ sed -i '/if \[ -e \/usr\/bin\/kali-motd \]; then/,/fi/s/^/#/' /etc/profile.d/kal
 echo "  -> [Chroot] Final cleanup..."
 rm -f /etc/dpkg/dpkg.cfg.d/force-unsafe-io
 rm -rf /tmp/* /var/lib/apt/lists/*
+# base Kali image leftover -- duplicates our own eth0-cfg (which is kept for
+# Pi 3B+ support) and unlike it declares "auto eth0", which fails and takes
+# the whole networking.service down with it on any board without a physical
+# ethernet port (e.g. Pi Zero 2 W)
+rm -f /etc/network/interfaces.d/eth0
 EOF
 
 # Restore DNS

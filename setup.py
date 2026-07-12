@@ -151,6 +151,19 @@ def restart_services():
     else:
         os.system("systemctl disable --now pwnagotchi-soaktest.timer")
 
+def remove_stale_eth0_interfaces_file():
+    # base Kali image leftover, not ours -- duplicates our own eth0-cfg
+    # (kept for Pi 3B+ support) but declares "auto eth0", which fails and
+    # takes the whole networking.service down with it on any board without
+    # a physical ethernet port (e.g. Pi Zero 2 W). Fresh images no longer
+    # ship this (see builder/pwnagotchi.sh), but already-provisioned
+    # devices picking this up via an in-place update still have it.
+    path = '/etc/network/interfaces.d/eth0'
+    if os.path.exists(path):
+        os.remove(path)
+        log.info(f"removed stale {path} (base image leftover, duplicates eth0-cfg)")
+
+
 class CustomInstall(install):
     def run(self):
         super().run()
@@ -166,6 +179,7 @@ class CustomInstall(install):
         # (builder/pwnagotchi.sh runs this same `pip install` inside a
         # qemu-aarch64-static chroot, no systemd PID 1 present there)
         install_patched_bettercap()
+        remove_stale_eth0_interfaces_file()
         restart_services()
 
 def version(version_file):
