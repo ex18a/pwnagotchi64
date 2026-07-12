@@ -159,8 +159,24 @@ class Automata(object):
         if self._ai_base_enabled:
             # while parked in auto with AI paused, keep personality pinned to
             # the baseline config so it can never drift/get stuck on a bad
-            # AI-set value (e.g. min_rssi: -30)
-            if self.mode == 'auto' and self.is_ai_paused():
+            # AI-set value (e.g. min_rssi: -30).
+            #
+            # Gated on is_training() too, not just is_ai_paused(): pausing
+            # only stops the AI worker loop between whole training batches
+            # (self._model.learn() runs all epochs_per_episode epochs in one
+            # blocking call, only checking the pause flag once it returns),
+            # so a batch already in flight when pause was requested keeps
+            # calling on_ai_policy() every epoch for however many epochs are
+            # left in it. Restoring defaults here on every one of those
+            # epochs raced directly against that in-flight batch -- confirmed
+            # live on-device: both "[AUTO] setting new policy" and
+            # "[ai] setting new policy" firing in the same epoch, each
+            # overwriting the other's config/bettercap values. Waiting for
+            # is_training() to actually go False means this only ever fires
+            # once the AI has genuinely gone idle, matching the same event
+            # the "[ai] idle" / on-screen AUTO label switch already wait for
+            # in train.py's worker loop.
+            if self.mode == 'auto' and self.is_ai_paused() and not self.is_training():
                 self._restore_default_personality()
 
             # home-network guard: whitelisted APs are never attacked, but if any
