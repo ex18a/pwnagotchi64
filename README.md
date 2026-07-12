@@ -2,6 +2,10 @@
 
 This is a specialized, high-performance fork of the Pwnagotchi project. This build is designed for 64-bit architecture, utilizing **PyTorch** for AI inference and training, providing a significant boost in intelligence and processing stability over the original A2C implementation.
 
+## Why does Pwnagotchi even have an "AI"?
+
+A lot of people assume the AI is what actually hacks the WiFi — it isn't. The real attack work (deauthing, associating, capturing handshakes) is all done by **bettercap**. What the AI does is learn how to *run* bettercap well: how long to linger on a channel before hopping, how aggressively to hop between channels, how long to wait for a handshake before giving up on a target, how far away (signal-wise) is even worth bothering with, and a dozen other timing/behavior knobs. Every epoch, it sees what those settings produced — handshakes captured, time spent blind, targets missed — and that becomes a reward signal nudging its *next* set of settings. Over time it learns which behavior actually works in whatever environment it's really operating in, instead of running forever on one fixed configuration that might be great sitting still on a desk and useless out on a walk. That's the whole original idea behind the project (credit to evilsocket, see Acknowledgments below) — this fork keeps that same reinforcement-learning core, just rebuilt on a modern PyTorch/stable-baselines3 engine instead of the original's older TensorFlow-based one, and with the epoch/personality logic reworked specifically for walking-speed use rather than sitting stationary.
+
 > **Hardware Support:** specifically optimized for the **Raspberry Pi Zero 2 W** with **waveshare eink 2.13 v4** and **pisugar 3**.
 >
 >  The **Raspberry Pi 3B+** is also supported.
