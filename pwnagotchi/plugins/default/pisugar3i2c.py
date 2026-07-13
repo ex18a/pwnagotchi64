@@ -7,9 +7,40 @@ import pwnagotchi.ui.fonts as fonts
 from pwnagotchi.ui.components import LabeledValue
 from pwnagotchi.ui.view import BLACK
 
+# PiSugar 3's own firmware capacity estimate (register 0x2A) is voltage-
+# based but not calibrated for this device's actual load -- confirmed via a
+# full logged 100%->0% discharge (builder/data/usr/bin/pwnagotchi-battery-
+# curve-log): it spent 224 of the run's 285 total minutes (79%) reporting
+# 100-60%, then collapsed through the remaining 60%-0% in the last 61
+# minutes. Real remaining runtime is nowhere near proportional to that
+# reported percentage. Built directly from that same logged run: percent is
+# assigned by *elapsed test time* rather than trusting the chip's own
+# capacity register, then binned by voltage and isotonic-regressed to force
+# monotonicity, giving a curve where percent actually tracks remaining
+# runtime under this device's real load instead of the chip's raw voltage
+# curve. Re-derive this table if the load profile changes significantly
+# (e.g. a different HAT/battery, or major power-draw changes).
+VOLTAGE_TO_PERCENT = [
+    (3100, 0), (3150, 0), (3200, 0), (3250, 1), (3300, 1), (3350, 2),
+    (3400, 3), (3450, 4), (3500, 5), (3550, 7), (3600, 10), (3650, 14),
+    (3700, 21), (3750, 31), (3800, 45), (3850, 55), (3900, 63), (3950, 69),
+    (4000, 77), (4050, 81), (4100, 87), (4150, 92), (4200, 97), (4250, 99),
+]
+
+def _voltage_to_percent(mv):
+    table = VOLTAGE_TO_PERCENT
+    if mv <= table[0][0]:
+        return table[0][1]
+    if mv >= table[-1][0]:
+        return table[-1][1]
+    for (mv0, p0), (mv1, p1) in zip(table, table[1:]):
+        if mv0 <= mv <= mv1:
+            frac = (mv - mv0) / (mv1 - mv0)
+            return p0 + frac * (p1 - p0)
+
 class PiSugar3i2c(plugins.Plugin):
     __author__ = 'ex18a'
-    __version__ = '1.0.4'
+    __version__ = '1.0.5'
     __description__ = 'Direct I2C PiSugar 3 Plugin with Smoothing'
 
     def __init__(self):
@@ -55,10 +86,14 @@ class PiSugar3i2c(plugins.Plugin):
 
         try:
             # PiSugar 3 Address: 0x57
-            # Capacity Register: 0x2a
+            # Voltage Registers: 0x22 (high byte) / 0x23 (low byte)
             # Status Register: 0x02 (Bit 7 is charging)
-            capacity_raw = self._bus.read_byte_data(0x57, 0x2a)
+            vh = self._bus.read_byte_data(0x57, 0x22)
+            vl = self._bus.read_byte_data(0x57, 0x23)
             status = self._bus.read_byte_data(0x57, 0x02)
+
+            millivolts = (vh << 8) | vl
+            capacity_raw = _voltage_to_percent(millivolts)
 
             # --- 20-SECOND MOVING AVERAGE LOGIC ---
             current_time = time.time()
