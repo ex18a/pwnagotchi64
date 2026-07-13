@@ -110,6 +110,22 @@ echo -e "i2c-dev\nbnep" >> /etc/modules
 echo "  -> [Chroot] Forcing Kernel Wi-Fi Regulatory Domain to BO (Max TX Power)..."
 echo "options cfg80211 ieee80211_regdom=BO" > /etc/modprobe.d/cfg80211_regdomain.conf
 
+echo "  -> [Chroot] Enabling hardware watchdog (recovers from full kernel lockups)..."
+# Confirmed on-device: a nexmon/SDIO-level lockup (mmc1 controller stuck,
+# not just mon0 vanishing) can freeze the entire kernel, not just wifi --
+# every userspace watchdog (Watchdog plugin, pwnagotchi-syswatchdog) is
+# powerless against that, since nothing in userspace can run at all while
+# the kernel itself is stuck. The SoC's own hardware watchdog (bcm2835_wdt,
+# /dev/watchdog) is independent of software entirely: systemd (PID 1) pets
+# it as long as its own event loop is responsive, and the hardware forces
+# a real reset if that stops for 30s straight -- the only thing that can
+# actually recover from this class of failure. 30s is far faster than the
+# 18+ minute freeze this was confirmed to catch had it been enabled.
+sed -i \
+  -e 's/^#RuntimeWatchdogSec=off/RuntimeWatchdogSec=30s/' \
+  -e 's/^#RebootWatchdogSec=10min/RebootWatchdogSec=30s/' \
+  /etc/systemd/system.conf
+
 echo "  -> [Chroot] Injecting NetworkManager scripts..."
 cp /tmp/networkmanager/98-bt-gateway /etc/NetworkManager/dispatcher.d/98-bt-gateway
 cp /tmp/networkmanager/99-rtc-sync /etc/NetworkManager/dispatcher.d/99-rtc-sync
