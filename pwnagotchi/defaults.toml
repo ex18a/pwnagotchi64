@@ -48,6 +48,7 @@ enabled = true
 
 [main.plugins.pisugar3i2c]
 enabled = true
+low_battery_shutdown_pct = 10  # trigger a safe shutdown once battery drops to (or below) this %
 
 [main.plugins.face_only]
 enabled = false

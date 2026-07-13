@@ -9,12 +9,13 @@ from pwnagotchi.ui.view import BLACK
 
 class PiSugar3i2c(plugins.Plugin):
     __author__ = 'ex18a'
-    __version__ = '1.0.3'
+    __version__ = '1.0.4'
     __description__ = 'Direct I2C PiSugar 3 Plugin with Smoothing'
 
     def __init__(self):
         self._bus = None
         self._history = [] # Buffer for the 20-second moving average
+        self._shutdown_triggered = False
 
     def on_loaded(self):
         try:
@@ -78,26 +79,31 @@ class PiSugar3i2c(plugins.Plugin):
             ui.set('sugar_val', f"{capacity}%")
 
             # --- SAFE SHUTDOWN LOGIC ---
-            if capacity <= 10 and not is_charging:
-                logging.warning(f"[PiSugar3i2c] Battery at {capacity}%. Triggering safe shutdown...")
+            # Actually cutting PiSugar's own output power happens separately,
+            # via a systemd system-shutdown hook (builder/data/lib/systemd/
+            # system-shutdown/pisugar-poweroff.sh) -- that's the only point
+            # where it reliably works: it runs at the true last moment of a
+            # genuine poweroff (after everything is unmounted), and systemd
+            # tells shutdown apart from reboot natively. Doing the I2C cut
+            # from here, while the Pi is still fully alive, doesn't stick --
+            # confirmed on-device that PiSugar's output stayed on across a
+            # full clean shutdown, most likely because PiSugar auto-restores
+            # output if it sees the Pi still actively talking to it over I2C
+            # after output was disabled. So this just needs to trigger a
+            # normal OS shutdown; the hook takes care of the rest.
+            shutdown_pct = self.options.get('low_battery_shutdown_pct', 10)
+            if capacity <= shutdown_pct and not is_charging and not self._shutdown_triggered:
+                self._shutdown_triggered = True
+                logging.warning(f"[PiSugar3i2c] Battery at {capacity}% (threshold {shutdown_pct}%). Triggering safe shutdown...")
 
-                # 1. Tell PiSugar hardware to cut power in 60 seconds
-                # This is a safety window; it usually cuts as soon as the Pi halts.
-                self._bus.write_byte_data(0x57, 0x0B, 0x29) # Disable write protection
-                self._bus.write_byte_data(0x57, 0x09, 60)   # 60 second safety window
-                val = self._bus.read_byte_data(0x57, 0x02)
-                self._bus.write_byte_data(0x57, 0x02, val & 0b11011111)
-                self._bus.write_byte_data(0x57, 0x0B, 0x00) # Re-enable protection
-
-                # 2. Trigger the "Good Night" face
+                # Trigger the "Good Night" face
                 from pwnagotchi.ui import view
                 if view.ROOT:
                     view.ROOT.on_shutdown()
 
-                # 3. Extra sleep so you can see the face before shutdown starts
-                time.sleep(10) 
+                # Extra sleep so you can see the face before shutdown starts
+                time.sleep(10)
 
-                # 4. Trigger the core software shutdown
                 pwnagotchi.shutdown()
             # ----------------------------------
 

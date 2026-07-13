@@ -45,7 +45,10 @@ def install_file(source_filename, dest_filename):
         os.makedirs(dest_folder)
 
     shutil.copyfile(source_filename, dest_filename)
-    if dest_filename.startswith("/usr/bin/"):
+    # systemd requires files under system-shutdown/ to be executable to be
+    # picked up at all (systemd-shutdown(8)) -- silently ignored otherwise,
+    # no error, so this is easy to miss
+    if dest_filename.startswith("/usr/bin/") or dest_filename.startswith("/lib/systemd/system-shutdown/"):
         os.chmod(dest_filename, 0o755)
 
 def _sha256_of(path):
@@ -160,6 +163,17 @@ def restart_services():
         os.system("systemctl enable --now pwnagotchi-soaktest.timer")
     else:
         os.system("systemctl disable --now pwnagotchi-soaktest.timer")
+
+    # opt-in only, same pattern as soaktest above: this is a diagnostic tool
+    # for one specific investigation (a suspect battery percentage curve),
+    # not something that should log every user's battery every 30s forever.
+    # Enabled only if /root/.battery-curve-test exists, disabled (not just
+    # left alone) otherwise so removing that flag file actually turns it
+    # back off.
+    if os.path.exists('/root/.battery-curve-test'):
+        os.system("systemctl enable --now pwnagotchi-battery-curve-log.timer")
+    else:
+        os.system("systemctl disable --now pwnagotchi-battery-curve-log.timer")
 
 def remove_stale_eth0_interfaces_file():
     # base Kali image leftover, not ours -- duplicates our own eth0-cfg
