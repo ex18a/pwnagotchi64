@@ -203,7 +203,7 @@ class Watchdog(plugins.Plugin):
         # stop the UI thread
         agent.view().update = lambda *args, **kwargs: None
         agent.view().set = lambda *args, **kwargs: None
-        logging.info("[Watchdog] UI Lobotomized. Safe to perform background tasks.")
+        logging.info("[Watchdog] UI updates disabled, proceeding with reboot cleanup.")
 
         # Save session data
         try:
