@@ -131,8 +131,14 @@ if __name__ == '__main__':
     parser.add_argument('--print-config', dest="print_config", action="store_true", default=False,
                         help="Print the configuration.")
 
+    parser.add_argument('--setup', dest="do_setup", action="store_true", default=False,
+                        help="Run the interactive configuration setup wizard and exit.")
+
     args = parser.parse_args()
 
+    if args.do_setup:
+        from pwnagotchi.setup_wizard import run_wizard
+        sys.exit(run_wizard(args))
 
     if plugins_cmd.used_plugin_cmd(args):
       config = utils.load_config(args)

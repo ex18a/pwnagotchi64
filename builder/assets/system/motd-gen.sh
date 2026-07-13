@@ -15,6 +15,9 @@ ${GREEN}        (◕‿‿◕) ${TARGET_HOSTNAME}
         All the configuration options can be found on /etc/pwnagotchi/default.toml,
         but don't change this file because I will recreate it every time I'm restarted!
 
+        for an easy guided setup instead of hand-editing the toml, use
+        sudo pwnagotchi --setup
+
         you can set up bluetooth connection, use sudo bt-wizard
 
         I'm managed by systemd. Here are some basic commands.
