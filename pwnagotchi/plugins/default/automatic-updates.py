@@ -403,6 +403,17 @@ class AutomaticUpdates(plugins.Plugin):
         if not was_ai_paused:
             agent.pause_ai()
 
+        # Confirmed this hang recurs even with the above: bettercap itself
+        # is one of the other heavy concurrent memory users, and it's never
+        # touched during a normal update (only pwnagotchi.service restarts
+        # afterward -- see _apply()). Stop it for the ~60-90s the install
+        # actually takes and bring it back right after; pwnagotchi's own
+        # restart already waits for bettercap to come back up the same way
+        # it does on any normal boot, so this doesn't need special handling
+        # beyond starting it again here.
+        logging.info("[automatic-updates] stopping bettercap for the duration of the install ...")
+        os.system('systemctl stop bettercap')
+
         pip_log_path = '/tmp/pip-install.log'
         try:
             with open(pip_log_path, 'w') as pip_log:
@@ -426,6 +437,8 @@ class AutomaticUpdates(plugins.Plugin):
         finally:
             if not was_ai_paused:
                 agent.resume_ai()
+            logging.info("[automatic-updates] restarting bettercap ...")
+            os.system('systemctl start bettercap')
 
         logging.info("[automatic-updates] pip install completed successfully")
         return True

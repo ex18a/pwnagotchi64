@@ -20,6 +20,12 @@ BETTERCAP_MAX_RESTARTS=3     # more than this while currently inactive = crash-l
 CPU_TEMP_MAX_C=60            # normal running temp is under 50C -- 80C+ has been seen
                               # during bad bluetooth tether sessions; this is a blunt
                               # safety net, not a diagnosis of the actual cause
+PIP_INSTALL_MAX_SECONDS=240  # confirmed multiple times on-device: a normal
+                              # update's pip install completes in under 90s;
+                              # anything still running this long means the same
+                              # memory-pressure hang (bettercap/AI/bluetooth all
+                              # competing with the build for ~400MB of RAM), not
+                              # a legitimately slow install
 
 log() {
     logger -t pwnagotchi-syswatchdog "$1"
@@ -46,6 +52,22 @@ reboot_with_reason() {
     sync
     reboot
 }
+
+# pip install hang: checked before the boot-grace gate below, since this is
+# bounded by the pip process's own elapsed runtime, not by how recently the
+# system booted -- an update can start (and hang) within the first few
+# minutes after boot just as easily as later on. Confirmed recurring even
+# after pausing AI and stopping bettercap for the install's duration
+# (automatic-updates.py) -- this device is just fundamentally tight on
+# memory, so this is the guaranteed recovery backstop rather than relying
+# solely on prevention.
+pip_pid=$(pgrep -f 'pip3 install .*--no-build-isolation' | head -1)
+if [ -n "$pip_pid" ]; then
+    elapsed=$(ps -o etimes= -p "$pip_pid" 2>/dev/null | tr -d ' ')
+    if [ -n "$elapsed" ] && [ "$elapsed" -ge "$PIP_INSTALL_MAX_SECONDS" ]; then
+        reboot_with_reason "pip install (pid $pip_pid) running ${elapsed}s >= ${PIP_INSTALL_MAX_SECONDS}s -- confirmed recurring memory-pressure hang on this device"
+    fi
+fi
 
 uptime_seconds=$(awk '{print int($1)}' /proc/uptime)
 if [ "$uptime_seconds" -lt "$BOOT_GRACE_SECONDS" ]; then
