@@ -24,17 +24,24 @@ class Environment(gym.Env):
         Parameter('ap_ttl', min_value=15, max_value=180),
         Parameter('sta_ttl', min_value=15, max_value=180),
 
-        # 5-90 -> 10-45: brackets the ~30-40s that worked well in
-        # practice, while still leaving room to explore around it
-        Parameter('recon_time', min_value=10, max_value=45),
+        # widened back to evilsocket's original 5-90 -- narrowing this to
+        # 10-45 earlier capped hop_recon_time/recon_time well below what
+        # actually worked before: real handshake-conversion data compared
+        # July 7 (avg hop_recon_time ~47s, ~33% deauth-to-handshake
+        # conversion) against a walking session under the narrowed range
+        # (avg ~28s, ~6% conversion) -- the AI simply wasn't allowed to
+        # wait long enough for a handshake to land before hopping away.
+        # Full range restored so it can learn that longer dwell times pay
+        # off when they do, instead of being capped below the values that
+        # were already confirmed to work well.
+        Parameter('recon_time', min_value=5, max_value=90),
         Parameter('max_inactive_scale', min_value=3, max_value=10),
         # 1-5 -> 1-3 (back to evilsocket's original): a large multiplier
         # means waiting even longer in a dead zone, which just wastes
         # more of a walk that's already producing nothing
         Parameter('recon_inactive_multiplier', min_value=1, max_value=3),
-        # 5-90 -> 10-45: same reasoning as recon_time above -- brackets
-        # the ~30s that worked well for waiting on a reply
-        Parameter('hop_recon_time', min_value=10, max_value=45),
+        # see recon_time above -- same reasoning, same data
+        Parameter('hop_recon_time', min_value=5, max_value=90),
         Parameter('min_recon_time', min_value=1, max_value=30),
         Parameter('max_interactions', min_value=1, max_value=25),
         Parameter('max_misses_for_recon', min_value=3, max_value=10),
