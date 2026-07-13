@@ -14,6 +14,7 @@ import pwnagotchi.plugins as plugins
 from pwnagotchi.ui.web.server import Server
 from pwnagotchi.automata import Automata
 from pwnagotchi.log import LastSession
+import pwnagotchi.bettercap as bettercap
 from pwnagotchi.bettercap import Client
 from pwnagotchi.mesh.utils import AsyncAdvertiser
 from pwnagotchi.ai.train import AsyncTrainer
@@ -366,7 +367,15 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
                     if self._filter_included(ap):
                         aps.append(ap)
         except Exception as e:
-            logging.exception("Error while getting acces points (%s)", e)
+            # session() has no retry/backoff of its own (unlike run()), so
+            # this fires every single epoch bettercap is deliberately
+            # stopped for during an update -- same EXPECTED_DOWNTIME flag
+            # bettercap.py's own retry loops check, so this doesn't dump a
+            # full traceback for something that isn't actually a problem
+            if bettercap.EXPECTED_DOWNTIME:
+                logging.debug("error while getting access points (expected -- update in progress): %s", e)
+            else:
+                logging.exception("Error while getting acces points (%s)", e)
 
         aps.sort(key=lambda ap: ap['channel'])
         return self.set_access_points(aps)
