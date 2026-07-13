@@ -9,6 +9,7 @@ from datetime import datetime
 from threading import Lock, Thread
 
 import pwnagotchi
+import pwnagotchi.bettercap as bettercap
 import pwnagotchi.plugins as plugins
 import pwnagotchi.ui.faces as faces
 from pwnagotchi.utils import StatusFile, parse_version as version_to_tuple
@@ -412,6 +413,12 @@ class AutomaticUpdates(plugins.Plugin):
         # it does on any normal boot, so this doesn't need special handling
         # beyond starting it again here.
         logging.info("[automatic-updates] stopping bettercap for the duration of the install ...")
+        # every reconnect-retry loop in bettercap.py checks this and logs at
+        # debug instead of warning while it's set -- otherwise the agent's
+        # own websocket/API retry loops treat this deliberate, expected
+        # outage exactly like a genuine bettercap crash and spam the log
+        # with the same warnings the whole time it's stopped
+        bettercap.EXPECTED_DOWNTIME = True
         os.system('systemctl stop bettercap')
 
         pip_log_path = '/tmp/pip-install.log'
@@ -439,6 +446,7 @@ class AutomaticUpdates(plugins.Plugin):
                 agent.resume_ai()
             logging.info("[automatic-updates] restarting bettercap ...")
             os.system('systemctl start bettercap')
+            bettercap.EXPECTED_DOWNTIME = False
 
         logging.info("[automatic-updates] pip install completed successfully")
         return True
