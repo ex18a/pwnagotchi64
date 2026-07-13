@@ -1,4 +1,7 @@
 import os
+import shutil
+import subprocess
+import time
 import tomlkit
 
 import pwnagotchi.utils as utils
@@ -138,12 +141,6 @@ def run_wizard(args):
     print(f"\n{YELLOW}[*] Basics{NC}")
     set_value('main.name', _ask_str("Device name", _get(effective, 'main.name')))
 
-    set_value('main.iface', _ask_str(
-        "WiFi monitor interface (mon0 is correct for the built-in chip; "
-        "use wlan1 or similar for a supported USB dongle instead)",
-        _get(effective, 'main.iface')
-    ))
-
     current_whitelist = ', '.join(_get(effective, 'main.whitelist', []))
     whitelist_raw = input(f"Home network name(s) to never attack, comma-separated [{current_whitelist}]: ").strip()
     if whitelist_raw != '':
@@ -158,10 +155,6 @@ def run_wizard(args):
             "What screen do you have?",
             COMMON_DISPLAY_TYPES,
             _get(effective, 'ui.display.type')
-        ))
-        set_value('ui.display.rotation', _ask_int(
-            "Display rotation in degrees (0 or 180 are the only ones that make sense)",
-            _get(effective, 'ui.display.rotation')
         ))
 
     # --- PiSugar 3 ---
@@ -209,6 +202,23 @@ def run_wizard(args):
     with open(args.user_config, 'w') as fp:
         fp.write(tomlkit.dumps(doc))
 
-    print(f"\n{GREEN}[+] Saved! Restart pwnagotchi for the new settings to take effect:{NC}")
-    print(f"    sudo systemctl restart pwnagotchi")
+    print(f"\n{GREEN}[+] Configuration saved.{NC}")
+
+    # --- Bluetooth tethering ---
+    print(f"\n{YELLOW}[*] Bluetooth{NC}")
+    if _ask_yesno("Would you like to set up a Bluetooth tethering connection to your phone now", False):
+        bt_wizard_path = shutil.which('bt-wizard') or '/usr/local/bin/bt-wizard'
+        if os.path.exists(bt_wizard_path):
+            print(f"\n{CYAN}[*] Handing off to the Bluetooth tethering wizard ...{NC}\n")
+            subprocess.call([bt_wizard_path])
+        else:
+            print(f"{RED}[!] bt-wizard not found at {bt_wizard_path} -- skipping. "
+                  f"You can run it separately later with: sudo bt-wizard{NC}")
+
+    print(f"\n{GREEN}[+] Config saved, restarting pwnagotchi to apply changes...{NC}")
+    for remaining in range(10, 0, -1):
+        print(f"\r{YELLOW}Restarting in {remaining} seconds...{NC}", end='', flush=True)
+        time.sleep(1)
+    print()
+    os.system('systemctl restart pwnagotchi')
     return 0

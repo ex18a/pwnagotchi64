@@ -15,13 +15,14 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
-read -p "Enter your phone's bluetooth name (e.g., MyPhone): " BT_NAME
-read -p "Enter your phone's Bluetooth MAC Address (e.g., AA:BB:CC:DD:EE:FF): " RAW_MAC
+while true; do
+  read -p "Enter your phone's bluetooth name (e.g., MyPhone): " BT_NAME
+  read -p "Enter your phone's Bluetooth MAC Address (e.g., AA:BB:CC:DD:EE:FF): " RAW_MAC
 
-BT_MAC=$(echo "$RAW_MAC" | tr 'a-z' 'A-Z')
+  BT_MAC=$(echo "$RAW_MAC" | tr 'a-z' 'A-Z')
 
-echo -e "\n${YELLOW}[*] Phase 1: Setting up the Auto-Agent...${NC}"
-cat << 'SERVICE_EOF' > /etc/systemd/system/bt-agent.service
+  echo -e "\n${YELLOW}[*] Phase 1: Setting up the Auto-Agent...${NC}"
+  cat << 'SERVICE_EOF' > /etc/systemd/system/bt-agent.service
 [Unit]
 Description=Bluetooth Agent (DisplayYesNo Auto-Accept)
 After=bluetooth.service
@@ -41,38 +42,67 @@ RestartSec=5
 WantedBy=multi-user.target
 SERVICE_EOF
 
-systemctl daemon-reload
-systemctl enable bt-agent > /dev/null 2>&1
-systemctl restart bt-agent
+  systemctl daemon-reload
+  systemctl enable bt-agent > /dev/null 2>&1
+  systemctl restart bt-agent
 
-echo -e "${YELLOW}[*] Trusting MAC address ${BT_MAC} in advance...${NC}"
-bluetoothctl trust "$BT_MAC" > /dev/null
+  echo -e "${YELLOW}[*] Trusting MAC address ${BT_MAC} in advance...${NC}"
+  bluetoothctl trust "$BT_MAC" > /dev/null
 
-echo -e "\n${CYAN}==========================================${NC}"
-echo -e "${YELLOW}WAIT! DO NOT PRESS ENTER YET!${NC}"
-echo -e "1. Turn ON Bluetooth Tethering / Personal Hotspot on your phone."
-echo -e "2. Open your phone's Bluetooth menu."
-echo -e "3. Tap 'Pwnagotchi' to pair."
-echo -e "4. Confirm pin on your phone. press PAIR or YES/."
-echo -e "${CYAN}==========================================${NC}"
-read -p "Press [Enter] ONLY after your phone says connected..."
+  echo -e "\n${CYAN}==========================================${NC}"
+  echo -e "${YELLOW}WAIT! DO NOT PRESS ENTER YET!${NC}"
+  echo -e "1. Turn ON Bluetooth Tethering / Personal Hotspot on your phone."
+  echo -e "2. Open your phone's Bluetooth menu."
+  echo -e "3. Tap 'Pwnagotchi' to pair."
+  echo -e "4. Confirm pin on your phone. press PAIR or YES/."
+  echo -e "${CYAN}==========================================${NC}"
+  read -p "Press [Enter] ONLY after your phone says connected..."
 
-echo -e "\n${YELLOW}[*] Phase 2: Injecting NetworkManager...${NC}"
-nmcli connection add con-name "$BT_NAME" \
-  ifname "*" \
-  type bluetooth bt-type panu \
-  bluetooth.bdaddr "$BT_MAC" \
-  connection.autoconnect yes \
-  connection.autoconnect-retries 0 \
-  ipv4.method auto \
-  ipv4.dns "8.8.8.8 1.1.1.1" \
-  ipv4.route-metric 700 > /dev/null
-# 700 is deliberately far higher (lower priority) than any typical NM default
-# for ethernet/wifi/usb-gadget links, so if a usb0/wifi/ethernet connection is
-# ever also up, the kernel picks it over the bluetooth tether automatically --
-# no need to special-case any specific interface
+  echo -e "\n${YELLOW}[*] Phase 2: Injecting NetworkManager...${NC}"
+  # delete first in case this is a retry from a previous failed attempt
+  nmcli connection delete "$BT_NAME" > /dev/null 2>&1
+  nmcli connection add con-name "$BT_NAME" \
+    ifname "*" \
+    type bluetooth bt-type panu \
+    bluetooth.bdaddr "$BT_MAC" \
+    connection.autoconnect yes \
+    connection.autoconnect-retries 0 \
+    ipv4.method auto \
+    ipv4.dns "8.8.8.8 1.1.1.1" \
+    ipv4.route-metric 700 > /dev/null
+  # 700 is deliberately far higher (lower priority) than any typical NM default
+  # for ethernet/wifi/usb-gadget links, so if a usb0/wifi/ethernet connection is
+  # ever also up, the kernel picks it over the bluetooth tether automatically --
+  # no need to special-case any specific interface
 
-# Force it up just in case
-nmcli connection up "$BT_NAME" > /dev/null 2>&1
+  nmcli connection up "$BT_NAME" > /dev/null 2>&1
 
-echo -e "\n${GREEN}[+] Setup Complete! You are fully tethered!${NC}"
+  echo -e "\n${YELLOW}[*] Verifying connection...${NC}"
+  # give NetworkManager a few seconds to finish activating and get a DHCP lease
+  # over the bnep interface before checking -- immediately after `connection up`
+  # returns, the IP address often isn't assigned yet even on a successful pair
+  sleep 5
+
+  STATE=$(nmcli -g GENERAL.STATE connection show "$BT_NAME" 2>/dev/null)
+  IP_ADDR=$(nmcli -g IP4.ADDRESS connection show "$BT_NAME" 2>/dev/null | head -1)
+
+  if [[ "$STATE" == *"activated"* ]] && [ -n "$IP_ADDR" ]; then
+    echo -e "\n${GREEN}[+] Setup Complete! Connected with IP ${IP_ADDR%%/*}. You are fully tethered!${NC}"
+    break
+  fi
+
+  echo -e "\n${RED}[!] Connection did not come up (state: ${STATE:-none}, IP: ${IP_ADDR:-none}).${NC}"
+  echo -e "${YELLOW}This usually means the phone didn't finish pairing/trusting before Enter was pressed,${NC}"
+  echo -e "${YELLOW}or the tethering toggle wasn't actually on yet.${NC}"
+  read -p "Remove this Bluetooth pairing and try again? [y/N]: " RETRY
+  if [[ "$RETRY" =~ ^[Yy] ]]; then
+    echo -e "${YELLOW}[*] Cleaning up so you can retry...${NC}"
+    nmcli connection delete "$BT_NAME" > /dev/null 2>&1
+    bluetoothctl remove "$BT_MAC" > /dev/null 2>&1
+    echo -e "${YELLOW}[*] Removed. Let's try again.${NC}\n"
+    continue
+  fi
+
+  echo -e "${RED}[!] Leaving things as-is. You can re-run this wizard any time with: sudo bt-wizard${NC}"
+  exit 1
+done
