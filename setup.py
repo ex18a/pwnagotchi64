@@ -194,6 +194,21 @@ def restart_services():
     else:
         os.system("systemctl disable --now pwnagotchi-battery-curve-log.timer")
 
+def install_bt_wizard():
+    # Only ever installed at full image-build time (builder/pwnagotchi.sh
+    # copies it to /usr/local/bin/bt-wizard), not through this in-place
+    # pip-install path -- meaning any already-provisioned device picking up
+    # a bt-wizard fix via auto-update would otherwise keep silently running
+    # whatever stale copy was baked into its original image forever. Same
+    # "already-provisioned devices picking this up via an in-place update"
+    # gap as remove_stale_eth0_interfaces_file() below, just for this file.
+    setup_path = os.path.dirname(__file__)
+    src = os.path.join(setup_path, 'builder', 'assets', 'bluetooth', 'bt-wizard')
+    dest = '/usr/local/bin/bt-wizard'
+    if os.path.exists(src):
+        shutil.copyfile(src, dest)
+        os.chmod(dest, 0o755)
+
 def remove_stale_eth0_interfaces_file():
     # base Kali image leftover, not ours -- duplicates our own eth0-cfg
     # (kept for Pi 3B+ support) but declares "auto eth0", which fails and
@@ -216,6 +231,7 @@ class CustomInstall(install):
             )
             return
         install_system_files()
+        install_bt_wizard()
         # deliberately not gated behind restart_services()'s chroot/Docker
         # guard -- downloading and swapping a binary needs no running
         # systemd, so this must also apply during a fresh image build
