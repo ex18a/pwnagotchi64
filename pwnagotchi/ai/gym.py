@@ -10,38 +10,28 @@ from pwnagotchi.ai.parameter import Parameter
 
 class Environment(gym.Env):
     metadata = {'render.modes': ['human']}
-    # Ranges narrowed from evilsocket's original general-purpose values to
-    # bracket what actually worked well during real walking-speed field
-    # testing (see git history), rather than the wide, stationary-use
-    # ranges upstream ships with. With as little training data as this
-    # device sees, a search space that includes clearly-bad-for-walking
-    # extremes (e.g. multi-minute TTLs, 90s recon windows) mostly just
-    # slows down converging on values that fit the actual use case.
+    # Restored to evilsocket/aluminum-ice's original values across the
+    # board (verified directly against both, identical in each) after
+    # narrowing several of these earlier this session for walking-speed
+    # responsiveness turned out to actively hurt handshake capture: real
+    # field data compared July 7 (avg hop_recon_time ~47s, ~33% deauth-to-
+    # handshake conversion) against a walking session under the narrowed
+    # range (avg ~28s, ~6% conversion) -- the AI wasn't allowed to wait
+    # long enough for a handshake to land before hopping away. Rather than
+    # keep re-guessing a bracket by hand, let the reward signal (which
+    # already weights handshakes heavily) find what works across the full
+    # original search space -- costs more exploration time up front, but
+    # this device is already re-learning from scratch after the range
+    # change forced a reset anyway, so there's no extra cost paid beyond
+    # what's already being spent.
     params = [
         Parameter('min_rssi', min_value=-200, max_value=-50),
-        # 15-600 -> 15-180: a multi-minute memory of a station/AP makes
-        # little sense while continuously moving into new coverage areas
-        Parameter('ap_ttl', min_value=15, max_value=180),
-        Parameter('sta_ttl', min_value=15, max_value=180),
-
-        # widened back to evilsocket's original 5-90 -- narrowing this to
-        # 10-45 earlier capped hop_recon_time/recon_time well below what
-        # actually worked before: real handshake-conversion data compared
-        # July 7 (avg hop_recon_time ~47s, ~33% deauth-to-handshake
-        # conversion) against a walking session under the narrowed range
-        # (avg ~28s, ~6% conversion) -- the AI simply wasn't allowed to
-        # wait long enough for a handshake to land before hopping away.
-        # Full range restored so it can learn that longer dwell times pay
-        # off when they do, instead of being capped below the values that
-        # were already confirmed to work well.
-        Parameter('recon_time', min_value=5, max_value=90),
+        Parameter('ap_ttl', min_value=30, max_value=600),
+        Parameter('sta_ttl', min_value=60, max_value=300),
+        Parameter('recon_time', min_value=5, max_value=60),
         Parameter('max_inactive_scale', min_value=3, max_value=10),
-        # 1-5 -> 1-3 (back to evilsocket's original): a large multiplier
-        # means waiting even longer in a dead zone, which just wastes
-        # more of a walk that's already producing nothing
         Parameter('recon_inactive_multiplier', min_value=1, max_value=3),
-        # see recon_time above -- same reasoning, same data
-        Parameter('hop_recon_time', min_value=5, max_value=90),
+        Parameter('hop_recon_time', min_value=5, max_value=60),
         Parameter('min_recon_time', min_value=1, max_value=30),
         Parameter('max_interactions', min_value=1, max_value=25),
         Parameter('max_misses_for_recon', min_value=3, max_value=10),
