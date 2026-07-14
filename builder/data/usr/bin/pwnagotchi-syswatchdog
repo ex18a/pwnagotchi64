@@ -19,9 +19,12 @@ WATCHDOG_LOG="/var/log/pwnagotchi-syswatchdog.log"
 BOOT_GRACE_SECONDS=300       # don't act on anything for the first 5 min after boot
 LOG_STALE_SECONDS=600        # pwnagotchi.log should never go this long with no write
 BETTERCAP_MAX_RESTARTS=3     # more than this while currently inactive = crash-looping
-CPU_TEMP_MAX_C=60            # normal running temp is under 50C -- 80C+ has been seen
+CPU_TEMP_MAX_C=70            # normal running temp is under 50C -- 80C+ has been seen
                               # during bad bluetooth tether sessions; this is a blunt
-                              # safety net, not a diagnosis of the actual cause
+                              # safety net, not a diagnosis of the actual cause. 60C
+                              # was too eager -- confirmed on-device it can sit at
+                              # 60-63C under normal load/ambient warmth alone,
+                              # triggering reboots for nothing actually wrong
 BRCM_RECOVERY_MARKER="/run/pwnagotchi-syswatchdog-brcm-recovery"
                               # tmpfs -- cleared automatically on every reboot, so a
                               # real reboot (however it happens) always gets a clean
