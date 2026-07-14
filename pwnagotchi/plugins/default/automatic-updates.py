@@ -446,6 +446,26 @@ class AutomaticUpdates(plugins.Plugin):
                 agent.resume_ai()
             logging.info("[automatic-updates] restarting bettercap ...")
             os.system('systemctl start bettercap')
+            # `systemctl start` only confirms systemd launched the process,
+            # not that its REST API is actually listening yet -- confirmed
+            # on-device this gap let a loud traceback slip through right
+            # here, because EXPECTED_DOWNTIME was already cleared while
+            # bettercap-launcher was still recreating mon0 (which alone can
+            # take 90s+ after a rapid restart, see agent.py's
+            # BETTERCAP_WAIT_TIMEOUT). Poll for the API instead of assuming
+            # it's ready the instant the command returns; give up and clear
+            # the flag anyway after a while so this can't suppress
+            # legitimate warnings forever if bettercap genuinely doesn't
+            # come back -- agent.py's own wait/reboot logic is the real
+            # backstop for that case.
+            waited = 0
+            while waited < 180:
+                try:
+                    agent.session()
+                    break
+                except Exception:
+                    time.sleep(5)
+                    waited += 5
             bettercap.EXPECTED_DOWNTIME = False
 
         logging.info("[automatic-updates] pip install completed successfully")

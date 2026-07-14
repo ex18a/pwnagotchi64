@@ -113,13 +113,16 @@ class Watchdog(plugins.Plugin):
             logging.error(f"[Watchdog] Error checking bettercap service status: {e}")
             return False  # don't false-trigger a reboot if systemctl itself is the thing failing
 
-    def _is_bettercap_still_down_after_grace_period(self, agent, grace_seconds=60, poll_interval=5):
+    def _is_bettercap_still_down_after_grace_period(self, agent, grace_seconds=180, poll_interval=5):
         # Blocks on_epoch for up to grace_seconds -- only while bettercap is
         # already known to be down, in which case the agent's own REST calls
         # are failing anyway, so this isn't costing anything beyond what's
         # already lost. Polls every poll_interval seconds so it returns as
         # soon as systemd's restart succeeds, rather than always waiting
-        # the full window.
+        # the full window. 60s was confirmed on-device to be too tight --
+        # see agent.py's BETTERCAP_WAIT_TIMEOUT, same underlying cause
+        # (mon0 needing 2-3 attempts to recreate after a rapid restart,
+        # legitimately taking 90-120s+) and same fix, kept in sync here.
         waited = 0
         while waited < grace_seconds:
             time.sleep(poll_interval)

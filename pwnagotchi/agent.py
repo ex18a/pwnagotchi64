@@ -238,8 +238,15 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         self.start_advertising()
 
     # matches watchdog's own grace period for a bettercap-down check mid-run
-    # (see watchdog.py's _is_bettercap_still_down_after_grace_period)
-    BETTERCAP_WAIT_TIMEOUT = 60
+    # (see watchdog.py's _is_bettercap_still_down_after_grace_period). 60s
+    # was confirmed on-device to be too tight: after a rapid string of
+    # restarts, bettercap-launcher can need 2-3 attempts to recreate mon0
+    # (each ~30s apart, since it doesn't exist yet right after a restart),
+    # legitimately taking 90-120s+ to actually come up -- causing this to
+    # fire a full reboot for something that was already recovering on its
+    # own, which then triggers another rapid restart, compounding the exact
+    # problem it was trying to fix.
+    BETTERCAP_WAIT_TIMEOUT = 180
 
     def _wait_bettercap(self):
         # this runs before the first epoch, so watchdog's on_epoch-based
