@@ -35,6 +35,18 @@ check_brcm() {
   if [[ "$(journalctl -n10 -k --since -5m | grep -c 'brcmf_cfg80211_nexmon_set_channel.*Set Channel failed')" -ge 5 ]]; then
     return 1
   fi
+  # the firmware's own internal watchdog firing repeatedly is a distinct
+  # but related symptom -- confirmed on-device: a cluster of these
+  # preceded a full kernel/SDIO lockup that only a hard reboot recovered
+  # from, while every epoch in between sat silently blind with none of
+  # pwnagotchi's own health checks (mon0 present, bettercap API
+  # responding, wifi.recon module flagged as running) ever catching it,
+  # since all three stayed superficially fine throughout. Folding this
+  # into the same check means reload_brcm() -- a driver reload, not a
+  # reboot -- gets a chance to clear it before it escalates that far.
+  if [[ "$(journalctl -k --since -10m 2>/dev/null | grep -c 'brcmf_psm_watchdog_notify')" -ge 3 ]]; then
+    return 1
+  fi
   return 0
 }
 

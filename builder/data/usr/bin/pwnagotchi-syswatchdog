@@ -11,6 +11,8 @@
 
 set -u
 
+source /usr/bin/pwnlib
+
 LOG_FILE="/var/log/pwnagotchi.log"
 CRASH_LOG="/var/log/pwnagotchi_crashes.log"
 WATCHDOG_LOG="/var/log/pwnagotchi-syswatchdog.log"
@@ -20,6 +22,11 @@ BETTERCAP_MAX_RESTARTS=3     # more than this while currently inactive = crash-l
 CPU_TEMP_MAX_C=60            # normal running temp is under 50C -- 80C+ has been seen
                               # during bad bluetooth tether sessions; this is a blunt
                               # safety net, not a diagnosis of the actual cause
+BRCM_RECOVERY_MARKER="/run/pwnagotchi-syswatchdog-brcm-recovery"
+                              # tmpfs -- cleared automatically on every reboot, so a
+                              # real reboot (however it happens) always gets a clean
+                              # slate rather than carrying a stale "already tried"
+                              # flag across into the next boot
 PIP_INSTALL_MAX_SECONDS=240  # confirmed multiple times on-device: a normal
                               # update's pip install completes in under 90s;
                               # anything still running this long means the same
@@ -72,6 +79,34 @@ fi
 uptime_seconds=$(awk '{print int($1)}' /proc/uptime)
 if [ "$uptime_seconds" -lt "$BOOT_GRACE_SECONDS" ]; then
     exit 0
+fi
+
+# nexmon/brcmfmac flakiness (repeated firmware watchdog firings or channel-set
+# failures): confirmed on-device this can sit for hours -- causing repeated
+# brief blind epochs invisible to every other health check here, since mon0
+# stays present and bettercap's API keeps responding throughout -- before
+# eventually escalating into a full SDIO/kernel lockup. check_brcm/reload_brcm
+# (pwnlib) already existed for this, but were only ever invoked once, at
+# bettercap's own startup -- nothing re-checked once it was already running.
+# Try the light-weight fix (just reload the kernel module, no reboot) exactly
+# once per boot; if the same condition is still there on a later run, that
+# means the light-weight fix didn't hold, so escalate to a full reboot rather
+# than silently retrying it forever.
+if ! check_brcm; then
+    if [ -f "$BRCM_RECOVERY_MARKER" ]; then
+        reboot_with_reason "brcmfmac still flaky after an earlier reload_brcm attempt this boot -- reload didn't hold"
+        exit 0
+    fi
+    log "brcmfmac flakiness detected -- attempting reload_brcm (no reboot) ..."
+    touch "$BRCM_RECOVERY_MARKER"
+    if reload_brcm; then
+        sleep 10
+        systemctl restart bettercap
+        log "reload_brcm succeeded, bettercap restarted"
+    else
+        reboot_with_reason "reload_brcm failed outright"
+        exit 0
+    fi
 fi
 
 # CPU overtemp: same thermal_zone0 source pwnagotchi.temperature() reads, checked
