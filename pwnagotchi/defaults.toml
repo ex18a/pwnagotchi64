@@ -158,7 +158,7 @@ enabled = true
 rotation = 180
 type = "waveshare_4"
 color = "black"
-full_refresh_every = 50        # portrait drivers only: partial refreshes between each forced full one (resets e-ink fade)
+full_refresh_every = 300       # portrait drivers only: partial refreshes between each forced full one (resets e-ink fade) -- 300 confirmed on-device as the point it starts visibly greying, override in config.toml to change
 
 [bettercap]
 scheme = "http"

@@ -5,7 +5,7 @@ from PIL import Image
 
 # how many partial refreshes to allow before forcing a full one, if not set
 # via config -- see ui.display.full_refresh_every
-DEFAULT_FULL_REFRESH_EVERY = 50
+DEFAULT_FULL_REFRESH_EVERY = 300
 
 class WaveshareV4Portrait(DisplayImpl):
     def __init__(self, config):
