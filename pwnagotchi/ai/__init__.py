@@ -103,11 +103,20 @@ def load(config, agent, epoch, from_disk=True):
                     return False
                 # a2c already holds the freshly-created model from a few
                 # lines above (env, **config['params']) -- leave it as
-                # that and move the incompatible saved file out of the way.
+                # that and move the incompatible saved file out of the way,
+                # into the same brain-backups folder everything else lands
+                # in (train.py's periodic rolling/permanent snapshots)
+                # rather than cluttering the directory brain.nn itself
+                # lives in.
                 logging.warning("[ai] %s -- saved model is incompatible with the current "
                                  "action/observation space (confirmed again after a restart), starting "
                                  "a fresh one instead" % e)
-                backup_path = config['path'] + ".incompatible"
+                backup_dir = os.path.join(os.path.dirname(config['path']), 'brain-backups', 'incompatible')
+                try:
+                    os.makedirs(backup_dir, exist_ok=True)
+                except Exception as mkdir_err:
+                    logging.error("[ai] failed to create incompatible-backup dir: %s" % mkdir_err)
+                backup_path = os.path.join(backup_dir, os.path.basename(config['path']) + ".incompatible")
                 try:
                     os.replace(config['path'], backup_path)
                     logging.info("[ai] backed up incompatible model to %s" % backup_path)
@@ -122,7 +131,7 @@ def load(config, agent, epoch, from_disk=True):
                 # this ever turns out to have been the wrong call after all.
                 json_path = os.path.splitext(config['path'])[0] + '.json'
                 if os.path.exists(json_path):
-                    json_backup_path = json_path + ".incompatible"
+                    json_backup_path = os.path.join(backup_dir, os.path.basename(json_path) + ".incompatible")
                     try:
                         os.replace(json_path, json_backup_path)
                         logging.info("[ai] backed up incompatible stats to %s" % json_backup_path)
