@@ -113,11 +113,25 @@ def load(config, agent, epoch, from_disk=True):
                     logging.info("[ai] backed up incompatible model to %s" % backup_path)
                 except Exception as backup_err:
                     logging.error("[ai] failed to back up incompatible model: %s" % backup_err)
-                finally:
+                # brain.json (Stats: born_at/epochs_lived/epochs_trained/
+                # best_reward/worst_reward) belongs to the model being
+                # replaced, not the fresh one -- if it's left in place, the
+                # fresh model's counters would misleadingly carry on from the
+                # old one's. Back it up rather than deleting outright, same
+                # as brain.nn itself, so both can be restored together if
+                # this ever turns out to have been the wrong call after all.
+                json_path = os.path.splitext(config['path'])[0] + '.json'
+                if os.path.exists(json_path):
+                    json_backup_path = json_path + ".incompatible"
                     try:
-                        os.remove(pending_path)
-                    except Exception:
-                        pass
+                        os.replace(json_path, json_backup_path)
+                        logging.info("[ai] backed up incompatible stats to %s" % json_backup_path)
+                    except Exception as json_backup_err:
+                        logging.error("[ai] failed to back up incompatible stats: %s" % json_backup_err)
+                try:
+                    os.remove(pending_path)
+                except Exception:
+                    pass
         else:
             logging.info("[ai] new model created:")
             for key, value in config['params'].items():
