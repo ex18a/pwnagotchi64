@@ -98,8 +98,22 @@ class AsyncTrainer(object):
     # a nexmon/mon0 dropout was being recovered from, and without a retry
     # here the AI simply never started for the rest of that boot -- no
     # crash, no log beyond the one failure, just silently inert.
-    AI_LOAD_MAX_ATTEMPTS = 5
-    AI_LOAD_RETRY_DELAY = 10
+    #
+    # Also confirmed on-device (separately) that bettercap itself can take
+    # well over a minute to actually come up after a rapid string of
+    # restarts in quick succession -- mon0/wlan0 briefly don't exist yet,
+    # bettercap-launcher fails outright, and systemd has to retry it two or
+    # three times before it succeeds.
+    #
+    # Discarding a trained brain.nn is expensive (hours/days of training
+    # lost) and this retry loop is the only thing standing between a slow
+    # bettercap startup and that happening, so it's deliberately generous:
+    # 16 attempts * 60s = 15 minutes before ever giving up and accepting a
+    # fresh model. Far longer than any observed bettercap startup, but the
+    # cost of waiting a bit longer in the rare genuinely-stuck case is
+    # nothing compared to the cost of wrongly discarding a good model.
+    AI_LOAD_MAX_ATTEMPTS = 16
+    AI_LOAD_RETRY_DELAY = 60
 
     def __init__(self, config):
         self._config = config

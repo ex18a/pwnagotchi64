@@ -33,27 +33,43 @@ def load(config, agent, epoch, from_disk=True):
             except ValueError as e:
                 if "do not match" not in str(e):
                     raise
+                # SB3's own check_for_correct_spaces() raises exactly this
+                # ValueError, with "... do not match: ..." in the message,
+                # whenever the env's action/observation space doesn't match
+                # the saved model's. Two different causes look identical
+                # here, and confirmed on-device that BOTH really happen:
+                #
+                # 1. A genuine, permanent structural change (a gym.py
+                #    Parameter's min/max range changed, or one was added/
+                #    removed) -- retrying the exact same load will fail
+                #    identically every time, no matter how many attempts,
+                #    so there's no point keeping the old model around.
+                #
+                # 2. A transient boot-time race: supported_channels() came
+                #    back empty because mon0/bettercap hadn't finished
+                #    coming up yet at the exact instant this env was built,
+                #    so the action space is missing all its per-channel
+                #    dimensions -- confirmed on-device this can take well
+                #    over a minute after a rapid string of restarts, not
+                #    just "a moment". Wrongly treating this as case 1
+                #    destroys a perfectly good, previously-trained model
+                #    for no reason other than bad timing.
+                #
+                # Only agent.supported_channels() being empty right now can
+                # actually tell these apart. If it's empty, don't touch the
+                # saved model at all -- return False so AsyncTrainer's own
+                # retry loop (train.py, built for exactly this) tries again
+                # once channels are actually known, instead of silently
+                # "succeeding" with a fresh model on the very first attempt
+                # and never giving that retry loop a chance to run.
+                if not agent.supported_channels():
+                    logging.warning("[ai] %s -- supported_channels() is currently empty (mon0/bettercap "
+                                     "likely still coming up), deferring judgment instead of discarding "
+                                     "the saved model" % e)
+                    return False
                 # a2c already holds the freshly-created model from a few
                 # lines above (env, **config['params']) -- leave it as
-                # that and move the incompatible saved file out of the
-                # way, rather than raising and letting AsyncTrainer's
-                # retry loop retry an identical load 5 times. That retry
-                # logic exists for genuinely transient failures (e.g. the
-                # channel list being empty for a moment right after
-                # boot); this is not one -- it's a permanent, structural
-                # mismatch between the saved model's action/observation
-                # space and gym.py's current Parameter definitions (a
-                # min/max range changed, or a parameter was added or
-                # removed), and retrying the exact same load will fail
-                # identically every time, no matter how many attempts.
-                # SB3's own check_for_correct_spaces() raises exactly
-                # this ValueError, with "... do not match: ..." in the
-                # message, which is what's matched on above. Confirmed
-                # via a real crash: this is the same failure mode as the
-                # "Action spaces do not match" crash fixed in agent.py's
-                # supported_channels() -- same underlying cause class,
-                # just triggered by a code change instead of a boot-time
-                # race.
+                # that and move the incompatible saved file out of the way.
                 logging.warning("[ai] %s -- saved model is incompatible with the current "
                                  "action/observation space, starting a fresh one instead" % e)
                 backup_path = config['path'] + ".incompatible"
