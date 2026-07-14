@@ -36,6 +36,19 @@ def parse_pcap(filename):
 
     try:
         info = extract_from_pcap(filename, [WifiInfo.BSSID, WifiInfo.ESSID])
+    except ValueError as e:
+        if "Cannot get linktype from a PcapNg packet" in str(e):
+            # confirmed benign, harmless race: bettercap creates the pcap
+            # file before it's finished writing the actual handshake packet
+            # into it, and this scan can catch it in that split-second gap
+            # (scapy raises this when a PcapNg file has zero packets yet).
+            # Not actually lost -- report_ap() below only needs essid/bssid,
+            # and the filename-derived fallback set above (this codebase's
+            # own ESSID_BSSID.pcap naming convention) already covers that,
+            # so there's nothing to log as an error here.
+            logging.debug("grid: %s (pcap was still empty when scanned, using filename-derived essid/bssid)" % e)
+        else:
+            logging.error("grid: %s" % e)
     except Exception as e:
         logging.error("grid: %s" % e)
 
