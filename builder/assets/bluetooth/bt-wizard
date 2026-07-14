@@ -66,7 +66,7 @@ SERVICE_EOF
     type bluetooth bt-type panu \
     bluetooth.bdaddr "$BT_MAC" \
     connection.autoconnect yes \
-    connection.autoconnect-retries 0 \
+    connection.autoconnect-retries 5 \
     ipv4.method auto \
     ipv4.dns "8.8.8.8 1.1.1.1" \
     ipv4.route-metric 700 > /dev/null
@@ -74,6 +74,13 @@ SERVICE_EOF
   # for ethernet/wifi/usb-gadget links, so if a usb0/wifi/ethernet connection is
   # ever also up, the kernel picks it over the bluetooth tether automatically --
   # no need to special-case any specific interface
+
+  # retries=0 means "retry forever" in NetworkManager, not "no retries" --
+  # confirmed on-device this caused an out-of-range peer to be retried every
+  # ~5s indefinitely, which also meant NetworkManager never gave up long
+  # enough to fall back to a second, lower-priority bluetooth connection
+  # profile (e.g. a phone) for the same adapter while this one was
+  # unreachable. A finite count lets it actually yield.
 
   nmcli connection up "$BT_NAME" > /dev/null 2>&1
 
