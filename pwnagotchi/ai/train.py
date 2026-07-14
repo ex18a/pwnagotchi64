@@ -120,10 +120,16 @@ class AsyncTrainer(object):
     # in-place saves (which a bad reset, a bug, or a bad config change can
     # still wipe out) and from the .incompatible backup (which only ever
     # holds the single most recent one, getting overwritten by the next
-    # reset). Deliberately never pruned/rotated here -- the point is to
-    # never lose one, not to save disk space, so this is left growing.
+    # reset). Two tiers: a rolling one every 100 trained epochs (kept to the
+    # last 10, so it doesn't grow forever) and a permanent one every 1000
+    # (kept forever, as real long-term milestones) -- epoch 1000, 2000, etc
+    # get both, since 1000 is also a multiple of 100.
     BRAIN_BACKUP_DIR = "/root/brain-backups"
+    BRAIN_BACKUP_ROLLING_SUBDIR = "rolling"
+    BRAIN_BACKUP_PERMANENT_SUBDIR = "permanent"
     BRAIN_BACKUP_INTERVAL_EPOCHS = 100
+    BRAIN_BACKUP_PERMANENT_INTERVAL_EPOCHS = 1000
+    BRAIN_BACKUP_ROLLING_KEEP = 10
 
     def __init__(self, config):
         self._config = config
@@ -171,18 +177,39 @@ class AsyncTrainer(object):
         self._model.save(temp)
         os.replace(temp, self._nn_path)
 
-    def _backup_ai(self):
+    def _backup_ai(self, permanent):
         try:
-            os.makedirs(self.BRAIN_BACKUP_DIR, exist_ok=True)
+            subdir = self.BRAIN_BACKUP_PERMANENT_SUBDIR if permanent else self.BRAIN_BACKUP_ROLLING_SUBDIR
+            backup_dir = os.path.join(self.BRAIN_BACKUP_DIR, subdir)
+            os.makedirs(backup_dir, exist_ok=True)
             tag = "epoch%d_%s" % (self._stats.epochs_trained, time.strftime("%Y-%m-%d_%H-%M-%S"))
-            nn_backup = os.path.join(self.BRAIN_BACKUP_DIR, "brain_%s.nn" % tag)
+            nn_backup = os.path.join(backup_dir, "brain_%s.nn" % tag)
             shutil.copy2(self._nn_path, nn_backup)
             json_path = "%s.json" % os.path.splitext(self._nn_path)[0]
             if os.path.exists(json_path):
-                shutil.copy2(json_path, os.path.join(self.BRAIN_BACKUP_DIR, "brain_%s.json" % tag))
-            logging.info("[ai] backed up brain to %s" % nn_backup)
+                shutil.copy2(json_path, os.path.join(backup_dir, "brain_%s.json" % tag))
+            logging.info("[ai] backed up brain to %s%s" % (nn_backup, " (permanent)" if permanent else ""))
+            if not permanent:
+                self._prune_rolling_backups(backup_dir)
         except Exception as e:
             logging.error("[ai] failed to back up brain: %s" % e)
+
+    def _prune_rolling_backups(self, backup_dir):
+        try:
+            nn_files = sorted(
+                (f for f in os.listdir(backup_dir) if f.endswith('.nn')),
+                key=lambda f: os.path.getmtime(os.path.join(backup_dir, f))
+            )
+            excess = len(nn_files) - self.BRAIN_BACKUP_ROLLING_KEEP
+            for f in nn_files[:max(0, excess)]:
+                nn_path = os.path.join(backup_dir, f)
+                json_path = os.path.splitext(nn_path)[0] + '.json'
+                for p in (nn_path, json_path):
+                    if os.path.exists(p):
+                        os.remove(p)
+                logging.info("[ai] pruned old rolling brain backup %s" % f)
+        except Exception as e:
+            logging.error("[ai] failed to prune rolling brain backups: %s" % e)
 
     def _render_env_safe(self):
         try:
@@ -203,10 +230,14 @@ class AsyncTrainer(object):
 
         # epochs_trained is only incremented by the on_epoch() call just
         # above, so check it after -- this must land exactly on each
-        # multiple of 100, not just "some time after"
-        if self._is_training and self._stats.epochs_trained > 0 \
-                and self._stats.epochs_trained % self.BRAIN_BACKUP_INTERVAL_EPOCHS == 0:
-            self._backup_ai()
+        # multiple of 100/1000, not just "some time after". Both can fire
+        # on the same epoch (e.g. 1000, 2000, ...), since 1000 is also a
+        # multiple of 100.
+        if self._is_training and self._stats.epochs_trained > 0:
+            if self._stats.epochs_trained % self.BRAIN_BACKUP_PERMANENT_INTERVAL_EPOCHS == 0:
+                self._backup_ai(permanent=True)
+            if self._stats.epochs_trained % self.BRAIN_BACKUP_INTERVAL_EPOCHS == 0:
+                self._backup_ai(permanent=False)
 
     def on_ai_training_step(self, _locals, _globals):
         self._render_env_safe()
