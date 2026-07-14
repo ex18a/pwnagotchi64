@@ -30,6 +30,17 @@ def load(config, agent, epoch, from_disk=True):
             try:
                 a2c = A2C.load(config['path'], env=env)
                 logging.debug("[ai] A2C loaded in %.2fs" % (time.time() - start))
+                # a clean load proves the saved model is compatible right
+                # now, so any mismatch noted on a previous boot was
+                # transient after all -- clear it rather than letting it
+                # sit around and wrongly count as "confirmed twice" against
+                # some unrelated mismatch much later
+                pending_path = config['path'] + '.mismatch-pending'
+                if os.path.exists(pending_path):
+                    try:
+                        os.remove(pending_path)
+                    except Exception:
+                        pass
             except ValueError as e:
                 if "do not match" not in str(e):
                     raise
@@ -67,17 +78,46 @@ def load(config, agent, epoch, from_disk=True):
                                      "likely still coming up), deferring judgment instead of discarding "
                                      "the saved model" % e)
                     return False
+                # Channels are confirmed known, so this really does look like
+                # a genuine, permanent structural change -- but a single
+                # occurrence still isn't proof, since anything we haven't
+                # already anticipated (an odd race, a weird bettercap state)
+                # could in principle produce the same symptom once. Discarding
+                # a trained model is expensive and can't be undone, so require
+                # this to reproduce across an actual restart (a fresh process,
+                # fresh bettercap connection, fresh channel query) before ever
+                # acting on it -- a persistent marker (survives even a full
+                # reboot, not just a service restart) records the first
+                # occurrence, and only the second one within a restart of it
+                # actually discards.
+                pending_path = config['path'] + '.mismatch-pending'
+                if not os.path.exists(pending_path):
+                    try:
+                        with open(pending_path, 'w') as fp:
+                            fp.write(str(e))
+                    except Exception as marker_err:
+                        logging.error("[ai] failed to write mismatch marker: %s" % marker_err)
+                    logging.warning("[ai] %s -- channels are known but the saved model still doesn't "
+                                     "match; noting this and waiting to see if it reproduces after a "
+                                     "restart before touching brain.nn" % e)
+                    return False
                 # a2c already holds the freshly-created model from a few
                 # lines above (env, **config['params']) -- leave it as
                 # that and move the incompatible saved file out of the way.
                 logging.warning("[ai] %s -- saved model is incompatible with the current "
-                                 "action/observation space, starting a fresh one instead" % e)
+                                 "action/observation space (confirmed again after a restart), starting "
+                                 "a fresh one instead" % e)
                 backup_path = config['path'] + ".incompatible"
                 try:
                     os.replace(config['path'], backup_path)
                     logging.info("[ai] backed up incompatible model to %s" % backup_path)
                 except Exception as backup_err:
                     logging.error("[ai] failed to back up incompatible model: %s" % backup_err)
+                finally:
+                    try:
+                        os.remove(pending_path)
+                    except Exception:
+                        pass
         else:
             logging.info("[ai] new model created:")
             for key, value in config['params'].items():
