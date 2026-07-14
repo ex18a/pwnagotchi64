@@ -19,12 +19,18 @@ WATCHDOG_LOG="/var/log/pwnagotchi-syswatchdog.log"
 BOOT_GRACE_SECONDS=300       # don't act on anything for the first 5 min after boot
 LOG_STALE_SECONDS=600        # pwnagotchi.log should never go this long with no write
 BETTERCAP_MAX_RESTARTS=3     # more than this while currently inactive = crash-looping
-CPU_TEMP_MAX_C=70            # normal running temp is under 50C -- 80C+ has been seen
-                              # during bad bluetooth tether sessions; this is a blunt
-                              # safety net, not a diagnosis of the actual cause. 60C
-                              # was too eager -- confirmed on-device it can sit at
-                              # 60-63C under normal load/ambient warmth alone,
-                              # triggering reboots for nothing actually wrong
+CPU_TEMP_PAUSE_C=70          # pause (not reboot) once it's clearly running hot --
+                              # confirmed on-device that 60C was too eager (normal
+                              # load/ambient warmth alone can sit at 60-63C), and a
+                              # reboot doesn't even help if the heat source is just
+                              # ambient, since it comes back up at the same temp
+                              # within minutes
+CPU_TEMP_RESUME_C=50         # resume automatically once back at/under this
+CPU_TEMP_HARD_REBOOT_C=85    # genuine last-resort ceiling -- 80C+ has been seen
+                              # during bad bluetooth tether sessions; if pausing
+                              # somehow isn't enough to cool it (extreme ambient
+                              # heat, a stuck fan, etc.) this is the real safety net
+CPU_HOT_PAUSE_MARKER="/run/pwnagotchi-syswatchdog-hot-pause"
 BRCM_RECOVERY_MARKER="/run/pwnagotchi-syswatchdog-brcm-recovery"
                               # tmpfs -- cleared automatically on every reboot, so a
                               # real reboot (however it happens) always gets a clean
@@ -118,8 +124,32 @@ fi
 # contention on the wifi/bt combo chip)
 temp_millic=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null || echo 0)
 temp_c=$(( temp_millic / 1000 ))
-if [ "$temp_c" -ge "$CPU_TEMP_MAX_C" ]; then
-    reboot_with_reason "CPU temp ${temp_c}C >= ${CPU_TEMP_MAX_C}C -- rebooting to be safe"
+
+if [ "$temp_c" -ge "$CPU_TEMP_HARD_REBOOT_C" ]; then
+    reboot_with_reason "CPU temp ${temp_c}C >= ${CPU_TEMP_HARD_REBOOT_C}C -- genuinely dangerous, rebooting"
+    exit 0
+fi
+
+if [ -f "$CPU_HOT_PAUSE_MARKER" ]; then
+    # already paused for heat -- resume once it's cooled down enough, otherwise
+    # just leave it be (screen already shows the "taking a break" message)
+    if [ "$temp_c" -le "$CPU_TEMP_RESUME_C" ]; then
+        log "CPU cooled to ${temp_c}C (<= ${CPU_TEMP_RESUME_C}C) -- resuming"
+        rm -f "$CPU_HOT_PAUSE_MARKER"
+        systemctl start bettercap
+        systemctl start pwnagotchi
+    fi
+    exit 0
+fi
+
+if [ "$temp_c" -ge "$CPU_TEMP_PAUSE_C" ]; then
+    log "CPU temp ${temp_c}C >= ${CPU_TEMP_PAUSE_C}C -- pausing until it cools to ${CPU_TEMP_RESUME_C}C"
+    touch "$CPU_HOT_PAUSE_MARKER"
+    # stop pwnagotchi first so it releases the display before the standalone
+    # --show-message invocation below tries to draw to the same SPI hardware
+    systemctl stop pwnagotchi
+    /usr/local/bin/pwnagotchi --show-message "Im too hot... taking a break!" 2>/dev/null
+    systemctl stop bettercap
     exit 0
 fi
 

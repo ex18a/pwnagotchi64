@@ -25,6 +25,22 @@ def do_clear(display):
     sys.exit(0)
 
 
+def do_show_message(display, text):
+    # e-ink holds whatever was last rendered with zero power once this
+    # process exits -- lets an external caller (e.g. pwnagotchi-syswatchdog,
+    # which isn't part of the Python process and can't reach into a running
+    # Agent's view) put a message on screen and have it stick around after
+    # the real pwnagotchi service is stopped, same idea as agent.py's
+    # set_rebooting()/on_shutdown() but usable standalone
+    logging.info("showing message: %s" % text)
+    import pwnagotchi.ui.faces as faces
+    display.set('face', faces.SLEEP)
+    display.set('status', text)
+    display.update(force=True)
+    time.sleep(3)  # give the e-ink time to finish its refresh before exiting
+    sys.exit(0)
+
+
 def do_manual_mode(agent):
     logging.info("entering manual mode ...")
 
@@ -122,6 +138,11 @@ if __name__ == '__main__':
     parser.add_argument('--clear', dest="do_clear", action="store_true", default=False,
                         help="Clear the ePaper display and exit.")
 
+    parser.add_argument('--show-message', dest="show_message", action="store", default=None,
+                        help="Show a sleep-face message on the display and exit "
+                             "(sticks around after the process exits, since e-ink "
+                             "needs no power to hold a frame).")
+
     parser.add_argument('--debug', dest="debug", action="store_true", default=False,
                         help="Enable debug logs.")
 
@@ -177,6 +198,10 @@ if __name__ == '__main__':
 
     if args.do_clear:
         do_clear(display)
+        sys.exit(0)
+
+    if args.show_message:
+        do_show_message(display, args.show_message)
         sys.exit(0)
 
     agent = Agent(view=display, config=config, keypair=KeyPair(view=display))
