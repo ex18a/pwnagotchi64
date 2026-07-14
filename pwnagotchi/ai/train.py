@@ -5,6 +5,7 @@ import random
 import os
 import json
 import logging
+import shutil
 
 import pwnagotchi.plugins as plugins
 import pwnagotchi.ai as ai
@@ -115,6 +116,15 @@ class AsyncTrainer(object):
     AI_LOAD_MAX_ATTEMPTS = 16
     AI_LOAD_RETRY_DELAY = 60
 
+    # Dated, numbered snapshots of the brain -- separate from brain.nn's own
+    # in-place saves (which a bad reset, a bug, or a bad config change can
+    # still wipe out) and from the .incompatible backup (which only ever
+    # holds the single most recent one, getting overwritten by the next
+    # reset). Deliberately never pruned/rotated here -- the point is to
+    # never lose one, not to save disk space, so this is left growing.
+    BRAIN_BACKUP_DIR = "/root/brain-backups"
+    BRAIN_BACKUP_INTERVAL_EPOCHS = 100
+
     def __init__(self, config):
         self._config = config
         self._model = None
@@ -161,6 +171,19 @@ class AsyncTrainer(object):
         self._model.save(temp)
         os.replace(temp, self._nn_path)
 
+    def _backup_ai(self):
+        try:
+            os.makedirs(self.BRAIN_BACKUP_DIR, exist_ok=True)
+            tag = "epoch%d_%s" % (self._stats.epochs_trained, time.strftime("%Y-%m-%d_%H-%M-%S"))
+            nn_backup = os.path.join(self.BRAIN_BACKUP_DIR, "brain_%s.nn" % tag)
+            shutil.copy2(self._nn_path, nn_backup)
+            json_path = "%s.json" % os.path.splitext(self._nn_path)[0]
+            if os.path.exists(json_path):
+                shutil.copy2(json_path, os.path.join(self.BRAIN_BACKUP_DIR, "brain_%s.json" % tag))
+            logging.info("[ai] backed up brain to %s" % nn_backup)
+        except Exception as e:
+            logging.error("[ai] failed to back up brain: %s" % e)
+
     def _render_env_safe(self):
         try:
             if hasattr(self._model.env, 'envs'):
@@ -177,6 +200,13 @@ class AsyncTrainer(object):
             self._save_ai()
 
         self._stats.on_epoch(self._epoch.data(), self._is_training)
+
+        # epochs_trained is only incremented by the on_epoch() call just
+        # above, so check it after -- this must land exactly on each
+        # multiple of 100, not just "some time after"
+        if self._is_training and self._stats.epochs_trained > 0 \
+                and self._stats.epochs_trained % self.BRAIN_BACKUP_INTERVAL_EPOCHS == 0:
+            self._backup_ai()
 
     def on_ai_training_step(self, _locals, _globals):
         self._render_env_safe()
