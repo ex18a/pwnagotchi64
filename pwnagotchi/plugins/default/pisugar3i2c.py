@@ -20,11 +20,18 @@ from pwnagotchi.ui.view import BLACK
 # runtime under this device's real load instead of the chip's raw voltage
 # curve. Re-derive this table if the load profile changes significantly
 # (e.g. a different HAT/battery, or major power-draw changes).
+#
+# Top breakpoint deliberately set to 4180mV, not the true observed peak
+# (~4350mV) -- confirmed on-device a fully-charged/plugged-in battery's
+# instantaneous voltage reading is noisy and regularly dips as low as
+# ~4150-4180mV even while genuinely full, which flickered the displayed
+# percentage between 99/100 with a higher cutoff. 4180mV sits comfortably
+# below that noise floor, so once actually full it reads a stable 100%.
 VOLTAGE_TO_PERCENT = [
     (3100, 0), (3150, 0), (3200, 0), (3250, 1), (3300, 1), (3350, 2),
     (3400, 3), (3450, 4), (3500, 5), (3550, 7), (3600, 10), (3650, 14),
     (3700, 21), (3750, 31), (3800, 45), (3850, 55), (3900, 63), (3950, 69),
-    (4000, 77), (4050, 81), (4100, 87), (4150, 92), (4200, 98), (4220, 100),
+    (4000, 77), (4050, 81), (4100, 87), (4150, 95), (4180, 100),
 ]
 
 # Built the same way as VOLTAGE_TO_PERCENT (elapsed-time-based percent,
@@ -45,7 +52,7 @@ CHARGING_VOLTAGE_TO_PERCENT = [
     (3760, 11), (3780, 14), (3800, 18), (3820, 21), (3840, 24), (3860, 28),
     (3880, 31), (3900, 34), (3920, 38), (3940, 41), (3960, 45), (3980, 48),
     (4000, 53), (4040, 57), (4060, 61), (4080, 65), (4100, 69), (4120, 73),
-    (4140, 80), (4160, 86), (4180, 91), (4200, 95), (4220, 98), (4240, 100),
+    (4140, 80), (4160, 90), (4180, 100),
 ]
 
 def _interp_table(table, mv):
@@ -63,7 +70,7 @@ def _voltage_to_percent(mv, is_charging):
 
 class PiSugar3i2c(plugins.Plugin):
     __author__ = 'ex18a'
-    __version__ = '1.0.6'
+    __version__ = '1.0.7'
     __description__ = 'Direct I2C PiSugar 3 Plugin with Smoothing'
 
     def __init__(self):
