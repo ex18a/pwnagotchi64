@@ -24,11 +24,31 @@ VOLTAGE_TO_PERCENT = [
     (3100, 0), (3150, 0), (3200, 0), (3250, 1), (3300, 1), (3350, 2),
     (3400, 3), (3450, 4), (3500, 5), (3550, 7), (3600, 10), (3650, 14),
     (3700, 21), (3750, 31), (3800, 45), (3850, 55), (3900, 63), (3950, 69),
-    (4000, 77), (4050, 81), (4100, 87), (4150, 92), (4200, 97), (4250, 99),
+    (4000, 77), (4050, 81), (4100, 87), (4150, 92), (4200, 98), (4220, 100),
 ]
 
-def _voltage_to_percent(mv):
-    table = VOLTAGE_TO_PERCENT
+# Built the same way as VOLTAGE_TO_PERCENT (elapsed-time-based percent,
+# binned by voltage, isotonic-regressed for monotonicity), but from a
+# logged charge cycle instead of a discharge one -- confirmed on-device
+# charging voltage rises much faster than actual stored charge (CC/CV
+# charging behavior + internal resistance), so applying the discharge
+# curve while plugged in overshoots badly. Only covers the clean initial
+# climb-to-full segment of that log (the following ~16h plugged in
+# afterward wasn't a clean reference: pwnagotchi/bettercap load competing
+# with trickle-charge input caused it to repeatedly dip and reclimb, since
+# the charging bit reflects "USB power present", not "net gaining charge").
+# 3720-3960mV is a straight-line interpolation, not directly measured --
+# the logger's 30s sample interval happened to land in a gap there during
+# the fast constant-current phase. Re-derive if the charger/battery changes.
+CHARGING_VOLTAGE_TO_PERCENT = [
+    (3560, 0), (3600, 1), (3680, 2), (3700, 2), (3720, 4), (3740, 8),
+    (3760, 11), (3780, 14), (3800, 18), (3820, 21), (3840, 24), (3860, 28),
+    (3880, 31), (3900, 34), (3920, 38), (3940, 41), (3960, 45), (3980, 48),
+    (4000, 53), (4040, 57), (4060, 61), (4080, 65), (4100, 69), (4120, 73),
+    (4140, 80), (4160, 86), (4180, 91), (4200, 95), (4220, 98), (4240, 100),
+]
+
+def _interp_table(table, mv):
     if mv <= table[0][0]:
         return table[0][1]
     if mv >= table[-1][0]:
@@ -38,9 +58,12 @@ def _voltage_to_percent(mv):
             frac = (mv - mv0) / (mv1 - mv0)
             return p0 + frac * (p1 - p0)
 
+def _voltage_to_percent(mv, is_charging):
+    return _interp_table(CHARGING_VOLTAGE_TO_PERCENT if is_charging else VOLTAGE_TO_PERCENT, mv)
+
 class PiSugar3i2c(plugins.Plugin):
     __author__ = 'ex18a'
-    __version__ = '1.0.5'
+    __version__ = '1.0.6'
     __description__ = 'Direct I2C PiSugar 3 Plugin with Smoothing'
 
     def __init__(self):
@@ -93,7 +116,8 @@ class PiSugar3i2c(plugins.Plugin):
             status = self._bus.read_byte_data(0x57, 0x02)
 
             millivolts = (vh << 8) | vl
-            capacity_raw = _voltage_to_percent(millivolts)
+            is_charging = (status & 0x80) != 0
+            capacity_raw = _voltage_to_percent(millivolts, is_charging)
 
             # --- 20-SECOND MOVING AVERAGE LOGIC ---
             current_time = time.time()
@@ -106,9 +130,6 @@ class PiSugar3i2c(plugins.Plugin):
             avg_capacity = sum(reading[1] for reading in self._history) / len(self._history)
             capacity = int(round(avg_capacity))
             # --------------------------------------
-
-            # Check if charging bit is high
-            is_charging = (status & 0x80) != 0
 
             ui.set('sugar_lbl', "CHG" if is_charging else "BAT")
             ui.set('sugar_val', f"{capacity}%")
