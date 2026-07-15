@@ -244,7 +244,33 @@ class AsyncTrainer(object):
         plugins.on('ai_training_step', self, _locals, _globals)
         return True
 
+    # Field-confirmed on 2026-07-15: an untrained/lightly-trained brain's
+    # exploration entropy routinely has the policy turn on 7-9+ of the
+    # per-channel toggles (or none at all, which agent.recon() treats as
+    # "hop everywhere") every epoch or two. This device's nexmon-patched
+    # BCM43430 firmware could not reliably keep up with that much
+    # wifi.recon.channel churn combined with real deauth/assoc traffic --
+    # three brcmfmac firmware crashes in under an hour, all shortly after a
+    # brain wipe. This matches the user's own earlier field observation
+    # that locking to channel 11 alone was dramatically more stable than
+    # letting the AI roam free. Capping here only limits how many of the
+    # AI's chosen channels are actually applied to bettercap -- the policy
+    # network's action space, training signal and brain.nn shape are
+    # untouched.
+    MAX_ACTIVE_CHANNELS = 6
+
+    def _cap_channels(self, channels):
+        if channels and len(channels) <= self.MAX_ACTIVE_CHANNELS:
+            return channels
+        preferred = [c for c in (1, 6, 11) if c in channels]
+        rest = [c for c in sorted(channels) if c not in preferred]
+        capped = (preferred + rest)[:self.MAX_ACTIVE_CHANNELS]
+        return capped or [1, 6, 11]
+
     def on_ai_policy(self, new_params):
+        if 'channels' in new_params:
+            new_params['channels'] = self._cap_channels(new_params['channels'])
+
         plugins.on('ai_policy', self, new_params)
         logging.info("[ai] setting new policy:")
         for name, value in new_params.items():
