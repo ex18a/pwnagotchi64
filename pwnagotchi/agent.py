@@ -304,7 +304,12 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         try:
             self.run('wifi.recon clear')
         except Exception as e:
-            logging.exception("Error while clearing wifi.recon (%s)", e)
+            # One-line warning, not a full traceback: this only fires while
+            # mon0/bettercap is already down for some other reason (a
+            # brcmfmac firmware crash, a mid-restart window), and it'll spam
+            # once per epoch for as long as that lasts -- a stack trace
+            # every time would just bury the actual underlying issue.
+            logging.warning("wifi.recon clear failed, mon0/bettercap likely down (%s)", e)
 
         if not channels:
             self._current_channel = 0
