@@ -1,6 +1,5 @@
 import logging
 import copy
-import threading
 
 import pwnagotchi.plugins as plugins
 from pwnagotchi.ai.epoch import Epoch
@@ -115,38 +114,15 @@ class Automata(object):
         self._view.on_rebooting()
         plugins.on('rebooting', self)
 
-    def wait_for(self, t, sleeping=True, hold_channel=None):
+    def wait_for(self, t, sleeping=True):
+        # Note: holding a channel through a wait no longer needs any help
+        # from here -- associate()/deauth() pin bettercap to the AP's
+        # channel via wifi.recon <bssid> (bettercap's own stickChan,
+        # checked ahead of the hop list and left alone until recon()
+        # explicitly releases it), so the channel is already held solid
+        # by the time any wait_for() call during an attack/hold happens.
         plugins.on('sleep' if sleeping else 'wait', self, t)
-
-        if hold_channel:
-            # Field-confirmed 2026-07-15 with a live iw-based channel
-            # sampler: bettercap's own channel hopper keeps running in the
-            # background and drifts off the held channel within a couple
-            # of seconds even right after a fresh wifi.recon.channel
-            # command. Re-pin on a separate thread every couple of seconds
-            # for the duration of the hold -- calling view.wait() more than
-            # once for the same logical hold (an earlier version of this
-            # fix) restarts its internal countdown each time, which showed
-            # up as a visibly duplicated "napping" sequence in the UI/log
-            # for a single hold. This keeps the UI/voice countdown as one
-            # normal, uninterrupted call.
-            stop_repin = threading.Event()
-
-            def _repin_loop():
-                while not stop_repin.wait(2.0):
-                    self.run('wifi.recon.channel %d' % hold_channel)
-
-            self.run('wifi.recon.channel %d' % hold_channel)
-            repin_thread = threading.Thread(target=_repin_loop, daemon=True)
-            repin_thread.start()
-            try:
-                self._view.wait(t, sleeping)
-            finally:
-                stop_repin.set()
-                repin_thread.join(timeout=1.0)
-        else:
-            self._view.wait(t, sleeping)
-
+        self._view.wait(t, sleeping)
         self._epoch.track(sleep=True, inc=t)
 
     def is_stale(self):

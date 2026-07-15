@@ -265,7 +265,7 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         if self._current_channel != 0 and self._pending_wait > 0:
             logging.info("holding on channel %d for %ds before ending epoch ...",
                          self._current_channel, self._pending_wait)
-            self.wait_for(self._pending_wait, hold_channel=self._current_channel)
+            self.wait_for(self._pending_wait)
         self._pending_wait = 0
 
     def recon(self):
@@ -275,7 +275,7 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         if self._current_channel != 0 and self._pending_wait > 0:
             logging.info("holding on channel %d for %ds before broadening recon ...",
                          self._current_channel, self._pending_wait)
-            self.wait_for(self._pending_wait, hold_channel=self._current_channel)
+            self.wait_for(self._pending_wait)
         self._pending_wait = 0
         self._epoch.did_deauth = False
 
@@ -289,10 +289,16 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
 
         self._view.set('channel', '*')
 
+        # Release the AP-level channel stick set by associate()/deauth()
+        # (wifi.recon <bssid>, bettercap's own stickChan) before opening
+        # recon back up -- stickChan is checked unconditionally ahead of
+        # the hop frequency list, so a lingering stick would silently
+        # override whatever channel list we ask for below.
+        self.run('wifi.recon clear')
+
         if not channels:
             self._current_channel = 0
             logging.debug("RECON %ds", recon_time)
-            self.run('wifi.recon.channel clear')
         else:
             logging.debug("RECON %ds ON CHANNELS %s", recon_time, ','.join(map(str, channels)))
             try:
@@ -759,6 +765,16 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             try:
                 logging.info("sending association frame to %s (%s %s) on channel %d [%d clients], %d dBm...",
                     ap['hostname'], ap['mac'], ap['vendor'], ap['channel'], len(ap['clients']), ap['rssi'])
+                # Field-confirmed with a live iw-based channel sampler:
+                # narrowing the hop *list* (wifi.recon.channel) is not
+                # enough -- bettercap's channel hopper drifted off within
+                # a couple of seconds regardless. wifi.recon <bssid> sets
+                # bettercap's own stickChan, which its hopper checks
+                # unconditionally *before* consulting the hop list at all,
+                # and which persists on its own (not reset until the next
+                # wifi.recon call) through the whole attack + reply-window
+                # hold, all the way until recon() explicitly releases it.
+                self.run('wifi.recon %s' % ap['mac'])
                 self.run('wifi.assoc %s' % ap['mac'])
                 self._epoch.track(assoc=True)
 
@@ -794,6 +810,8 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             try:
                 logging.info("deauthing %s (%s) from %s (%s %s) on channel %d, %d dBm ...",
                     sta['mac'], sta['vendor'], ap['hostname'], ap['mac'], ap['vendor'], ap['channel'], ap['rssi'])
+                # see associate() -- same stickChan pin, same reasoning
+                self.run('wifi.recon %s' % ap['mac'])
                 self.run('wifi.deauth %s' % sta['mac'])
                 self._epoch.track(deauth=True)
 
@@ -828,7 +846,7 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             if self._current_channel != 0 and self._pending_wait > 0:
                 logging.info("holding on channel %d for %ds before hopping to %d ...",
                              self._current_channel, self._pending_wait, channel)
-                self.wait_for(self._pending_wait, hold_channel=self._current_channel)
+                self.wait_for(self._pending_wait)
                 self._pending_wait = 0
 
             if verbose and self._epoch.any_activity:
