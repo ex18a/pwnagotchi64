@@ -14,23 +14,30 @@ import warnings
 log = logging.getLogger(__name__)
 
 # Kali's apt-packaged bettercap has real, unpatched, still-open upstream
-# concurrency bugs (bettercap/bettercap#803 and a related, previously
-# unreported one): several Station fields (WPS, and separately
-# Encryption/Cipher/Authentication) are written from the packet-processing
-# goroutine with zero synchronization while being read concurrently by
-# AccessPoint.MarshalJSON() every time the REST API streams an event --
-# confirmed on-device to panic and crash the whole bettercap process under
-# real deauth-heavy traffic, twice, on two different fields. Fixed in
+# concurrency bugs (bettercap/bettercap#803 and two related, previously
+# unreported ones): several Station fields (WPS; separately Encryption/
+# Cipher/Authentication; separately Frequency/RSSI/LastSeen/Hostname/
+# Alias) are written with no synchronization against the same mutex that
+# Station.MarshalJSON() reads them under, while being read concurrently
+# every time the REST API streams an event or a client polls session()
+# -- confirmed on-device to panic and crash the whole bettercap process
+# under real deauth-heavy traffic, on three separate occasions covering
+# three different sets of fields. The third one was specifically
+# confirmed to require pwnagotchi's own REST/websocket polling to
+# trigger at all: two isolated tests (pure channel hopping with no
+# polling client, and standalone bettercap injection with no external
+# polling client) both ran crash-free for 30-45+ minutes each, unable to
+# reproduce it without that polling layer present. Fixed in
 # ex18a/bettercap (see branch pwnagotchi-wps-fix for the root-cause
 # writeup); this installs that patched arm64 build in place of whatever
 # apt-requirements.txt pulled in, rather than trying to get the fix
 # upstream into Kali's package first.
-BETTERCAP_PATCH_VERSION = "v2.41.5-pwnagotchi2"
+BETTERCAP_PATCH_VERSION = "v2.41.5-pwnagotchi3"
 BETTERCAP_PATCH_URL = (
     "https://github.com/ex18a/bettercap/releases/download/"
-    f"{BETTERCAP_PATCH_VERSION}/bettercap-arm64-pwnagotchi2"
+    f"{BETTERCAP_PATCH_VERSION}/bettercap-arm64-pwnagotchi3"
 )
-BETTERCAP_PATCH_SHA256 = "ac208c2c31b49407f210f7fe791bb418339bde27f70daac2b03a587f83799099"
+BETTERCAP_PATCH_SHA256 = "e49fe72774115e9e811e27da8e35e164685e1421aa6f1cf1b0ce269d4171e85c"
 
 def install_file(source_filename, dest_filename):
     # do not overwrite network configuration if it exists already
