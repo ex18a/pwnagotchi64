@@ -104,8 +104,7 @@ bond_encounters_factor = 20000
 home_absent_epochs = 5         # epochs a whitelisted AP must be gone before AI is eligible to resume
 ai_wake_epochs = 2             # consecutive active epochs required before a bored-paused AI wakes back up (avoids flipping back on from one attempt against a single faint AP)
 environment_change_threshold = 0.5   # fraction of the AP set visible at bored-time that must have gone out of range before AI is eligible to wake -- distinguishes an actual location change from a stray new hotspot passing by while the original APs are all still there
-wifi_hop_period_ms = 500       # ms bettercap spends per channel during passive recon (bettercap default: 250) -- raised as a general safety margin since walking-speed recon hops far more often than this device was originally tuned for, see agent.py's _apply_hop_period()
-wifi_hop_period_bt_ms = 750    # same, used instead of wifi_hop_period_ms whenever a bluetooth PAN tether (bnep*) is connected -- confirmed live that nexmon/mon0 crash frequency drops sharply with a slower hop rate while bluetooth shares the same combo chip's radio/firmware
+wifi_hop_period_ms = 1000      # ms bettercap spends per channel during passive recon (bettercap default: 250) -- confirmed on-device that frequent channel hopping is the single biggest driver of nexmon/mon0 crash-loops on this chip, see agent.py's _apply_hop_period()
 
 [ui]
 fps = 0.0

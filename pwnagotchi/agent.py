@@ -76,10 +76,6 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         # ---------------------------------
         self._handshakes = {}
         self._handshakes_lock = threading.Lock()
-        # tracks which wifi.hop.period was last applied for (see
-        # _apply_hop_period()) -- None so the very first call always applies,
-        # regardless of which state bluetooth happens to be in at boot
-        self._last_hop_bt_state = None
         self.last_session = LastSession(self._config)
         self.mode = 'auto'
         # true if any whitelisted AP was visible as of the last get_access_points() call
@@ -121,42 +117,20 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             except Exception:
                 pass
 
-    def _bluetooth_connected(self):
-        # bnep* is bluez's naming convention for an active PAN (tethering)
-        # interface -- checking sysfs directly avoids depending on nmcli's
-        # output format or parsing
-        try:
-            for iface in os.listdir('/sys/class/net'):
-                if iface.startswith('bnep'):
-                    with open('/sys/class/net/%s/operstate' % iface) as fp:
-                        if fp.read().strip() == 'up':
-                            return True
-        except Exception:
-            pass
-        return False
-
     def _apply_hop_period(self):
-        # the wifi chip shares its radio/firmware with bluetooth on this
-        # hardware (BCM43430 combo chip) -- confirmed live tonight that
-        # nexmon/mon0 crash frequency drops sharply with a slower hop rate
-        # while a bluetooth PAN tether is connected, so use a more
-        # conservative period specifically then, and a lighter one otherwise
-        # (still raised from bettercap's stock 250 as a general safety
-        # margin, since walking-speed recon already hops far more often than
-        # this device was originally tuned for)
-        bt_connected = self._bluetooth_connected()
-        key = 'wifi_hop_period_bt_ms' if bt_connected else 'wifi_hop_period_ms'
-        hop_period = self._config['personality'].get(key, 250)
+        # Confirmed on-device over an extended period of testing: frequent
+        # channel hopping is the single biggest driver of nexmon/mon0
+        # instability on this chip (BCM43430) -- a full evening of the AI
+        # hopping across shifting sets of 5-10 channels every 1-3 minutes
+        # produced a crash-loop roughly every 20-40 minutes (bettercap
+        # dying, reload_brcm, full reboots), which stopped completely once
+        # locked to a single channel. Previously this varied by whether a
+        # bluetooth PAN tether was connected (the wifi chip shares its
+        # radio/firmware with bluetooth on this combo chip) -- simplified
+        # to always use the same conservative period regardless, rather
+        # than ever risking the faster one.
+        hop_period = self._config['personality'].get('wifi_hop_period_ms', 1000)
         self.run('set wifi.hop.period %d' % hop_period)
-        self._last_hop_bt_state = bt_connected
-
-    def _check_hop_period_for_bluetooth_change(self):
-        # called periodically (see _history_decay_worker) since bluetooth
-        # can connect/disconnect mid-session, not just at boot -- only
-        # re-issues the bettercap command when the state actually changed
-        if self._bluetooth_connected() != self._last_hop_bt_state:
-            logging.info("[hop-period] bluetooth connection state changed, re-applying wifi.hop.period")
-            self._apply_hop_period()
 
     def _reset_wifi_settings(self):
         mon_iface = self._config['main']['iface']
@@ -167,16 +141,14 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         self.run('set wifi.handshakes.file %s' % self._config['bettercap']['handshakes'])
         self.run('set wifi.handshakes.aggregate false')
 
-        # see _apply_hop_period() -- picks wifi_hop_period_ms or
-        # wifi_hop_period_bt_ms depending on whether bluetooth is currently
-        # connected. Always issued, even when it equals bettercap's own
-        # default: skipping the call when it matched bettercap's default
-        # (the old behavior here) meant a *previous* boot's non-default
-        # value could never be reverted, since bettercap has no way to know
-        # the config changed back without being told again -- confirmed
-        # live on-device: set to 750 one boot, changed back to 250 in
-        # config, bettercap stayed at 750 across the next restart because
-        # this line never re-ran.
+        # see _apply_hop_period() -- always issued, even when it equals
+        # bettercap's own default: skipping the call when it matched
+        # bettercap's default (the old behavior here) meant a *previous*
+        # boot's non-default value could never be reverted, since bettercap
+        # has no way to know the config changed back without being told
+        # again -- confirmed live on-device: set to 750 one boot, changed
+        # back to 250 in config, bettercap stayed at 750 across the next
+        # restart because this line never re-ran.
         self._apply_hop_period()
 
     # consecutive failed monitor-interface start attempts before giving up
@@ -610,10 +582,6 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
                 self._check_forget_requests()
             except Exception as e:
                 logging.exception("error while processing forget requests: %s" % e)
-            try:
-                self._check_hop_period_for_bluetooth_change()
-            except Exception as e:
-                logging.exception("error while checking hop period for bluetooth state: %s" % e)
 
     def _decay_history(self):
         now = time.time()
