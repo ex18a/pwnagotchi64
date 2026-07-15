@@ -1,5 +1,6 @@
 import logging
 import copy
+import threading
 
 import pwnagotchi.plugins as plugins
 from pwnagotchi.ai.epoch import Epoch
@@ -122,20 +123,27 @@ class Automata(object):
             # sampler: bettercap's own channel hopper keeps running in the
             # background and drifts off the held channel within a couple
             # of seconds even right after a fresh wifi.recon.channel
-            # command -- a single re-assertion partway through a hold
-            # (the previous version of this fix) still left the first
-            # several seconds of every hold exposed. Re-pin immediately,
-            # then every couple of seconds for the entire duration, so a
-            # reply-window wait is never left drifting unattended.
-            self.run('wifi.recon.channel %d' % hold_channel)
-            remaining = t
-            step = 2.0
-            while remaining > 0:
-                chunk = min(step, remaining)
-                self._view.wait(chunk, sleeping)
-                remaining -= chunk
-                if remaining > 0:
+            # command. Re-pin on a separate thread every couple of seconds
+            # for the duration of the hold -- calling view.wait() more than
+            # once for the same logical hold (an earlier version of this
+            # fix) restarts its internal countdown each time, which showed
+            # up as a visibly duplicated "napping" sequence in the UI/log
+            # for a single hold. This keeps the UI/voice countdown as one
+            # normal, uninterrupted call.
+            stop_repin = threading.Event()
+
+            def _repin_loop():
+                while not stop_repin.wait(2.0):
                     self.run('wifi.recon.channel %d' % hold_channel)
+
+            self.run('wifi.recon.channel %d' % hold_channel)
+            repin_thread = threading.Thread(target=_repin_loop, daemon=True)
+            repin_thread.start()
+            try:
+                self._view.wait(t, sleeping)
+            finally:
+                stop_repin.set()
+                repin_thread.join(timeout=1.0)
         else:
             self._view.wait(t, sleeping)
 
