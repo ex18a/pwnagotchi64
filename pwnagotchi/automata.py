@@ -114,9 +114,24 @@ class Automata(object):
         self._view.on_rebooting()
         plugins.on('rebooting', self)
 
-    def wait_for(self, t, sleeping=True):
+    def wait_for(self, t, sleeping=True, hold_channel=None):
         plugins.on('sleep' if sleeping else 'wait', self, t)
-        self._view.wait(t, sleeping)
+
+        if hold_channel:
+            # bettercap's own channel hopper is a background goroutine that
+            # keeps running on its own ticker regardless of pwnagotchi's
+            # notion of "holding" -- the single wifi.recon.channel command
+            # issued once, minutes earlier, is the *only* thing pinning it,
+            # with nothing re-asserting that pin for the length of a long
+            # wait. Refresh it partway through so a reply-window hold can't
+            # silently drift off the channel we're actually waiting on.
+            half = t / 2.0
+            self._view.wait(half, sleeping)
+            self.run('wifi.recon.channel %d' % hold_channel)
+            self._view.wait(t - half, sleeping)
+        else:
+            self._view.wait(t, sleeping)
+
         self._epoch.track(sleep=True, inc=t)
 
     def is_stale(self):

@@ -265,7 +265,7 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         if self._current_channel != 0 and self._pending_wait > 0:
             logging.info("holding on channel %d for %ds before ending epoch ...",
                          self._current_channel, self._pending_wait)
-            self.wait_for(self._pending_wait)
+            self.wait_for(self._pending_wait, hold_channel=self._current_channel)
         self._pending_wait = 0
 
     def recon(self):
@@ -275,7 +275,7 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         if self._current_channel != 0 and self._pending_wait > 0:
             logging.info("holding on channel %d for %ds before broadening recon ...",
                          self._current_channel, self._pending_wait)
-            self.wait_for(self._pending_wait)
+            self.wait_for(self._pending_wait, hold_channel=self._current_channel)
         self._pending_wait = 0
         self._epoch.did_deauth = False
 
@@ -828,7 +828,7 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             if self._current_channel != 0 and self._pending_wait > 0:
                 logging.info("holding on channel %d for %ds before hopping to %d ...",
                              self._current_channel, self._pending_wait, channel)
-                self.wait_for(self._pending_wait)
+                self.wait_for(self._pending_wait, hold_channel=self._current_channel)
                 self._pending_wait = 0
 
             if verbose and self._epoch.any_activity:
