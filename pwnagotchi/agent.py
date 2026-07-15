@@ -736,12 +736,22 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
 
             return self._history[who] < self._config['personality']['max_interactions']
 
-    def associate(self, ap, throttle=0):
+    def associate(self, ap, throttle=None):
         if self.is_stale():
             logging.debug("recon is stale, skipping assoc(%s)", ap['mac'])
             return
 
-        throttle = 0.8
+        # Upstream evilsocket/pwnagotchi added this parameter but never
+        # actually passed a value at its one call site (bin/pwnagotchi's
+        # epoch loop calls agent.associate(ap) with nothing else), so
+        # throttle defaulted to 0 and this never actually throttled
+        # anything there either -- confirmed against the original source.
+        # None (rather than a hardcoded overwrite of whatever the caller
+        # passed) means "use the configured default", while still letting
+        # a caller that actually wants a specific value (0 included) have
+        # it honored.
+        if throttle is None:
+            throttle = self._config['personality'].get('action_throttle', 0.8)
 
         if self._config['personality']['associate'] and self._should_interact(ap['mac']):
             self._view.on_assoc(ap)
@@ -769,12 +779,14 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
 
             self._view.on_normal()
 
-    def deauth(self, ap, sta, throttle=0):
+    def deauth(self, ap, sta, throttle=None):
         if self.is_stale():
             logging.debug("recon is stale, skipping deauth(%s)", sta['mac'])
             return
 
-        throttle = 0.8
+        # see associate() -- same fix, same reasoning
+        if throttle is None:
+            throttle = self._config['personality'].get('action_throttle', 0.8)
 
         if self._config['personality']['deauth'] and self._should_interact(sta['mac']):
             self._view.on_deauth(sta)
