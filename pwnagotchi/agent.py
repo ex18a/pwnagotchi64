@@ -294,7 +294,17 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         # recon back up -- stickChan is checked unconditionally ahead of
         # the hop frequency list, so a lingering stick would silently
         # override whatever channel list we ask for below.
-        self.run('wifi.recon clear')
+        #
+        # Needs its own try/except: unlike the wifi.recon.channel calls
+        # below (already guarded), this one runs unconditionally on every
+        # single epoch regardless of which branch follows, so a bettercap/
+        # mon0 hiccup here (confirmed live: a real brcmfmac firmware crash
+        # while this was mid-test) must not propagate up and stall the
+        # main loop before it even reaches the (also guarded) branches below.
+        try:
+            self.run('wifi.recon clear')
+        except Exception as e:
+            logging.exception("Error while clearing wifi.recon (%s)", e)
 
         if not channels:
             self._current_channel = 0
