@@ -118,17 +118,24 @@ class Automata(object):
         plugins.on('sleep' if sleeping else 'wait', self, t)
 
         if hold_channel:
-            # bettercap's own channel hopper is a background goroutine that
-            # keeps running on its own ticker regardless of pwnagotchi's
-            # notion of "holding" -- the single wifi.recon.channel command
-            # issued once, minutes earlier, is the *only* thing pinning it,
-            # with nothing re-asserting that pin for the length of a long
-            # wait. Refresh it partway through so a reply-window hold can't
-            # silently drift off the channel we're actually waiting on.
-            half = t / 2.0
-            self._view.wait(half, sleeping)
+            # Field-confirmed 2026-07-15 with a live iw-based channel
+            # sampler: bettercap's own channel hopper keeps running in the
+            # background and drifts off the held channel within a couple
+            # of seconds even right after a fresh wifi.recon.channel
+            # command -- a single re-assertion partway through a hold
+            # (the previous version of this fix) still left the first
+            # several seconds of every hold exposed. Re-pin immediately,
+            # then every couple of seconds for the entire duration, so a
+            # reply-window wait is never left drifting unattended.
             self.run('wifi.recon.channel %d' % hold_channel)
-            self._view.wait(t - half, sleeping)
+            remaining = t
+            step = 2.0
+            while remaining > 0:
+                chunk = min(step, remaining)
+                self._view.wait(chunk, sleeping)
+                remaining -= chunk
+                if remaining > 0:
+                    self.run('wifi.recon.channel %d' % hold_channel)
         else:
             self._view.wait(t, sleeping)
 
