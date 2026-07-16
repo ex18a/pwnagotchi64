@@ -7,6 +7,7 @@ from pwnagotchi.ui.hw.dfrobot2 import DFRobotV2
 from pwnagotchi.ui.hw.waveshare1 import WaveshareV1
 from pwnagotchi.ui.hw.waveshare2 import WaveshareV2
 from pwnagotchi.ui.hw.waveshare3 import WaveshareV3
+from pwnagotchi.ui.hw.waveshare3portrait import WaveshareV3Portrait
 from pwnagotchi.ui.hw.waveshare4 import WaveshareV4
 from pwnagotchi.ui.hw.waveshare4portrait import WaveshareV4Portrait
 from pwnagotchi.ui.hw.waveshare27inch import Waveshare27inch
@@ -50,6 +51,9 @@ def display_for(config):
 
     elif config['ui']['display']['type'] == 'waveshare_3':
         return WaveshareV3(config)
+
+    elif config['ui']['display']['type'] == 'waveshare_3_portrait':
+        return WaveshareV3Portrait(config)
 
     elif config['ui']['display']['type'] == 'waveshare_4':
         return WaveshareV4(config)

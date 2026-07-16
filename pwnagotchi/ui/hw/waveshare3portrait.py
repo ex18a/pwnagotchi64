@@ -7,9 +7,9 @@ from PIL import Image
 # via config -- see ui.display.full_refresh_every
 DEFAULT_FULL_REFRESH_EVERY = 300
 
-class WaveshareV4Portrait(DisplayImpl):
+class WaveshareV3Portrait(DisplayImpl):
     def __init__(self, config):
-        super(WaveshareV4Portrait, self).__init__(config, 'waveshare_4_portrait')
+        super(WaveshareV3Portrait, self).__init__(config, 'waveshare_3_portrait')
         self._display = None
         self._did_first_refresh = False
         self._partial_refresh_count = 0
@@ -49,12 +49,12 @@ class WaveshareV4Portrait(DisplayImpl):
         return self._layout
 
     def initialize(self):
-        logging.info("initializing waveshare v4 portrait driver")
-        from pwnagotchi.ui.hw.libs.waveshare.v4.epd2in13_V4 import EPD
+        logging.info("initializing waveshare v3 portrait driver")
+        from pwnagotchi.ui.hw.libs.waveshare.v3.epd2in13_V3 import EPD
         self._display = EPD()
         self._display.init()
         self._display.Clear(self.bg_color)
-        logging.info("initializing waveshare v4 portrait driver done")
+        logging.info("initializing waveshare v3 portrait driver done")
 
     def _full_refresh(self, buf):
         self._did_first_refresh = True

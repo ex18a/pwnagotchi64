@@ -6,6 +6,7 @@ aircrack-ng
 tcpdump
 bettercap
 bettercap-ui
+libusb-1.0-0
 bluez-tools
 jq
 dphys-swapfile

@@ -1,0 +1,10 @@
+[Unit]
+Description=Run pwnagotchi-battery-curve-log periodically
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=30s
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target

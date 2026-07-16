@@ -1,35 +1,10 @@
-# memtemp shows memory infos and cpu temperature
-#
-# mem usage, cpu load, cpu temp, cpu frequency
-#
-###############################################################
-#
-# Updated 18-10-2019 by spees <speeskonijn@gmail.com>
-# - Changed the place where the data was displayed on screen
-# - Made the data a bit more compact and easier to read
-# - removed the label so we wont waste screen space
-# - Updated version to 1.0.1
-#
-# 20-10-2019 by spees <speeskonijn@gmail.com>
-# - Refactored to use the already existing functions
-# - Now only shows memory usage in percentage
-# - Added CPU load
-# - Added horizontal and vertical orientation
-#
-# 19-09-2020 by crahan <crahan@n00.be>
-# - Added CPU frequency
-# - Made field types and order configurable (max 3 fields)
-# - Made line spacing and position configurable
-# - Updated code to dynamically generate UI elements
-# - Changed horizontal UI elements to Text
-# - Updated to version 1.0.2
-###############################################################
 from pwnagotchi.ui.components import LabeledValue, Text
 from pwnagotchi.ui.view import BLACK
 import pwnagotchi.ui.fonts as fonts
 import pwnagotchi.plugins as plugins
 import pwnagotchi
 import logging
+import time
 
 
 class MemTemp(plugins.Plugin):
@@ -48,8 +23,10 @@ class MemTemp(plugins.Plugin):
     LINE_SPACING = 10
     LABEL_SPACING = 0
     FIELD_WIDTH = 4
+    REFRESH_INTERVAL = 15  # seconds
 
     def on_loaded(self):
+        self._last_refresh = 0.0
         logging.info("memtemp plugin loaded.")
 
     def mem_usage(self):
@@ -175,6 +152,15 @@ class MemTemp(plugins.Plugin):
                 ui.remove_element('memtemp_data')
 
     def on_ui_update(self, ui):
+        # on_ui_update fires on every redraw, which can be frequent -- but
+        # mem/cpu/temp/freq don't need to be read that often. Check the
+        # clock (cheap) on every call, but only actually re-read the stats
+        # and push new values to the UI once REFRESH_INTERVAL has passed.
+        now = time.time()
+        if now - self._last_refresh < self.REFRESH_INTERVAL:
+            return
+        self._last_refresh = now
+
         if self.options['orientation'] == "vertical":
             for idx, field in enumerate(self.fields):
                 ui.set(f"memtemp_{field}", getattr(self, self.ALLOWED_FIELDS[field])())

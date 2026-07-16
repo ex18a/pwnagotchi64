@@ -47,6 +47,7 @@ class View(object):
         self._config = config
         self._canvas = None
         self._frozen = False
+        self._pinned_keys = set()
         self._lock = Lock()
         self._voice = Voice(lang=config['main']['lang'])
         self._implementation = impl
@@ -74,14 +75,15 @@ class View(object):
             'friend_name': Text(value=None, position=self._layout['friend_name'], font=fonts.BoldSmall,
                                 color=BLACK),
 
-            'name': Text(value='%s>' % 'pwnagotchi', position=self._layout['name'], color=BLACK, font=fonts.Bold),
+            'name': Text(value='pwnagotchi', position=self._layout['name'], color=BLACK, font=fonts.Bold),
 
             'status': Text(value=self._voice.default(),
                            position=self._layout['status']['pos'],
                            color=BLACK,
                            font=self._layout['status']['font'],
                            wrap=True,
-                           max_length=self._layout['status']['max']),
+                           max_length=self._layout['status']['max'],
+                           max_lines=self._layout['status'].get('lines', 0)),
 
             'shakes': LabeledValue(label='PWND ', value='0 (00)', color=BLACK,
                                    position=self._layout['shakes'], label_font=fonts.Bold,
@@ -102,11 +104,21 @@ class View(object):
         plugins.on('ui_setup', self)
 
         if config['ui']['fps'] > 0.0:
-            _thread.start_new_thread(self._refresh_handler, ())
             self._ignore_changes = ()
         else:
             logging.warning("ui.fps is 0, the display will only update for major changes")
             self._ignore_changes = ('uptime', 'name')
+
+        # the blinking name cursor used to only run as a side effect of the
+        # fps-based refresh loop, which forced e-ink users to raise fps (bad
+        # for the display) just to get it. It's its own config now, and
+        # forces its own redraw each tick so it works regardless of fps.
+        # _ignore_changes must already be set before this starts, since the
+        # thread can begin running before __init__ finishes otherwise.
+        if config['ui'].get('cursor', True):
+            _thread.start_new_thread(self._refresh_handler, ())
+        else:
+            logging.warning("ui.cursor is disabled, the name cursor will not blink")
 
         ROOT = self
 
@@ -135,19 +147,74 @@ class View(object):
         if cb not in self._render_cbs:
             self._render_cbs.append(cb)
 
+    def _name_cursor_frame(self, base_name, cursor_on):
+        # Portrait: name is dead-centered on the full screen width, and the
+        # cursor is pinned to the true right edge -- both computed as exact
+        # pixel positions rather than character padding, so neither depends
+        # on the other. The cursor is its own draw call (Text.suffix), not
+        # appended to the name string, which is what stops the name from
+        # jittering as the cursor blinks: the name's own draw call is now
+        # identical between blink states no matter where the cursor sits.
+        name_elem = self._state._state.get('name')
+        if self._width == 122 and name_elem is not None:
+            try:
+                # measure the *actual* font currently on the element, not an
+                # assumed pixel-per-char constant -- portrait-mode.py swaps
+                # this element's font out for its own size after layout()
+                # runs, so a hardcoded assumption here silently goes stale
+                main_font = name_elem.font
+                name_px = main_font.getlength(base_name)
+                if name_px <= 0:
+                    raise ValueError("non-positive name width")
+
+                centered_x = max(0, (self._width - name_px) / 2)
+                name_elem.xy = (centered_x, name_elem.xy[1])
+
+                # bbox right edge, not the advance width -- the block glyph's
+                # ink bleeds past its own advance, so using the advance would
+                # still leave a sliver of unused space at the true edge
+                cursor_bbox = main_font.getbbox('█')
+                cursor_right = cursor_bbox[2] if cursor_bbox else main_font.getlength('█')
+                cursor_x = max(0, self._width - cursor_right)
+                name_elem.suffix_xy = (cursor_x, name_elem.xy[1])
+                name_elem.suffix_font = main_font
+                name_elem.suffix = '█' if cursor_on else ''
+                return base_name
+            except Exception:
+                pass  # fall through to the simple landscape-style framing below
+
+        # landscape (or portrait if measuring the fonts above failed): cursor
+        # baked directly into the string, same font as the name, as before
+        if name_elem is not None:
+            name_elem.suffix = ''
+            name_elem.suffix_xy = None
+        return (base_name + ' █') if cursor_on else base_name
+
     def _refresh_handler(self):
-        delay = 1.0 / self._config['ui']['fps']
+        # cursor blink rate is its own setting, independent of fps
+        delay = self._config['ui'].get('cursor_interval', 3)
+        cursor_on = False
         while True:
             try:
-                name = self._state.get('name')
-                self.set('name', name.rstrip('█').strip() if '█' in name else (name + ' █'))
-                self.update()
+                cursor_on = not cursor_on
+                # recover the real name fresh each tick (strip any cursor
+                # char and centering padding from last tick) so padding can
+                # never compound across iterations
+                base_name = self._state.get('name').replace('█', '').strip()
+                self.set('name', self._name_cursor_frame(base_name, cursor_on))
+                # force=True: bypasses ignore_changes, which normally skips
+                # redraws for 'name' alone when fps is 0 -- that's what made
+                # the cursor invisible without raising fps in the first place
+                self.update(force=True)
             except Exception as e:
                 logging.warning("non fatal error while updating view: %s" % e)
-
             time.sleep(delay)
 
-    def set(self, key, value):
+    def set(self, key, value, force=False):
+        if not force and key in self._pinned_keys:
+            # something (e.g. a long-running plugin flow) has pinned this key
+            # against ordinary writers -- only a force=True write gets through
+            return
         if key == 'status':
             if not hasattr(self, '_last_logged_status') or self._last_logged_status != value:
                 import logging
@@ -160,8 +227,19 @@ class View(object):
     def get(self, key):
         return self._state.get(key)
 
+    def pin(self, keys=('face', 'status')):
+        # blocks ordinary set() writers from touching these keys until unpin() --
+        # meant for a plugin driving a long multi-step flow (e.g. an install) that
+        # needs its own status/face sequence to not get stomped by whatever else
+        # is happening in the meantime. Callers that need to write while pinned
+        # (the thing that pinned it) pass force=True to set().
+        self._pinned_keys = set(keys)
+
+    def unpin(self):
+        self._pinned_keys = set()
+
     def on_starting(self):
-        self.set('status', self._voice.on_starting() + ("\n(v%s)" % pwnagotchi.__version__))
+        self.set('status', self._voice.on_starting() + ("\n(v%s)" % pwnagotchi.display_version()))
         self.set('face', faces.AWAKE)
         self.update()
 
@@ -299,6 +377,10 @@ class View(object):
     def on_bored(self):
         self.set('face', faces.BORED)
         self.set('status', self._voice.on_bored())
+
+    def on_blind(self, blind_for):
+        self.set('face', faces.BLIND)
+        self.set('status', self._voice.on_blind(blind_for))
         self.update()
 
     def on_sad(self):
@@ -367,6 +449,66 @@ class View(object):
         self.set('status', self._voice.on_uploading(to))
         self.update(force=True)
 
+    def on_update_available(self, version):
+        self.set('status', self._voice.on_update_available(version))
+        self.update(force=True)
+
+    # --- the following on_update_* calls all run while automatic-updates has
+    # the view pinned (see that plugin), so every write needs force=True to
+    # get through. The plain "in progress" stages below leave 'face' alone --
+    # the plugin's own animation loop owns it for those -- while the ones with
+    # a distinct face (checking/verifying deps, installed/restarting/failed)
+    # still set it directly, same as before.
+
+    def on_update_cleaning(self):
+        self.set('status', self._voice.on_update_cleaning(), force=True)
+        self.update(force=True)
+
+    def on_update_installing(self, version):
+        self.set('status', self._voice.on_update_installing(version), force=True)
+        self.update(force=True)
+
+    def on_update_downloading(self, version):
+        self.set('status', self._voice.on_update_downloading(version), force=True)
+        self.update(force=True)
+
+    def on_update_extracting(self, version):
+        self.set('status', self._voice.on_update_extracting(version), force=True)
+        self.update(force=True)
+
+    def on_update_checking_deps(self):
+        self.set('face', faces.SMART, force=True)
+        self.set('status', self._voice.on_update_checking_deps(), force=True)
+        self.update(force=True)
+
+    def on_update_installing_deps(self):
+        self.set('status', self._voice.on_update_installing_deps(), force=True)
+        self.update(force=True)
+
+    def on_update_installing_core(self):
+        self.set('status', self._voice.on_update_installing_core(), force=True)
+        self.update(force=True)
+
+    def on_update_verifying_deps(self):
+        self.set('face', faces.SMART, force=True)
+        self.set('status', self._voice.on_update_verifying_deps(), force=True)
+        self.update(force=True)
+
+    def on_update_installed(self, version):
+        self.set('face', faces.COOL, force=True)
+        self.set('status', self._voice.on_update_installed(version), force=True)
+        self.update(force=True)
+
+    def on_update_restarting(self):
+        self.set('face', faces.SLEEP, force=True)
+        self.set('status', self._voice.on_update_restarting(), force=True)
+        self.update(force=True)
+
+    def on_update_failed(self, version):
+        self.set('face', faces.BROKEN, force=True)
+        self.set('status', self._voice.on_update_failed(version), force=True)
+        self.update(force=True)
+
     def on_rebooting(self):
         self.set('face', faces.BROKEN)
         self.set('status', self._voice.on_rebooting())
@@ -402,4 +544,3 @@ class View(object):
                     cb(self._canvas)
 
                 self._state.reset()
-

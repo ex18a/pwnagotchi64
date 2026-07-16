@@ -13,6 +13,12 @@ locks = {}
 THREAD_POOL_SIZE = 10
 executor = ThreadPoolExecutor(max_workers=THREAD_POOL_SIZE)
 
+def _get_executor():
+    global executor
+    if executor._shutdown:
+        executor = ThreadPoolExecutor(max_workers=THREAD_POOL_SIZE)
+    return executor
+
 class Plugin:
     @classmethod
     def __init_subclass__(cls, **kwargs):
@@ -98,7 +104,19 @@ def locked_cb(lock_name, cb, *args, **kwargs):
         locks[lock_name] = threading.Lock()
 
     with locks[lock_name]:
-        cb(*args, *kwargs)
+        try:
+            # this runs inside a ThreadPoolExecutor worker via on()/one()'s
+            # fire-and-forget executor.submit() -- nothing ever calls
+            # .result() on that Future, so without this try/except any
+            # exception a plugin's callback raises (on_epoch, on_ui_update,
+            # on_wifi_update, literally any hook, for any plugin) vanishes
+            # completely: no log line, not even to stderr, just silently
+            # dropped by concurrent.futures. That plugin's hook then simply
+            # stops firing for good with zero trace it ever failed.
+            cb(*args, **kwargs)
+        except Exception as e:
+            logging.error("error while running %s: %s" % (lock_name, e))
+            logging.error(e, exc_info=True)
 
 def one(plugin_name, event_name, *args, **kwargs):
     global loaded
@@ -111,7 +129,7 @@ def one(plugin_name, event_name, *args, **kwargs):
             try:
                 lock_name = "%s::%s" % (plugin_name, cb_name)
                 locked_cb_args = (lock_name, callback, *args, *kwargs)
-                executor.submit(locked_cb, *locked_cb_args)
+                _get_executor().submit(locked_cb, *locked_cb_args)
             except Exception as e:
                 logging.error("error while running %s.%s : %s" % (plugin_name, cb_name, e))
                 logging.error(e, exc_info=True)

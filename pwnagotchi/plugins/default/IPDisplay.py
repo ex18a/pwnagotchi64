@@ -53,7 +53,7 @@ class IPDisplay(plugins.Plugin):
         except Exception:
             pos1 = (0, 82)
         ui.add_element('ip1', LabeledValue(color=BLACK, label="", value='Initializing...',
-                                           position=pos1, label_font=fonts.Small, text_font=fonts.Small))
+                                           position=pos1, label_font=fonts.Bold, text_font=fonts.Medium))
 
     def get_iface_addrs(self):
         command = f"ip -4 -o addr | awk '/inet / {{print $2 \":\" $4}}' | cut -d '/' -f 1"
@@ -72,6 +72,7 @@ class IPDisplay(plugins.Plugin):
             self.device_index += 1
             ifaces = self.get_iface_addrs()
             if not ifaces:
+                ui._state._state['ip1'].label = ''
                 ui.set('ip1', '')
                 return
             if self.device_index >= len(ifaces):
@@ -89,7 +90,11 @@ class IPDisplay(plugins.Plugin):
                         current_device = ifaces[self.device_index]
                 except Exception:
                     pass
-            ui.set('ip1', f'{current_device}')
+            # label matches the AGE-style "BOLD LABEL  value" look instead of
+            # one plain lowercase "iface:ip" string
+            iface, _, addr = current_device.partition(':')
+            ui._state._state['ip1'].label = iface.upper()
+            ui.set('ip1', addr)
         except Exception as e:
             logging.exception(repr(e))
 

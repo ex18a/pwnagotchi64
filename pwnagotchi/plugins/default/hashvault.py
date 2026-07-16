@@ -10,10 +10,20 @@ class HashVault(plugins.Plugin):
     __version__ = '1.3.1'
     __description__ = 'Monitors handshakes via config and archives into a sibling hashes folder.'
 
+    # Where the "already tried, no handshake in it" bookkeeping lives --
+    # kept out of the user-facing hashes folder entirely (previously one
+    # visible 0-byte *.22000.noshake file per failed pcap, which just
+    # clutters a folder someone's actually browsing) in favor of one
+    # hidden line-per-filename cache, matching the existing convention of
+    # dotfiles under /root/ for this kind of internal state (see
+    # /root/.pwnagotchi-recovery, /root/.pwnagotchi-forget in agent.py).
+    NOSHAKE_CACHE_PATH = '/root/.hashvault-noshake-cache'
+
     def __init__(self):
         self.handshake_dir = None
         self.hash_dir = None
         self.last_checked_mtime = {}
+        self.noshake_cache = set()
 
     def on_loaded(self):
         try:
@@ -31,9 +41,27 @@ class HashVault(plugins.Plugin):
             if not os.path.exists(self.hash_dir):
                 os.makedirs(self.hash_dir, exist_ok=True)
 
+            self._load_noshake_cache()
             self._startup_cleanup()
         except Exception as e:
             logging.error(f"[HashVault] CRITICAL LOAD ERROR: {e}")
+
+    def _load_noshake_cache(self):
+        try:
+            with open(self.NOSHAKE_CACHE_PATH, 'rt') as fp:
+                self.noshake_cache = {line.strip() for line in fp if line.strip()}
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            logging.error(f"[HashVault] error loading noshake cache: {e}")
+
+    def _mark_noshake(self, hash_filename):
+        self.noshake_cache.add(hash_filename)
+        try:
+            with open(self.NOSHAKE_CACHE_PATH, 'at') as fp:
+                fp.write(hash_filename + '\n')
+        except Exception as e:
+            logging.error(f"[HashVault] error updating noshake cache: {e}")
 
     def _startup_cleanup(self):
         if not self.handshake_dir or not os.path.exists(self.handshake_dir):
@@ -66,8 +94,13 @@ class HashVault(plugins.Plugin):
         filename = os.path.basename(pcap_path)
         hash_filename = filename.replace('.pcap', '.22000')
         output_hash = os.path.join(self.hash_dir, hash_filename)
-
-        if os.path.exists(output_hash):
+        # a pcap with no full handshake in it never gets an output_hash
+        # written, so without tracking that a conversion was already tried
+        # and came up empty, _startup_cleanup() re-attempts it on literally
+        # every single boot forever -- the noshake cache remembers
+        # "already tried, no handshake in it" so it's only ever attempted
+        # once, without needing a visible marker file per pcap
+        if os.path.exists(output_hash) or hash_filename in self.noshake_cache:
             return
 
         logging.info(f"[HashVault] Analyzing: {filename}")
@@ -79,6 +112,8 @@ class HashVault(plugins.Plugin):
 
         if os.path.exists(output_hash):
             logging.info(f"[HashVault] Vaulted: {hash_filename}")
+        else:
+            self._mark_noshake(hash_filename)
 
         if current_mtime is None:
             try:

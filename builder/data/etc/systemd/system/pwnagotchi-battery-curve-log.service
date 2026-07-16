@@ -1,0 +1,6 @@
+[Unit]
+Description=Log PiSugar 3 battery voltage/percentage for a discharge curve test
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/pwnagotchi-battery-curve-log

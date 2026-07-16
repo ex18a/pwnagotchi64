@@ -17,6 +17,21 @@ max_queue = 10000
 min_sleep = 0.5
 max_sleep = 5.0
 
+# Set by automatic-updates.py right before it deliberately stops bettercap
+# for the duration of a pip install (see its own comments for why), and
+# cleared right after starting it back up. Every reconnect-retry loop below
+# checks this so a perfectly expected, self-inflicted outage doesn't spam
+# the log with the exact same WARNING lines a genuine bettercap crash
+# would -- otherwise every single update looks like an incident.
+EXPECTED_DOWNTIME = False
+
+def _log_retry(msg):
+    if EXPECTED_DOWNTIME:
+        logging.debug(msg)
+    else:
+        logging.warning(msg)
+
+
 def decode(r, verbose_errors=True):
     try:
         return r.json()
@@ -92,14 +107,14 @@ class Client(object):
                                 break
             except ConnectionRefusedError:
                 sleep_time = min_sleep + max_sleep*random.random()
-                logging.warning('nobody seems to be listening at the bettercap endpoint...')
-                logging.warning('retrying connection in {} sec'.format(sleep_time))
+                _log_retry('nobody seems to be listening at the bettercap endpoint...')
+                _log_retry('retrying connection in {} sec'.format(sleep_time))
                 await asyncio.sleep(sleep_time)
                 continue
             except OSError:
                 sleep_time = min_sleep + max_sleep*random.random()
-                logging.warning('connection to the bettercap endpoint failed...')
-                logging.warning('retrying connection in {} sec'.format(sleep_time))
+                _log_retry('connection to the bettercap endpoint failed...')
+                _log_retry('retrying connection in {} sec'.format(sleep_time))
                 await asyncio.sleep(sleep_time)
                 continue
 
@@ -110,8 +125,8 @@ class Client(object):
                 r = requests.post("%s/session" % self.url, auth=self.auth, json={'cmd': command})
             except requests.exceptions.ConnectionError as e:
                 sleep_time = min_sleep + max_sleep*random.random()
-                logging.warning("can't run my request... connection to the bettercap endpoint failed...")
-                logging.warning('retrying run in {} sec'.format(sleep_time))
+                _log_retry("can't run my request... connection to the bettercap endpoint failed...")
+                _log_retry('retrying run in {} sec'.format(sleep_time))
                 sleep(sleep_time)
             else:
                 break

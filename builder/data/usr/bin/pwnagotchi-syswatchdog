@@ -1,0 +1,182 @@
+#!/usr/bin/env bash
+# System-level watchdog: catches failures the Python-level pwnagotchi
+# process/plugins can't observe or fix themselves. Their own watchdog logic
+# only runs from inside the running process (on_epoch, etc.), so if that
+# process gets wedged before it ever reaches a point where its own recovery
+# code can run (e.g. stuck forever waiting on a bettercap that will never
+# come up because the wifi chip's firmware crashed and its SDIO device
+# dropped off the bus), nothing inside Python ever gets a chance to notice.
+# This runs independently via a systemd timer, so it keeps working even if
+# the pwnagotchi process itself is completely stuck.
+
+set -u
+
+source /usr/bin/pwnlib
+
+LOG_FILE="/var/log/pwnagotchi.log"
+CRASH_LOG="/var/log/pwnagotchi_crashes.log"
+WATCHDOG_LOG="/var/log/pwnagotchi-syswatchdog.log"
+BOOT_GRACE_SECONDS=300       # don't act on anything for the first 5 min after boot
+LOG_STALE_SECONDS=600        # pwnagotchi.log should never go this long with no write
+BETTERCAP_MAX_RESTARTS=3     # more than this while currently inactive = crash-looping
+CPU_TEMP_PAUSE_C=70          # pause (not reboot) once it's clearly running hot --
+                              # confirmed on-device that 60C was too eager (normal
+                              # load/ambient warmth alone can sit at 60-63C), and a
+                              # reboot doesn't even help if the heat source is just
+                              # ambient, since it comes back up at the same temp
+                              # within minutes
+CPU_TEMP_RESUME_C=50         # resume automatically once back at/under this
+CPU_TEMP_HARD_REBOOT_C=85    # genuine last-resort ceiling -- 80C+ has been seen
+                              # during bad bluetooth tether sessions; if pausing
+                              # somehow isn't enough to cool it (extreme ambient
+                              # heat, a stuck fan, etc.) this is the real safety net
+CPU_HOT_PAUSE_MARKER="/run/pwnagotchi-syswatchdog-hot-pause"
+BRCM_RECOVERY_MARKER="/run/pwnagotchi-syswatchdog-brcm-recovery"
+                              # tmpfs -- cleared automatically on every reboot, so a
+                              # real reboot (however it happens) always gets a clean
+                              # slate rather than carrying a stale "already tried"
+                              # flag across into the next boot
+PIP_INSTALL_MAX_SECONDS=240  # confirmed multiple times on-device: a normal
+                              # update's pip install completes in under 90s;
+                              # anything still running this long means the same
+                              # memory-pressure hang (bettercap/AI/bluetooth all
+                              # competing with the build for ~400MB of RAM), not
+                              # a legitimately slow install
+
+log() {
+    logger -t pwnagotchi-syswatchdog "$1"
+    echo "$(date -Is) $1" >> "$WATCHDOG_LOG"
+}
+
+reboot_with_reason() {
+    reason="$1"
+    log "CRITICAL: $reason -- rebooting"
+    {
+        echo "------------ SYSWATCHDOG REBOOT: $(date -Is) ------------"
+        echo "reason: $reason"
+        echo "--- systemctl status pwnagotchi ---"
+        systemctl status pwnagotchi --no-pager -l 2>&1 | tail -30
+        echo "--- systemctl status bettercap ---"
+        systemctl status bettercap --no-pager -l 2>&1 | tail -30
+        echo "--- dmesg tail ---"
+        dmesg | tail -50
+        echo
+    } >> "$CRASH_LOG" 2>/dev/null
+    # give it a clean boot into auto on the way back up, same signal the
+    # rest of the system already uses for a desired boot mode
+    touch /root/.pwnagotchi-auto 2>/dev/null
+    sync
+    reboot
+}
+
+# pip install hang: checked before the boot-grace gate below, since this is
+# bounded by the pip process's own elapsed runtime, not by how recently the
+# system booted -- an update can start (and hang) within the first few
+# minutes after boot just as easily as later on. Confirmed recurring even
+# after pausing AI and stopping bettercap for the install's duration
+# (automatic-updates.py) -- this device is just fundamentally tight on
+# memory, so this is the guaranteed recovery backstop rather than relying
+# solely on prevention.
+pip_pid=$(pgrep -f 'pip3 install .*--no-build-isolation' | head -1)
+if [ -n "$pip_pid" ]; then
+    elapsed=$(ps -o etimes= -p "$pip_pid" 2>/dev/null | tr -d ' ')
+    if [ -n "$elapsed" ] && [ "$elapsed" -ge "$PIP_INSTALL_MAX_SECONDS" ]; then
+        reboot_with_reason "pip install (pid $pip_pid) running ${elapsed}s >= ${PIP_INSTALL_MAX_SECONDS}s -- confirmed recurring memory-pressure hang on this device"
+    fi
+fi
+
+uptime_seconds=$(awk '{print int($1)}' /proc/uptime)
+if [ "$uptime_seconds" -lt "$BOOT_GRACE_SECONDS" ]; then
+    exit 0
+fi
+
+# nexmon/brcmfmac flakiness (repeated firmware watchdog firings or channel-set
+# failures): confirmed on-device this can sit for hours -- causing repeated
+# brief blind epochs invisible to every other health check here, since mon0
+# stays present and bettercap's API keeps responding throughout -- before
+# eventually escalating into a full SDIO/kernel lockup. check_brcm/reload_brcm
+# (pwnlib) already existed for this, but were only ever invoked once, at
+# bettercap's own startup -- nothing re-checked once it was already running.
+# Try the light-weight fix (just reload the kernel module, no reboot) exactly
+# once per boot; if the same condition is still there on a later run, that
+# means the light-weight fix didn't hold, so escalate to a full reboot rather
+# than silently retrying it forever.
+if ! check_brcm; then
+    if [ -f "$BRCM_RECOVERY_MARKER" ]; then
+        reboot_with_reason "brcmfmac still flaky after an earlier reload_brcm attempt this boot -- reload didn't hold"
+        exit 0
+    fi
+    log "brcmfmac flakiness detected -- attempting reload_brcm (no reboot) ..."
+    touch "$BRCM_RECOVERY_MARKER"
+    if reload_brcm; then
+        sleep 10
+        systemctl restart bettercap
+        log "reload_brcm succeeded, bettercap restarted"
+    else
+        reboot_with_reason "reload_brcm failed outright"
+        exit 0
+    fi
+fi
+
+# CPU overtemp: same thermal_zone0 source pwnagotchi.temperature() reads, checked
+# independently of whether pwnagotchi/bettercap are even responsive -- this is a
+# hardware safety net, not tied to any particular cause (e.g. bluetooth tethering
+# contention on the wifi/bt combo chip)
+temp_millic=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null || echo 0)
+temp_c=$(( temp_millic / 1000 ))
+
+if [ "$temp_c" -ge "$CPU_TEMP_HARD_REBOOT_C" ]; then
+    reboot_with_reason "CPU temp ${temp_c}C >= ${CPU_TEMP_HARD_REBOOT_C}C -- genuinely dangerous, rebooting"
+    exit 0
+fi
+
+if [ -f "$CPU_HOT_PAUSE_MARKER" ]; then
+    # already paused for heat -- resume once it's cooled down enough, otherwise
+    # just leave it be (screen already shows the "taking a break" message)
+    if [ "$temp_c" -le "$CPU_TEMP_RESUME_C" ]; then
+        log "CPU cooled to ${temp_c}C (<= ${CPU_TEMP_RESUME_C}C) -- resuming"
+        rm -f "$CPU_HOT_PAUSE_MARKER"
+        systemctl start bettercap
+        systemctl start pwnagotchi
+    fi
+    exit 0
+fi
+
+if [ "$temp_c" -ge "$CPU_TEMP_PAUSE_C" ]; then
+    log "CPU temp ${temp_c}C >= ${CPU_TEMP_PAUSE_C}C -- pausing until it cools to ${CPU_TEMP_RESUME_C}C"
+    touch "$CPU_HOT_PAUSE_MARKER"
+    # stop pwnagotchi first so it releases the display before the standalone
+    # --show-message invocation below tries to draw to the same SPI hardware
+    systemctl stop pwnagotchi
+    /usr/local/bin/pwnagotchi --show-message "Im too hot... taking a break!" 2>/dev/null
+    systemctl stop bettercap
+    exit 0
+fi
+
+# bettercap crash-looping: it's actively failing right now and has already
+# restarted repeatedly -- this is unambiguous, no need to wait for the log
+# to go stale too
+if [ "$(systemctl is-active bettercap)" != "active" ]; then
+    restarts=$(systemctl show bettercap -p NRestarts --value 2>/dev/null || echo 0)
+    if [ "${restarts:-0}" -ge "$BETTERCAP_MAX_RESTARTS" ]; then
+        reboot_with_reason "bettercap crash-looping (NRestarts=$restarts, currently inactive)"
+        exit 0
+    fi
+fi
+
+# pwnagotchi.log gone stale: the service is supposed to be running but
+# hasn't logged anything in far longer than normal operation ever goes
+# quiet for, even during a long recon epoch. Only checked while the service
+# is actually active, so intentionally stopping it for maintenance doesn't
+# trigger a reboot.
+if [ "$(systemctl is-active pwnagotchi)" = "active" ] && [ -f "$LOG_FILE" ]; then
+    last_write=$(stat -c %Y "$LOG_FILE" 2>/dev/null || echo 0)
+    now=$(date +%s)
+    age=$(( now - last_write ))
+    if [ "$age" -ge "$LOG_STALE_SECONDS" ]; then
+        reboot_with_reason "pwnagotchi.log stale for ${age}s (threshold ${LOG_STALE_SECONDS}s)"
+        exit 0
+    fi
+fi
+
+exit 0

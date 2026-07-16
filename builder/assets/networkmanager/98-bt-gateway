@@ -1,8 +1,19 @@
 #!/bin/bash
 # NetworkManager Dispatcher script using direct neighbor targeting for Bluetooth PAN
+#
+# NM's own DHCP-assigned default route for a bluetooth PAN tether isn't
+# always reliable (the phone doesn't always show up as a proper DHCP
+# gateway), so this manually discovers the phone's IP via ARP/neighbor
+# discovery and adds a route to it directly.
 
 IFACE=$1
 ACTION=$2
+
+# keep in sync with bt-wizard's ipv4.route-metric -- deliberately far higher
+# (lower priority) than any typical default for ethernet/wifi/usb-gadget
+# links, so bluetooth only ever wins the default route when nothing else
+# (usb0, wifi, etc) is available
+BT_METRIC=700
 
 if [[ "$IFACE" == bnep* ]] && [ "$ACTION" = "up" ]; then
     logger -t bt-gateway "Bluetooth link active on $IFACE. Scanning for peer device..."
@@ -29,16 +40,17 @@ if [[ "$IFACE" == bnep* ]] && [ "$ACTION" = "up" ]; then
         sleep 1
     done
 
-    # If we found the neighbor IP, enforce the route
+    # If we found the neighbor IP, add OUR OWN route at a deliberately low
+    # priority. Never touch any other interface's default route (usb0, wifi,
+    # etc) -- the kernel already picks whichever default route has the
+    # lowest metric on its own, so this only needs to make sure bluetooth's
+    # own route exists and stays properly deprioritized, not seize exclusive
+    # control of the routing table (which previously broke usb0/other
+    # connections every single time bluetooth came up or reconnected).
     if [[ "$GW" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-        logger -t bt-gateway "Peer identified at $GW. Purging stale defaults and routing traffic..."
-        
-        # Strip away any broken default routes
-        ip route del default 2>/dev/null
-        
-        # Route everything directly to the phone's verified IP
-        ip route add default via "$GW" dev "$IFACE" metric 50
-        logger -t bt-gateway "Internet successfully routed through phone gateway: $GW"
+        logger -t bt-gateway "Peer identified at $GW. Adding low-priority fallback route via $IFACE..."
+        ip route replace default via "$GW" dev "$IFACE" metric "$BT_METRIC"
+        logger -t bt-gateway "Bluetooth fallback route added via $GW (metric $BT_METRIC)"
     else
         logger -t bt-gateway "Error: No neighbor device found responding on $IFACE."
     fi

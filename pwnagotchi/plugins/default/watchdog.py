@@ -15,8 +15,6 @@ class Watchdog(plugins.Plugin):
         self.interface = pwnagotchi.config['main']['iface']
         self.lockdown_triggered = False
         self.crash_log_path = '/var/log/pwnagotchi_crashes.log'
-        self._blind_override_active = False
-        self._original_view_set = None
 
     def on_loaded(self):
         logging.info(f"[Watchdog] Active. Monitoring {self.interface}")
@@ -26,24 +24,13 @@ class Watchdog(plugins.Plugin):
         if self.lockdown_triggered:
             return
 
-        # Pin a "blind" face/status to the screen for as long as blind_for
-        # stays above 0, regardless of what the normal recon/wait status
-        # cycling would otherwise be showing. Cleared the moment blind_for
-        # drops back to 0, or superseded by _lockdown_reboot()'s own crash
-        # message if things escalate that far.
         try:
             blind_now = agent._epoch.blind_for
         except AttributeError:
             blind_now = 0
 
         if blind_now > 0:
-            self._enable_blind_override(agent)
-            # write straight through the saved original setter -- the
-            # filter we just installed would otherwise swallow this too
-            self._original_view_set('face', "(\u2613\u203f\u203f\u2613)")
-            self._original_view_set('status', f"I'm BLIND ({blind_now})")
-        else:
-            self._disable_blind_override(agent)
+            agent.view().on_blind(blind_now)
 
         # If bettercap's systemd unit isn't active, give systemd's own
         # Restart=on-failure policy a chance to bring it back on its own
@@ -56,13 +43,14 @@ class Watchdog(plugins.Plugin):
         # failure that was already about to fix itself.
         if self._is_bettercap_service_down():
             logging.warning("[Watchdog] bettercap service not active -- giving systemd up to 60s to auto-restart it ...")
-            if self._is_bettercap_still_down_after_grace_period():
+            if self._is_bettercap_still_down_after_grace_period(agent):
                 logging.error("[Watchdog] bettercap still down after grace period! Executing lockdown reboot...")
                 self._save_crash_log("BETTERCAP_SERVICE_DOWN")
                 self._lockdown_reboot(agent, "bettercap crashed and didn't recover")
                 return
             else:
-                logging.info("[Watchdog] bettercap recovered on its own, no reboot needed.")
+                logging.info("[Watchdog] bettercap recovered and API is responding.")
+                self._ensure_wifi_recon_running(agent)
 
         # Ask agent for the blind counter
         try:
@@ -81,6 +69,8 @@ class Watchdog(plugins.Plugin):
         if blind_epochs == 1:
             if is_missing:
                 logging.warning(f"[Watchdog] blind=1: {self.interface} is missing! Nexmon firmware likely crashed. Waiting 1 epoch...")
+            else:
+                self._ensure_wifi_recon_running(agent)
             return
 
         # STAGE 2: The Kill
@@ -100,34 +90,16 @@ class Watchdog(plugins.Plugin):
                 logging.error(f"[Watchdog] blind={blind_epochs}: {self.interface} present but bettercap is unresponsive! Executing lockdown reboot...")
                 self._save_crash_log("BETTERCAP_UNRESPONSIVE")
                 self._lockdown_reboot(agent, "bettercap unresponsive")
-
-    def _enable_blind_override(self, agent):
-        if self._blind_override_active:
-            return
-        self._blind_override_active = True
-        self._original_view_set = agent.view().set
-
-        original = self._original_view_set
-
-        def _filtered_set(key, value, *args, **kwargs):
-            if key in ('face', 'status'):
-                # swallow everything else trying to touch face/status while
-                # the blind overlay is up -- only our own writes (made
-                # directly through `original`, bypassing this filter) get
-                # through, which is what keeps it pinned on screen instead
-                # of getting stomped by the normal "Waiting for Xs..." cycling.
-                return
-            return original(key, value, *args, **kwargs)
-
-        agent.view().set = _filtered_set
-
-    def _disable_blind_override(self, agent):
-        if not self._blind_override_active:
-            return
-        self._blind_override_active = False
-        if self._original_view_set is not None:
-            agent.view().set = self._original_view_set
-            self._original_view_set = None
+            else:
+                # bettercap is up and responsive, mon0 is present, yet
+                # blind_for keeps climbing -- last-resort safety net for
+                # any reason wifi.recon might silently not be running
+                # (confirmed cause on this device: a bettercap process
+                # crash+restart -- see the grace-period recovery path
+                # above -- but this catches it even if that path is
+                # somehow skipped, e.g. a crash+restart cycle that
+                # completes between epoch checks)
+                self._ensure_wifi_recon_running(agent)
 
     def _is_bettercap_service_down(self):
         try:
@@ -141,20 +113,32 @@ class Watchdog(plugins.Plugin):
             logging.error(f"[Watchdog] Error checking bettercap service status: {e}")
             return False  # don't false-trigger a reboot if systemctl itself is the thing failing
 
-    def _is_bettercap_still_down_after_grace_period(self, grace_seconds=60, poll_interval=5):
+    def _is_bettercap_still_down_after_grace_period(self, agent, grace_seconds=180, poll_interval=5):
         # Blocks on_epoch for up to grace_seconds -- only while bettercap is
         # already known to be down, in which case the agent's own REST calls
         # are failing anyway, so this isn't costing anything beyond what's
         # already lost. Polls every poll_interval seconds so it returns as
         # soon as systemd's restart succeeds, rather than always waiting
-        # the full window.
+        # the full window. 60s was confirmed on-device to be too tight --
+        # see agent.py's BETTERCAP_WAIT_TIMEOUT, same underlying cause
+        # (mon0 needing 2-3 attempts to recreate after a rapid restart,
+        # legitimately taking 90-120s+) and same fix, kept in sync here.
         waited = 0
         while waited < grace_seconds:
             time.sleep(poll_interval)
             waited += poll_interval
             if not self._is_bettercap_service_down():
-                return False
-        return self._is_bettercap_service_down()
+                # Service is back -- now verify the REST API is actually
+                # responding before declaring recovery, since systemd marks
+                # the unit active before bettercap's API is ready
+                try:
+                    agent.session()
+                    logging.info("[Watchdog] bettercap service active and API responding after %ds." % waited)
+                    return False
+                except Exception:
+                    logging.warning("[Watchdog] bettercap service active but API not ready yet, waiting...")
+                    continue
+        return True
 
     def _is_interface_missing(self):
         try:
@@ -180,13 +164,37 @@ class Watchdog(plugins.Plugin):
             logging.error(f"[Watchdog] bettercap session() check failed: {e}")
             return True
 
+    def _ensure_wifi_recon_running(self, agent):
+        # A bettercap process crash+restart (confirmed on-device: an
+        # internal Go panic in bettercap's own JSON marshaling code,
+        # completely unrelated to nexmon/hardware) starts fresh -- every
+        # module off, every wifi.* setting reverted to bettercap's own
+        # bare defaults. Watchdog's crash-recovery check only confirms
+        # the REST API responds again; that says nothing about whether
+        # the wifi.recon module (the thing actually doing the scanning)
+        # survived. Confirmed on-device: a device can sit indefinitely
+        # "healthy" by every other check here -- mon0 present, API
+        # responding -- while genuinely blind for 90+ minutes because
+        # nothing is actually listening, fixed instantly the moment
+        # wifi.recon is manually turned back on.
+        try:
+            session = agent.session()
+            wifi_module = next((m for m in session.get('modules', []) if m.get('name') == 'wifi'), None)
+            if wifi_module is not None and wifi_module.get('running'):
+                return  # already running, nothing to do
+        except Exception as e:
+            logging.error(f"[Watchdog] Error checking wifi.recon module state: {e}")
+            return
+
+        logging.warning("[Watchdog] wifi.recon module is not running -- restarting it and re-applying wifi settings")
+        try:
+            agent._reset_wifi_settings()
+            agent.start_module('wifi.recon')
+        except Exception as e:
+            logging.error(f"[Watchdog] Failed to restart wifi.recon: {e}")
+
     def _lockdown_reboot(self, agent, reason_text):
         self.lockdown_triggered = True
-
-        # Restore the real view.set() first -- otherwise the blind-overlay
-        # filter we may have installed would swallow this very crash
-        # message too, since it's also writing to 'status'.
-        self._disable_blind_override(agent)
 
         # Trigger native reboot face
         agent.set_rebooting()
@@ -198,7 +206,7 @@ class Watchdog(plugins.Plugin):
         # stop the UI thread
         agent.view().update = lambda *args, **kwargs: None
         agent.view().set = lambda *args, **kwargs: None
-        logging.info("[Watchdog] UI Lobotomized. Safe to perform background tasks.")
+        logging.info("[Watchdog] UI updates disabled, proceeding with reboot cleanup.")
 
         # Save session data
         try:

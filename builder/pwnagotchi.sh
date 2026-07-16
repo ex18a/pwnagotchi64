@@ -110,6 +110,22 @@ echo -e "i2c-dev\nbnep" >> /etc/modules
 echo "  -> [Chroot] Forcing Kernel Wi-Fi Regulatory Domain to BO (Max TX Power)..."
 echo "options cfg80211 ieee80211_regdom=BO" > /etc/modprobe.d/cfg80211_regdomain.conf
 
+echo "  -> [Chroot] Enabling hardware watchdog (recovers from full kernel lockups)..."
+# Confirmed on-device: a nexmon/SDIO-level lockup (mmc1 controller stuck,
+# not just mon0 vanishing) can freeze the entire kernel, not just wifi --
+# every userspace watchdog (Watchdog plugin, pwnagotchi-syswatchdog) is
+# powerless against that, since nothing in userspace can run at all while
+# the kernel itself is stuck. The SoC's own hardware watchdog (bcm2835_wdt,
+# /dev/watchdog) is independent of software entirely: systemd (PID 1) pets
+# it as long as its own event loop is responsive, and the hardware forces
+# a real reset if that stops for 30s straight -- the only thing that can
+# actually recover from this class of failure. 30s is far faster than the
+# 18+ minute freeze this was confirmed to catch had it been enabled.
+sed -i \
+  -e 's/^#RuntimeWatchdogSec=off/RuntimeWatchdogSec=30s/' \
+  -e 's/^#RebootWatchdogSec=10min/RebootWatchdogSec=30s/' \
+  /etc/systemd/system.conf
+
 echo "  -> [Chroot] Injecting NetworkManager scripts..."
 cp /tmp/networkmanager/98-bt-gateway /etc/NetworkManager/dispatcher.d/98-bt-gateway
 cp /tmp/networkmanager/99-rtc-sync /etc/NetworkManager/dispatcher.d/99-rtc-sync
@@ -130,6 +146,17 @@ chmod +x /usr/local/bin/bt-wizard
 echo "  -> [Chroot] Patching SAP plugin crash in bluetoothd..."
 sed -i 's|^ExecStart=.*bluetoothd.*|ExecStart=/usr/libexec/bluetooth/bluetoothd --noplugin=sap|' /lib/systemd/system/bluetooth.service
 
+echo "  -> [Chroot] Disabling hciuart.service (superseded by dtparam=krnbt=on)..."
+# krnbt=on (see boot/config.txt) makes the kernel attach the BT UART chip
+# directly at boot. hciuart.service (userspace btuart/hciattach) does the
+# same job the traditional way and ships enabled by default on the base
+# image -- left enabled, both fight over the same UART connection to the
+# combo WiFi+BT chip, which is suspected to be contributing to nexmon
+# instability whenever bluetooth is actually in use (same physical chip
+# handles WiFi monitor mode). Only one attach mechanism should ever be
+# active; krnbt is the one actually in use here.
+systemctl disable hciuart.service 2>/dev/null || true
+
 echo "  -> [Chroot] Unpacking application core..."
 mkdir -p /tmp/pwn_source
 tar -xzf /tmp/pwnagotchi64-${VERSION}.tar.gz -C /tmp/pwn_source --strip-components=1
@@ -140,13 +167,25 @@ python3 -m pip install --break-system-packages --no-cache-dir --ignore-installed
 echo "  -> [Chroot] Installing unified Python dependencies & Modern AI Environment..."
 python3 -m pip install --break-system-packages --no-cache-dir -r /tmp/pwn_source/requirements.txt
 
-echo "  -> [Chroot] Installing Pwnagotchi core..."
-python3 -m pip install --break-system-packages --no-deps /tmp/pwnagotchi64-${VERSION}.tar.gz
-
 echo "  -> [Chroot] Configuring Bettercap caplets..."
+# must happen BEFORE "Installing Pwnagotchi core" below -- that pip install
+# runs setup.py's install_patched_bettercap(), which duplicates whatever
+# caplets already exist at /usr/share/bettercap/caplets/ into the patched
+# (go-built) binary's own default search path. If these haven't been
+# copied in yet at that point, the patched binary starts with no caplets
+# to find at all.
 mkdir -p /usr/share/bettercap/caplets
 cp /tmp/bettercap_assets/pwnagotchi-manual.cap /usr/share/bettercap/caplets/
 cp /tmp/bettercap_assets/pwnagotchi-auto.cap /usr/share/bettercap/caplets/
+
+echo "  -> [Chroot] Installing Pwnagotchi core..."
+# this pip install also downloads and installs a patched bettercap build
+# (fixes bettercap/bettercap#803, a real upstream crash) in place of the
+# apt-packaged one from apt-requirements.txt -- see
+# install_patched_bettercap() in setup.py for the actual logic; nothing
+# further is needed here since setup.py's CustomInstall runs on every
+# `pip install`, including this one.
+python3 -m pip install --break-system-packages --no-deps /tmp/pwnagotchi64-${VERSION}.tar.gz
 
 chmod +x /usr/bin/pwnagotchi-launcher /usr/bin/bettercap-launcher /usr/bin/monstart /usr/bin/monstop
 
@@ -160,6 +199,7 @@ echo "  -> [Chroot] Registering systemd network unit configurations..."
 systemctl enable bettercap.service
 systemctl enable pwnagotchi.service
 systemctl enable pwngrid-peer.service
+systemctl enable pwnagotchi-syswatchdog.timer
 
 if ! id "$NEW_USER" &>/dev/null; then
     useradd -m -G sudo,video,input,netdev,plugdev -s /bin/bash "$NEW_USER"
@@ -194,6 +234,11 @@ sed -i '/if \[ -e \/usr\/bin\/kali-motd \]; then/,/fi/s/^/#/' /etc/profile.d/kal
 echo "  -> [Chroot] Final cleanup..."
 rm -f /etc/dpkg/dpkg.cfg.d/force-unsafe-io
 rm -rf /tmp/* /var/lib/apt/lists/*
+# base Kali image leftover -- duplicates our own eth0-cfg (which is kept for
+# Pi 3B+ support) and unlike it declares "auto eth0", which fails and takes
+# the whole networking.service down with it on any board without a physical
+# ethernet port (e.g. Pi Zero 2 W)
+rm -f /etc/network/interfaces.d/eth0
 EOF
 
 # Restore DNS

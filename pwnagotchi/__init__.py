@@ -10,6 +10,24 @@ from pwnagotchi._version import __version__
 _name = None
 config = None
 
+# written by the automatic-updates plugin whenever it installs a dev-branch
+# commit (only relevant when /root/dev exists -- see that plugin)
+_DEV_FLAG_PATH = '/root/dev'
+_DEV_SHA_FILE = '/root/.automatic-updates-sha'
+
+
+def display_version():
+    # short commit sha while tracking the dev branch, else the release version
+    if os.path.exists(_DEV_FLAG_PATH) and os.path.exists(_DEV_SHA_FILE):
+        try:
+            with open(_DEV_SHA_FILE) as fp:
+                sha = fp.read().strip()
+            if sha:
+                return sha[:7]
+        except Exception:
+            pass
+    return __version__
+
 
 def set_name(new_name):
     if new_name is None:

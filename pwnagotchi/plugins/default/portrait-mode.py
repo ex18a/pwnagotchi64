@@ -14,11 +14,22 @@ class PortraitMode(plugins.Plugin):
     FONT_REGULAR = '/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf'
     FONT_BOLD = '/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf'
     CONFIG_PATH = '/etc/pwnagotchi/config.toml'
-    SUPPORTED_DISPLAYS = ('waveshare_4', 'waveshare_4_portrait')
+
+    # landscape display type -> (module, class) for both the landscape driver
+    # itself and its portrait counterpart
+    DISPLAY_IMPL = {
+        'waveshare_3':          ('pwnagotchi.ui.hw.waveshare3', 'WaveshareV3'),
+        'waveshare_3_portrait': ('pwnagotchi.ui.hw.waveshare3portrait', 'WaveshareV3Portrait'),
+        'waveshare_4':          ('pwnagotchi.ui.hw.waveshare4', 'WaveshareV4'),
+        'waveshare_4_portrait': ('pwnagotchi.ui.hw.waveshare4portrait', 'WaveshareV4Portrait'),
+    }
+    PORTRAIT_FOR = {'waveshare_3': 'waveshare_3_portrait', 'waveshare_4': 'waveshare_4_portrait'}
+    LANDSCAPE_FOR = {v: k for k, v in PORTRAIT_FOR.items()}
+    SUPPORTED_DISPLAYS = tuple(DISPLAY_IMPL.keys())
 
     PORTRAIT_POSITIONS = {
-        'ip1':              (0, 140),
-        'lifetime_trained': (5, 187),
+        'ip1':              (0, 185),   # under the face, just above lifetime_trained (y=196)
+        'lifetime_trained': (0, 196),   # just above the channel/aps row (y=207)
         'memtemp_header':   (16, 157),
         'memtemp_data':     (16, 167),
         'sugar_lbl':        (70, 3),
@@ -76,19 +87,25 @@ class PortraitMode(plugins.Plugin):
     def _safety_check(self):
         display_type = pwnagotchi.config.get('ui', {}).get('display', {}).get('type', '')
         if display_type not in self.SUPPORTED_DISPLAYS:
-            logging.error(f"[Portrait Mode] Unsupported display '{display_type}' -- only waveshare_4 is supported. Plugin will not activate.")
+            logging.error(f"[Portrait Mode] Unsupported display '{display_type}' -- only {', '.join(self.PORTRAIT_FOR.keys())} are supported. Plugin will not activate.")
             return False
         return True
 
+    def _impl_class(self, display_type):
+        import importlib
+        module_name, class_name = self.DISPLAY_IMPL[display_type]
+        module = importlib.import_module(module_name)
+        return getattr(module, class_name)
+
     def _apply_portrait(self, ui):
         try:
-            from pwnagotchi.ui.hw.waveshare4portrait import WaveshareV4Portrait
-
             self._load_fonts()
+
+            current_name = ui._implementation.name
 
             # Already portrait -- booted with portrait driver
             # just apply fonts and positions, no driver swap needed
-            if ui._implementation.name == 'waveshare_4_portrait':
+            if current_name in self.LANDSCAPE_FOR:
                 logging.info("[Portrait Mode] Portrait driver already active, applying fonts and positions.")
                 self._did_swap = False
                 elements = ui._state._state
@@ -108,13 +125,19 @@ class PortraitMode(plugins.Plugin):
                 self.ready = True
                 return
 
-            # Booted in landscape -- save state and swap to portrait
+            # Booted in landscape -- save state and swap to the matching portrait driver
+            portrait_type = self.PORTRAIT_FOR.get(current_name)
+            if portrait_type is None:
+                logging.error(f"[Portrait Mode] No portrait driver mapped for '{current_name}'.")
+                return
+
             self._original_impl = ui._implementation
             self._original_layout = ui._layout
             self._original_width = ui._width
             self._original_height = ui._height
 
-            portrait = WaveshareV4Portrait(pwnagotchi.config)
+            portrait_cls = self._impl_class(portrait_type)
+            portrait = portrait_cls(pwnagotchi.config)
             portrait.initialize()
             new_layout = portrait.layout()
 
@@ -140,11 +163,11 @@ class PortraitMode(plugins.Plugin):
                 elements['status'].font = self._portrait_fonts['status']
 
             # Write portrait driver to config for clean next boot
-            self._write_display_type('waveshare_4_portrait')
+            self._write_display_type(portrait_type)
 
             self._did_swap = True
             self.ready = True
-            logging.info("[Portrait Mode] Switched to portrait driver.")
+            logging.info(f"[Portrait Mode] Switched to {portrait_type} driver.")
 
         except Exception as e:
             logging.error(f"[Portrait Mode] Failed: {e}")
@@ -157,7 +180,7 @@ class PortraitMode(plugins.Plugin):
             return
 
         # Already portrait -- apply immediately, no delay needed
-        if ui._implementation.name == 'waveshare_4_portrait':
+        if ui._implementation.name in self.LANDSCAPE_FOR:
             self._apply_portrait(ui)
             return
 
@@ -195,10 +218,11 @@ class PortraitMode(plugins.Plugin):
         try:
             if self._did_swap:
                 # Booted in landscape, swapped this session -- restore saved state
-                logging.info("[Portrait Mode] Reverting to landscape (restoring saved state)...")
+                landscape_type = self._original_impl.name
+                logging.info(f"[Portrait Mode] Reverting to {landscape_type} (restoring saved state)...")
 
-                from pwnagotchi.ui.hw.waveshare4 import WaveshareV4
-                landscape = WaveshareV4(pwnagotchi.config)
+                landscape_cls = self._impl_class(landscape_type)
+                landscape = landscape_cls(pwnagotchi.config)
                 landscape.initialize()
                 landscape_layout = landscape.layout()
 
@@ -228,12 +252,13 @@ class PortraitMode(plugins.Plugin):
                         if key in self._original_plugin_fonts and self._original_plugin_fonts[key] is not None:
                             elements[key].font = self._original_plugin_fonts[key]
 
-                self._write_display_type('waveshare_4')
+                self._write_display_type(landscape_type)
 
             else:
                 # Booted in portrait -- write landscape to config and restart cleanly
-                logging.info("[Portrait Mode] Booted in portrait, writing landscape to config and restarting...")
-                self._write_display_type('waveshare_4')
+                landscape_type = self.LANDSCAPE_FOR.get(ui._implementation.name, 'waveshare_4')
+                logging.info(f"[Portrait Mode] Booted in portrait, writing {landscape_type} to config and restarting...")
+                self._write_display_type(landscape_type)
                 import os
                 os.system('systemctl restart pwnagotchi')
                 return

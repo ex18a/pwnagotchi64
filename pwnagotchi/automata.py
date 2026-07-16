@@ -16,6 +16,22 @@ class Automata(object):
         # Track if the user originally wanted AI enabled
         self._ai_base_enabled = config.get('ai', {}).get('enabled', False)
         self._default_personality = copy.deepcopy(config['personality'])   # baseline snapshot
+        # consecutive epochs since a whitelisted AP was last seen (see set_bored-style AI toggle below).
+        # starts past the threshold so a fresh boot that never sees the home network
+        # doesn't impose an artificial cooldown on the normal wake-on-activity path
+        self._home_absent_for = config['personality'].get('home_absent_epochs', 5)
+        # min consecutive active epochs required before AI wakes back up from a
+        # bored-triggered AUTO pause -- without this, a single deauth/assoc
+        # attempt against one faint, unattackable-in-practice AP (anything
+        # above min_rssi counts, however marginal) was enough to flip straight
+        # back to AI, undoing the whole point of pausing on boredom in the
+        # first place
+        self._ai_wake_epochs = config['personality'].get('ai_wake_epochs', 2)
+        # BSSIDs visible at the moment the AI last went bored -- compared
+        # against what's currently visible to detect a genuine location
+        # change (see _environment_changed_enough()), rather than waking on
+        # any random activity against the same static set of nearby APs
+        self._env_snapshot_at_bored = set()
 
     def _on_miss(self, who):
         logging.info("it looks like %s is not in range anymore :/", who)
@@ -99,6 +115,12 @@ class Automata(object):
         plugins.on('rebooting', self)
 
     def wait_for(self, t, sleeping=True):
+        # Note: holding a channel through a wait no longer needs any help
+        # from here -- associate()/deauth() pin bettercap to the AP's
+        # channel via wifi.recon <bssid> (bettercap's own stickChan,
+        # checked ahead of the hop list and left alone until recon()
+        # explicitly releases it), so the channel is already held solid
+        # by the time any wait_for() call during an attack/hold happens.
         plugins.on('sleep' if sleeping else 'wait', self, t)
         self._view.wait(t, sleeping)
         self._epoch.track(sleep=True, inc=t)
@@ -111,13 +133,52 @@ class Automata(object):
 
     # --- AI AUTO-TOGGLE HELPER ---
     def _restore_default_personality(self):
+        # only log (and only once, right when it actually happens) the fields
+        # that differ from baseline -- this runs every epoch while paused, and
+        # after the first restore there's nothing left to change, so logging
+        # unconditionally would just spam "[AUTO] setting new policy:" forever
+        changed = {
+            name: (self._config['personality'].get(name), value)
+            for name, value in self._default_personality.items()
+            if self._config['personality'].get(name) != value
+        }
+
         self._config['personality'].update(self._default_personality)
+
+        if changed:
+            logging.info("[AUTO] setting new policy:")
+            for name, (old, new) in changed.items():
+                logging.info("[AUTO] ! %s: %s -> %s" % (name, old, new))
+
         # bettercap doesn't re-read the config dict on its own for these three —
         # they were pushed to it live by on_ai_policy(), so they need to be
         # pushed back the same way or bettercap stays on a stale/bad AI value
         self.run('set wifi.ap.ttl %d' % self._config['personality']['ap_ttl'])
         self.run('set wifi.sta.ttl %d' % self._config['personality']['sta_ttl'])
         self.run('set wifi.rssi.min %d' % self._config['personality']['min_rssi'])
+
+    def _snapshot_environment(self):
+        return {ap['mac'] for ap in self._access_points}
+
+    def _environment_changed_enough(self):
+        # compares what's visible right now against the snapshot taken the
+        # moment the AI went bored -- e.g. sitting still at home, your own
+        # AP and a few neighbors' get snapshotted; a stranger's hotspot
+        # passing by doesn't touch that set at all (still 100% present), but
+        # walking away drops the ORIGINAL APs out of range one by one. Once
+        # enough of the original set is gone, that's a real location change,
+        # regardless of whatever new APs have or haven't shown up in the
+        # meantime.
+        current = self._snapshot_environment()
+        if not self._env_snapshot_at_bored:
+            # bored fired with nothing visible at all (a true dead zone) --
+            # anything showing up now is unambiguously a change, since there
+            # was nothing before for a stray AP to be mistaken for
+            return bool(current)
+        still_present = self._env_snapshot_at_bored & current
+        remaining_fraction = len(still_present) / len(self._env_snapshot_at_bored)
+        threshold = self._config['personality'].get('environment_change_threshold', 0.5)
+        return remaining_fraction <= (1 - threshold)
     # ------------------------------
 
     def next_epoch(self):
@@ -132,17 +193,56 @@ class Automata(object):
         if self._ai_base_enabled:
             # while parked in auto with AI paused, keep personality pinned to
             # the baseline config so it can never drift/get stuck on a bad
-            # AI-set value (e.g. min_rssi: -30)
-            if self.mode == 'auto' and self.is_ai_paused():
+            # AI-set value (e.g. min_rssi: -30).
+            #
+            # Gated on is_training() too, not just is_ai_paused(): pausing
+            # only stops the AI worker loop between whole training batches
+            # (self._model.learn() runs all epochs_per_episode epochs in one
+            # blocking call, only checking the pause flag once it returns),
+            # so a batch already in flight when pause was requested keeps
+            # calling on_ai_policy() every epoch for however many epochs are
+            # left in it. Restoring defaults here on every one of those
+            # epochs raced directly against that in-flight batch -- confirmed
+            # live on-device: both "[AUTO] setting new policy" and
+            # "[ai] setting new policy" firing in the same epoch, each
+            # overwriting the other's config/bettercap values. Waiting for
+            # is_training() to actually go False means this only ever fires
+            # once the AI has genuinely gone idle, matching the same event
+            # the "[ai] idle" / on-screen AUTO label switch already wait for
+            # in train.py's worker loop.
+            if self.mode == 'auto' and self.is_ai_paused() and not self.is_training():
                 self._restore_default_personality()
 
-            if self.mode == 'ai' and self._epoch.bored_for >= 1:
+            # home-network guard: whitelisted APs are never attacked, but if any
+            # is currently visible we also treat that like being bored -- pause
+            # the AI and keep it down until none have been seen for
+            # personality.home_absent_epochs epochs in a row
+            whitelist = self._config['main']['whitelist']
+            home_visible = bool(whitelist) and self.is_whitelisted_ap_visible()
+            if whitelist:
+                self._home_absent_for = 0 if home_visible else self._home_absent_for + 1
+            home_absent_epochs = self._config['personality'].get('home_absent_epochs', 5)
+            home_on_cooldown = bool(whitelist) and self._home_absent_for < home_absent_epochs
+
+            if home_visible and not self.is_ai_paused():
+                # gated on is_ai_paused() rather than mode == 'ai': mode can still be
+                # stuck on 'auto' here if the home network was already visible at
+                # boot, before the wake branch below ever got a chance to run
+                logging.info("[AI SLEEP] Home network detected. Suspending AI and dropping to AUTO.")
+                self.mode = 'auto'
+                self.pause_ai()          # stops inference/training -- view label updates once the
+                                          # worker actually goes idle (see train.py _ai_worker), not here,
+                                          # since a training batch already in flight runs to completion first
+
+            elif self.mode == 'ai' and self._epoch.bored_for >= 1:
                 logging.info("[AI SLEEP] Pwnagotchi is Bored. Suspending AI and dropping to AUTO.")
                 self.mode = 'auto'
-                self._view.set('mode', 'AUTO')
-                self.pause_ai()          # stops inference/training
+                self._env_snapshot_at_bored = self._snapshot_environment()
+                self.pause_ai()          # stops inference/training -- see comment above
 
-            elif self.mode == 'auto' and self._epoch.inactive_for == 0 and self._epoch.active_for > 0:
+            elif self.mode == 'auto' and not home_visible and not home_on_cooldown \
+                    and self._epoch.inactive_for == 0 and self._epoch.active_for >= self._ai_wake_epochs \
+                    and self._environment_changed_enough():
                 logging.info("[AI WAKE] Target engaged! Resuming AI mode.")
                 self.mode = 'ai'
                 self._view.set('mode', '  AI')

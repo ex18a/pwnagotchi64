@@ -1,0 +1,43 @@
+#!/bin/bash
+# Logs raw PiSugar 3 battery voltage + the pre-computed percentage to a CSV
+# file every time it's run (see the paired .timer for cadence) -- meant for
+# diagnosing a bad percentage curve (e.g. reporting ~60% for hours, then
+# dying within the last hour): the raw voltage is what actually matters,
+# since the percentage figure is whatever curve-fit PiSugar's own firmware
+# applies to that voltage, and that's the part suspected of being wrong.
+#
+# Independent of the pwnagotchi process entirely -- reads straight off I2C,
+# so it keeps logging a clean, unbroken curve across pwnagotchi restarts/
+# updates during a multi-hour discharge test.
+#
+# Register reference (PiSugar's own official implementation):
+# https://github.com/PiSugar/pisugar-power-manager-rs/blob/master/pisugar-core/src/pisugar3.rs
+#   0x22/0x23 = voltage high/low byte (combined = raw millivolts)
+#   0x2A = pre-computed battery percentage
+#   0x02 bit 7 = charging status
+
+set -u
+
+I2C_BUS=1
+I2C_ADDR=0x57
+LOG_FILE="/var/log/pwnagotchi-battery-curve.csv"
+
+if [ ! -f "$LOG_FILE" ]; then
+    echo "timestamp,millivolts,percent,charging" > "$LOG_FILE"
+fi
+
+vh=$(i2cget -y "$I2C_BUS" "$I2C_ADDR" 0x22 2>/dev/null)
+vl=$(i2cget -y "$I2C_BUS" "$I2C_ADDR" 0x23 2>/dev/null)
+pct=$(i2cget -y "$I2C_BUS" "$I2C_ADDR" 0x2A 2>/dev/null)
+ctrl1=$(i2cget -y "$I2C_BUS" "$I2C_ADDR" 0x02 2>/dev/null)
+
+if [ -z "$vh" ] || [ -z "$vl" ] || [ -z "$pct" ] || [ -z "$ctrl1" ]; then
+    logger -t pwnagotchi-battery-curve-log "I2C read failed, skipping this sample"
+    exit 0
+fi
+
+millivolts=$(( (vh << 8) | vl ))
+percent=$(( pct ))
+charging=$(( (ctrl1 & 0x80) != 0 ? 1 : 0 ))
+
+echo "$(date -Is),${millivolts},${percent},${charging}" >> "$LOG_FILE"

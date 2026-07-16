@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Overnight soak-test cycler: every run (see pwnagotchi-soaktest.timer),
+# logs current uptime/service health and any new ERROR/CRITICAL/Traceback
+# lines since the last check, then -- once the device has been up and
+# healthy for a full hour -- deliberately reboots it so it cycles through
+# many fresh boots overnight instead of just idling on one long session.
+# Actual crash recovery is still handled independently by the Python
+# Watchdog plugin and pwnagotchi-syswatchdog; this only ever reboots a
+# device that is currently healthy, on a timer.
+
+set -u
+
+PWN_LOG="/var/log/pwnagotchi.log"
+SOAK_LOG="/var/log/pwnagotchi-soaktest.log"
+OFFSET_FILE="/run/pwnagotchi-soaktest.offset"
+REBOOT_AFTER_SECS=3600
+
+log() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') $1" >> "$SOAK_LOG"
+}
+
+uptime_secs=$(awk '{print int($1)}' /proc/uptime)
+pwn_active="$(systemctl is-active pwnagotchi 2>/dev/null)"
+bcap_active="$(systemctl is-active bettercap 2>/dev/null)"
+
+last_offset=0
+[ -f "$OFFSET_FILE" ] && last_offset=$(cat "$OFFSET_FILE" 2>/dev/null || echo 0)
+current_size=$(stat -c%s "$PWN_LOG" 2>/dev/null || echo 0)
+# log rotated/truncated since the last check -- start over from here
+[ "$current_size" -lt "$last_offset" ] && last_offset=0
+
+new_errors=0
+if [ "$current_size" -gt "$last_offset" ]; then
+    new_errors=$(tail -c "+$((last_offset + 1))" "$PWN_LOG" 2>/dev/null \
+        | grep -c -E 'CRITICAL|Traceback|\[ERROR\]')
+fi
+echo "$current_size" > "$OFFSET_FILE"
+
+log "uptime=${uptime_secs}s pwnagotchi=${pwn_active} bettercap=${bcap_active} new_errors=${new_errors}"
+
+if [ "$new_errors" -gt 0 ]; then
+    log "  -> ${new_errors} new ERROR/CRITICAL/Traceback line(s) since last check"
+fi
+
+if [ "$uptime_secs" -ge "$REBOOT_AFTER_SECS" ] && [ "$pwn_active" = "active" ] && [ "$bcap_active" = "active" ]; then
+    log "  -> healthy for 1h+, cycling reboot for soak test"
+    touch /root/.pwnagotchi-auto
+    rm -f "$OFFSET_FILE"
+    reboot
+fi

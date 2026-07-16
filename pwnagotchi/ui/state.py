@@ -9,15 +9,17 @@ class State(object):
         self._changes = {}
 
     def add_element(self, key, elem):
-        self._state[key] = elem
-        self._changes[key] = True
+        with self._lock:
+            self._state[key] = elem
+            self._changes[key] = True
 
     def has_element(self, key):
         return key in self._state
 
     def remove_element(self, key):
-        del self._state[key]
-        self._changes[key] = True
+        with self._lock:
+            del self._state[key]
+            self._changes[key] = True
 
     def add_listener(self, key, cb):
         with self._lock:
@@ -25,7 +27,10 @@ class State(object):
 
     def items(self):
         with self._lock:
-            return self._state.items()
+            # a real snapshot, not a live view -- callers iterate this after
+            # the lock is released, so a concurrent add/remove_element must
+            # not be able to change its size out from under them
+            return list(self._state.items())
 
     def get(self, key):
         with self._lock:

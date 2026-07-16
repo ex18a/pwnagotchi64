@@ -40,12 +40,20 @@ class FilledRect(Widget):
 
 
 class Text(Widget):
-    def __init__(self, value="", position=(0, 0), font=None, color=0, wrap=False, max_length=0):
+    def __init__(self, value="", position=(0, 0), font=None, color=0, wrap=False, max_length=0, max_lines=0,
+                 suffix="", suffix_font=None):
         super().__init__(position, color)
         self.value = value
         self.font = font
         self.wrap = wrap
         self.max_length = max_length
+        self.max_lines = max_lines
+        # optional extra text drawn in its own font, independent of value --
+        # e.g. a cursor glyph pinned to a fixed position regardless of how
+        # long value is. Defaults to right after value if suffix_xy is unset.
+        self.suffix = suffix
+        self.suffix_font = suffix_font
+        self.suffix_xy = None
         self.wrapper = TextWrapper(width=self.max_length, replace_whitespace=False) if wrap else None
 
     def draw(self, canvas, drawer):
@@ -54,7 +62,22 @@ class Text(Widget):
                 text = '\n'.join(self.wrapper.wrap(self.value))
             else:
                 text = self.value
+            if self.max_lines:
+                # cap the number of *rendered* lines regardless of whether they
+                # came from wrapping or were already embedded newlines in value,
+                # so long status text can't grow into whatever's drawn below it
+                lines = text.split('\n')
+                if len(lines) > self.max_lines:
+                    text = '\n'.join(lines[:self.max_lines])
             drawer.text(self.xy, text, font=self.font, fill=self.color)
+            if self.suffix:
+                suffix_font = self.suffix_font or self.font
+                if self.suffix_xy is not None:
+                    suffix_pos = self.suffix_xy
+                else:
+                    offset_x = self.font.getlength(text)
+                    suffix_pos = (self.xy[0] + offset_x, self.xy[1])
+                drawer.text(suffix_pos, self.suffix, font=suffix_font, fill=self.color)
 
 
 class LabeledValue(Widget):
@@ -72,4 +95,12 @@ class LabeledValue(Widget):
         else:
             pos = self.xy
             drawer.text(pos, self.label, font=self.label_font, fill=self.color)
-            drawer.text((pos[0] + self.label_spacing + 5 * len(self.label), pos[1]), self.value, font=self.text_font, fill=self.color)
+            # measure the label's *actual* rendered width instead of assuming
+            # a fixed 5px/char -- that assumption is wrong for most fonts
+            # (e.g. this UI's Bold is 6px/char), and the error compounds with
+            # label length, so longer labels end up crowding into the value
+            if self.label_font is not None:
+                label_width = self.label_font.getlength(self.label)
+            else:
+                label_width = 5 * len(self.label)
+            drawer.text((pos[0] + self.label_spacing + label_width, pos[1]), self.value, font=self.text_font, fill=self.color)
