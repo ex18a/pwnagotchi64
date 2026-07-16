@@ -155,7 +155,7 @@ on_frame = ""
 
 [ui.display]
 enabled = true
-rotation = 180
+rotation = 0
 type = "waveshare_4"
 color = "black"
 full_refresh_every = 300
