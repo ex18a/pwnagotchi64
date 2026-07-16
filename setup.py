@@ -279,25 +279,33 @@ with open('requirements.txt') as fp:
 VERSION_FILE = 'pwnagotchi/_version.py'
 pwnagotchi_version = version(VERSION_FILE)
 
-setup(name='pwnagotchi64',
-      version=pwnagotchi_version,
-      description='(⌐■_■) - Deep Reinforcement Learning instrumenting bettercap for WiFI pwning (64-bit Port).',
-      author='evilsocket && the dev team',
-      author_email='evilsocket@gmail.com',
-      maintainer='ex18a',
-      maintainer_email='your.email@example.com',
-      url='https://github.com/yourusername/pwnagotchi64',
-      license='GPL-3.0-or-later',
-      install_requires=required,
-      cmdclass={
-          "install": CustomInstall,
-      },
-      scripts=['bin/pwnagotchi'],
-      package_data={'pwnagotchi': ['defaults.yml', 'pwnagotchi/defaults.yml', 'locale/*/LC_MESSAGES/*.mo']},
-      include_package_data=True,
-      packages=find_packages(),
-      classifiers=[
-          'Programming Language :: Python :: 3',
-          'Development Status :: 5 - Production/Stable',
-          'Environment :: Console',
-      ])
+# Guarded so this file can be imported (e.g. by automatic-updates.py, to
+# call install_patched_bettercap() directly -- see that plugin's comment
+# on why it can't just rely on `pip install .` triggering CustomInstall)
+# without actually re-running the whole setuptools command dispatch.
+# PEP 517 build backends (setuptools.build_meta) still set __name__ ==
+# "__main__" when executing this file for a real build, so this doesn't
+# change anything about how `pip install .` itself behaves.
+if __name__ == "__main__":
+    setup(name='pwnagotchi64',
+          version=pwnagotchi_version,
+          description='(⌐■_■) - Deep Reinforcement Learning instrumenting bettercap for WiFI pwning (64-bit Port).',
+          author='evilsocket && the dev team',
+          author_email='evilsocket@gmail.com',
+          maintainer='ex18a',
+          maintainer_email='your.email@example.com',
+          url='https://github.com/yourusername/pwnagotchi64',
+          license='GPL-3.0-or-later',
+          install_requires=required,
+          cmdclass={
+              "install": CustomInstall,
+          },
+          scripts=['bin/pwnagotchi'],
+          package_data={'pwnagotchi': ['defaults.yml', 'pwnagotchi/defaults.yml', 'locale/*/LC_MESSAGES/*.mo']},
+          include_package_data=True,
+          packages=find_packages(),
+          classifiers=[
+              'Programming Language :: Python :: 3',
+              'Development Status :: 5 - Production/Stable',
+              'Environment :: Console',
+          ])

@@ -5,6 +5,7 @@ import requests
 import shutil
 import glob
 import time
+import importlib.util
 from datetime import datetime
 from threading import Lock, Thread
 
@@ -438,6 +439,18 @@ class AutomaticUpdates(plugins.Plugin):
                 tail = ''.join(lines[-10:]).strip()
                 logging.error(f"[automatic-updates] pip install failed:\n{tail}")
                 return False
+
+            # `pip install .` alone does NOT reliably run setup.py's
+            # cmdclass={'install': CustomInstall} (confirmed live: a modern
+            # pip build-isolated install skips it entirely), which is the
+            # only thing that installs the patched bettercap binary --
+            # silently leaving a "successfully updated" device on the
+            # stock, unpatched, actually-crash-prone bettercap otherwise.
+            # Call it explicitly while bettercap is already stopped for
+            # the pip install above, so the restart in the finally block
+            # below picks up the newly patched binary along with everything
+            # else, with no separate restart/wait needed.
+            self._install_patched_bettercap(source_dir)
         except subprocess.TimeoutExpired:
             logging.error("[automatic-updates] pip install timed out after 5 minutes")
             return False
@@ -470,6 +483,28 @@ class AutomaticUpdates(plugins.Plugin):
 
         logging.info("[automatic-updates] pip install completed successfully")
         return True
+
+    def _install_patched_bettercap(self, source_dir):
+        setup_path = os.path.join(source_dir, 'setup.py')
+        if not os.path.exists(setup_path):
+            logging.debug("[automatic-updates] no setup.py in this release, skipping bettercap patch check")
+            return
+
+        # setup.py reads requirements.txt and pwnagotchi/_version.py via
+        # relative paths, so it needs to actually be imported with
+        # source_dir as the cwd -- always restore this process's real cwd
+        # afterward regardless of what happens.
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(source_dir)
+            spec = importlib.util.spec_from_file_location('_pwnagotchi_setup', setup_path)
+            setup_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(setup_module)
+            setup_module.install_patched_bettercap()
+        except Exception as e:
+            logging.error(f"[automatic-updates] failed to install patched bettercap: {e}")
+        finally:
+            os.chdir(original_cwd)
 
     def _apply(self):
         # Only the pwnagotchi package itself changed -- bettercap, pwngrid,
