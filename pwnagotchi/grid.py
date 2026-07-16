@@ -27,13 +27,31 @@ def _safe_default(path):
     return [] if any(marker in path for marker in _LIST_ENDPOINTS) else {}
 
 
+# Confirmed live: a single endpoint with a 2s timeout and a bare except
+# reported "no internet" on a device that genuinely had a working USB
+# tether -- any brief hiccup on this one external service (slow DNS,
+# a momentary opwngrid outage, a slightly slow response) made
+# is_connected() falsely return False, silently skipping
+# on_internet_available() (and therefore automatic-updates) for that
+# whole cycle with zero trace of why. 5s is more tolerant of ordinary
+# network latency, and falling back to github.com means the check
+# reflects real reachability of the thing automatic-updates actually
+# depends on, not just one third-party service's current uptime.
+_CONNECTIVITY_CHECK_URLS = (
+    'https://api.opwngrid.xyz/api/v1/uptime',
+    'https://github.com',
+)
+_CONNECTIVITY_CHECK_TIMEOUT = 5.0
+
+
 def is_connected():
-    try:
-        # Check against the active community grid uptime endpoint
-        requests.get('https://api.opwngrid.xyz/api/v1/uptime', timeout=2.0)
-        return True
-    except:
-        return False
+    for url in _CONNECTIVITY_CHECK_URLS:
+        try:
+            requests.get(url, timeout=_CONNECTIVITY_CHECK_TIMEOUT)
+            return True
+        except Exception as e:
+            logging.debug("is_connected: %s unreachable (%s)", url, e)
+    return False
 
 
 def _auto_start_grid():
