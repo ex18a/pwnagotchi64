@@ -86,3 +86,4 @@ This project is open-source and inherits the original **GPL-3.0 License**.
 
 <!-- test commit: confirming end-to-end auto-update pipeline, 2026-07-16 -->
 <!-- test commit 2: verifying blocklist actually blocks, 2026-07-16 -->
+<!-- test commit 3: verifying on-screen blocked-update display, 2026-07-16 -->
