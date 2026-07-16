@@ -9,6 +9,17 @@ HOSTNAME=pwnagotchi
 NEW_USER="pwn"
 OUTPUT_IMG="dist/pwnagotchi64-${VERSION}.img"
 TARBALL="dist/pwnagotchi64-${VERSION}.tar.gz"
+BASE_KALI_IMG="dist/base_kali.img"
+# Cached checkpoint: stock Kali with the base system purge, apt-requirements
+# packages, and one-time system/service config already applied -- none of
+# which depends on the pwnagotchi version being built. This is what makes
+# a from-scratch build take ~1hr (mostly apt purge/autoremove plus
+# installing python3-torch/numpy/pandas etc.). Reusing this cache skips
+# that whole phase on every build after the first.
+#
+# Regenerate it (e.g. after changing apt-requirements.txt or anything in
+# PHASE 4A below) with: FORCE_BASE=1 make image
+BASE_PWN_IMG="dist/base_pwnagotchi.img"
 
 if [ -z "$VERSION" ]; then
     echo " [!] ERROR: Usage: $0 <version>"
@@ -18,26 +29,55 @@ fi
 echo " [*] Step 1: Installing Host Toolchain..."
 apt-get update && apt-get install -y file wget xz-utils parted kpartx qemu-user-static curl unzip e2fsprogs fdisk
 
-# ==============================================================================
-# PHASE 2: KALI LINUX IMAGE PROVISIONING
-# ==============================================================================
 mkdir -p dist
 
-if [ ! -f "dist/base_kali.img" ]; then
-    echo " [*] Step 2: Fetching Kali Linux ARM64..."
-    wget -q --show-progress "https://kali.download/arm-images/kali-2026.1/kali-linux-2026.1-raspberry-pi-arm64.img.xz" -O base_kali.img.xz
-    unxz -c base_kali.img.xz > dist/base_kali.img
-    rm base_kali.img.xz
+BUILD_BASE=0
+if [ -n "$FORCE_BASE" ] || [ ! -f "$BASE_PWN_IMG" ]; then
+    BUILD_BASE=1
 fi
 
-cp dist/base_kali.img "$OUTPUT_IMG"
-# increase image size by 1GB
-dd if=/dev/zero bs=1M count=1024 >> "$OUTPUT_IMG"
-parted "$OUTPUT_IMG" resizepart 2 100%
+# ==============================================================================
+# PHASE 2: BASE IMAGE PROVISIONING (fresh Kali, or the cached stripped base)
+# ==============================================================================
+if [ "$BUILD_BASE" = "1" ]; then
+    echo " [*] No cached stripped base found (or FORCE_BASE set) -- building one now."
+    echo " [*] This is the slow part (~1hr) and only needs to happen once; future"
+    echo " [*] builds will reuse dist/base_pwnagotchi.img and skip straight to"
+    echo " [*] installing pwnagotchi itself."
+
+    if [ ! -f "$BASE_KALI_IMG" ]; then
+        echo " [*] Step 2: Fetching Kali Linux ARM64..."
+        wget -q --show-progress "https://kali.download/arm-images/kali-2026.1/kali-linux-2026.1-raspberry-pi-arm64.img.xz" -O base_kali.img.xz
+        unxz -c base_kali.img.xz > "$BASE_KALI_IMG"
+        rm base_kali.img.xz
+    fi
+
+    cp "$BASE_KALI_IMG" "$OUTPUT_IMG"
+else
+    echo " [*] Step 2: Reusing cached stripped base ($BASE_PWN_IMG) -- skipping package purge/install entirely."
+    cp "$BASE_PWN_IMG" "$OUTPUT_IMG"
+fi
+
+# increase image size by 1GB -- only needed once, when actually building
+# the base from stock Kali. A cached base_pwnagotchi.img is already
+# expanded from when IT was first created; doing this again on top of an
+# already-resized-to-100%-of-partition image corrupts the filesystem
+# (confirmed live: e2fsck then refuses to auto-repair non-interactively
+# and resize2fs fails outright).
+if [ "$BUILD_BASE" = "1" ]; then
+    dd if=/dev/zero bs=1M count=1024 >> "$OUTPUT_IMG"
+    parted "$OUTPUT_IMG" resizepart 2 100%
+fi
 
 loop_dev=$(losetup -fP --show "$OUTPUT_IMG")
 sleep 2
-e2fsck -f "${loop_dev}p2" || true
+# -y auto-confirms any repair prompts -- confirmed live that a bare -f can
+# hit "need terminal for interactive repairs" and bail without actually
+# fixing anything (seen against the cached base snapshot specifically,
+# likely a minor journal/dirty-bit state left over from unmounting it
+# after the chroot phase), which then made the following resize2fs fail
+# outright too
+e2fsck -fy "${loop_dev}p2" || true
 resize2fs "${loop_dev}p2"
 
 mkdir -p /mnt/boot/firmware
@@ -48,9 +88,6 @@ for dir in /dev /dev/pts /proc /sys /run; do
     mount --bind $dir /mnt$dir
 done
 
-# ==============================================================================
-# PHASE 3: PRE-CHROOT INJECTION
-# ==============================================================================
 echo " [*] Step 3: Injecting QEMU and Config..."
 cp /usr/bin/qemu-aarch64-static /mnt/usr/bin/
 
@@ -60,20 +97,17 @@ touch /mnt/boot/firmware/ssh
 mv /mnt/etc/resolv.conf /mnt/etc/resolv.conf.bak
 echo "nameserver 8.8.8.8" > /mnt/etc/resolv.conf
 
-echo " [*] Step 3.5: Injecting Pwnagotchi source and assets..."
-cp "$TARBALL" /mnt/tmp/
-cp apt-requirements.txt /mnt/tmp/
-cp -r builder/assets/bettercap /mnt/tmp/bettercap_assets
-cp -r builder/assets/networkmanager /mnt/tmp/networkmanager
-cp -r builder/assets/bluetooth /mnt/tmp/bluetooth
-cp -r builder/assets/system/ /mnt/tmp/system/
-
-cp builder/assets/boot/config.txt /mnt/boot/firmware/config.txt
-
 # ==============================================================================
-# PHASE 4: KALI CHROOT ENVIRONMENT
+# PHASE 4A: BASE SYSTEM SETUP (only runs when (re)building the cached base --
+# purely system/package level, nothing pwnagotchi-version-specific here)
 # ==============================================================================
-chroot /mnt /bin/bash <<EOF
+if [ "$BUILD_BASE" = "1" ]; then
+    echo " [*] Step 3.5a: Injecting base-stage assets..."
+    cp apt-requirements.txt /mnt/tmp/
+    cp -r builder/assets/networkmanager /mnt/tmp/networkmanager
+    cp -r builder/assets/bluetooth /mnt/tmp/bluetooth
+
+    chroot /mnt /bin/bash <<'EOF'
 set -e
 export DEBIAN_FRONTEND=noninteractive
 
@@ -157,6 +191,53 @@ echo "  -> [Chroot] Disabling hciuart.service (superseded by dtparam=krnbt=on)..
 # active; krnbt is the one actually in use here.
 systemctl disable hciuart.service 2>/dev/null || true
 
+echo "  -> [Chroot] Base-stage cleanup..."
+rm -f /etc/dpkg/dpkg.cfg.d/force-unsafe-io
+rm -rf /tmp/* /var/lib/apt/lists/*
+# base Kali image leftover -- duplicates our own eth0-cfg (which is kept for
+# Pi 3B+ support) and unlike it declares "auto eth0", which fails and takes
+# the whole networking.service down with it on any board without a physical
+# ethernet port (e.g. Pi Zero 2 W)
+rm -f /etc/network/interfaces.d/eth0
+EOF
+
+    # Restore DNS before unmounting so the snapshot doesn't capture our
+    # override -- the pwnagotchi-stage chroot below re-applies it itself
+    mv /mnt/etc/resolv.conf.bak /mnt/etc/resolv.conf
+
+    echo " [*] Snapshotting stripped base to $BASE_PWN_IMG for future builds..."
+    for dir in /run /sys /proc /dev/pts /dev; do
+        umount -l /mnt$dir
+    done
+    umount /mnt/boot/firmware
+    umount /mnt
+    sync
+    cp "$OUTPUT_IMG" "$BASE_PWN_IMG"
+
+    # remount to continue straight into the pwnagotchi-specific stage below
+    mount "${loop_dev}p2" /mnt
+    mount "${loop_dev}p1" /mnt/boot/firmware
+    for dir in /dev /dev/pts /proc /sys /run; do
+        mount --bind $dir /mnt$dir
+    done
+    mv /mnt/etc/resolv.conf /mnt/etc/resolv.conf.bak
+    echo "nameserver 8.8.8.8" > /mnt/etc/resolv.conf
+fi
+
+# ==============================================================================
+# PHASE 4B: PWNAGOTCHI-SPECIFIC INSTALL (runs on every build)
+# ==============================================================================
+echo " [*] Step 3.5b: Injecting Pwnagotchi source and assets..."
+cp "$TARBALL" /mnt/tmp/
+cp -r builder/assets/bettercap /mnt/tmp/bettercap_assets
+cp -r builder/assets/system/ /mnt/tmp/system/
+
+cp builder/assets/boot/config.txt /mnt/boot/firmware/config.txt
+
+chroot /mnt /bin/bash <<EOF
+set -e
+export DEBIAN_FRONTEND=noninteractive
+
 echo "  -> [Chroot] Unpacking application core..."
 mkdir -p /tmp/pwn_source
 tar -xzf /tmp/pwnagotchi64-${VERSION}.tar.gz -C /tmp/pwn_source --strip-components=1
@@ -231,14 +312,27 @@ sed -i "s/127.0.1.1.*/127.0.1.1 $HOSTNAME/" /etc/hosts
 # Remove the kali motd
 sed -i '/if \[ -e \/usr\/bin\/kali-motd \]; then/,/fi/s/^/#/' /etc/profile.d/kali.sh
 
+echo "  -> [Chroot] Enabling rc-local compatibility (needed for pishrink's first-boot autoexpand)..."
+cat <<'RCLOCAL_UNIT' > /etc/systemd/system/rc-local.service
+[Unit]
+Description=/etc/rc.local Compatibility
+ConditionFileIsExecutable=/etc/rc.local
+After=network.target
+
+[Service]
+Type=forking
+ExecStart=/etc/rc.local start
+TimeoutSec=0
+RemainAfterExit=yes
+GuessMainPID=no
+
+[Install]
+WantedBy=multi-user.target
+RCLOCAL_UNIT
+systemctl enable rc-local.service
+
 echo "  -> [Chroot] Final cleanup..."
-rm -f /etc/dpkg/dpkg.cfg.d/force-unsafe-io
-rm -rf /tmp/* /var/lib/apt/lists/*
-# base Kali image leftover -- duplicates our own eth0-cfg (which is kept for
-# Pi 3B+ support) and unlike it declares "auto eth0", which fails and takes
-# the whole networking.service down with it on any board without a physical
-# ethernet port (e.g. Pi Zero 2 W)
-rm -f /etc/network/interfaces.d/eth0
+rm -rf /tmp/*
 EOF
 
 # Restore DNS
