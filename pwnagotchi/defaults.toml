@@ -1,16 +1,16 @@
-main.name = "Pwnagotchi"    # change my name
+main.name = "Pwnagotchi"
 main.lang = "en"
 main.confd = "/etc/pwnagotchi/conf.d/"
 main.custom_plugins = ""
 main.custom_plugin_repos = [
   "https://github.com/evilsocket/pwnagotchi-plugins-contrib/archive/master.zip"
 ]
-main.iface = "mon0"                               # if using a supported usb wifi dongle change to wlan1
+main.iface = "mon0"
 main.mon_start_cmd = "/usr/bin/monstart"
 main.mon_stop_cmd = "/usr/bin/monstop"
 main.mon_max_blind_epochs = 5
 main.no_restart = false
-main.whitelist = ['home-wifi-name', 'example2',]  # cannot see or interact with theses wifi names. if ai is enabled, seeing one of these also pauses ai (see personality.home_absent_epochs)
+main.whitelist = ['home-wifi-name', 'example2',]
 main.filter = ""
 
 [main.log]
@@ -24,14 +24,14 @@ size = "10M"
 [main.plugins.automatic-updates]
 enabled = true
 repo = "ex18a/pwnagotchi64"
-interval = 6                  # how often to check in hours
-install = true                # set false if you just want the "update available" status message
+interval = 6
+install = true
 
 [main.plugins.grid]
 enabled = true
 report = true
 
-[main.plugins.watchdog]       # reboots device if detected hardware fail
+[main.plugins.watchdog]
 enabled = true
 
 [main.plugins.portrait-mode]
@@ -43,12 +43,12 @@ enabled = true
 [main.plugins.hashvault]
 enabled = true
 
-[main.plugins.dev-ai-trained]  # shows how long ai has trained as AGE
+[main.plugins.dev-ai-trained]
 enabled = true
 
 [main.plugins.pisugar3i2c]
 enabled = true
-low_battery_shutdown_pct = 10  # trigger a safe shutdown once battery drops to (or below) this %
+low_battery_shutdown_pct = 10
 
 [main.plugins.face_only]
 enabled = false
@@ -57,7 +57,7 @@ enabled = false
 enabled = false
 api_key = ""
 api_url = "https://wpa-sec.stanev.org"
-download_results = true    #saves file inside handshakes folder
+download_results = true
 download_interval = 3600
 whitelist = []
 
@@ -67,7 +67,7 @@ scale = "celsius"
 orientation = "horizontal"
 
 [ai]
-enabled = true            # true lets ai tune personality through trial and error
+enabled = true
 path = "/root/brain.nn"
 laziness = 0.2
 epochs_per_episode = 10
@@ -83,38 +83,38 @@ rms_prop_eps = 0.00001
 verbose = 1
 
 [personality]
-advertise = false              # can other pwnagotchi see me
-deauth = true                  # allowed to deauth
-associate = true               # allowed to associate
-channels = []                  # channels to look at - [] is all
-min_rssi = -75                 # range of scanning. -50 is very near -200 very far
-ap_ttl = 240                   # how long to keep a wifi in scan list
-sta_ttl = 300                  # how long to keep a client in scan list
-recon_time = 150               # how long to scan for wifi networks
+advertise = false
+deauth = true
+associate = true
+channels = []
+min_rssi = -75
+ap_ttl = 240
+sta_ttl = 300
+recon_time = 150
 max_inactive_scale = 3
 recon_inactive_multiplier = 2
-hop_recon_time = 30            # how long to wait on channel for handshakes
+hop_recon_time = 30
 min_recon_time = 15
-max_interactions = 4           # how many times allowed to attack same wifi before giving up
+max_interactions = 4
 max_misses_for_recon = 6
 excited_num_epochs = 3
 bored_num_epochs = 4
 sad_num_epochs = 6
 bond_encounters_factor = 20000
-home_absent_epochs = 5         # epochs a whitelisted AP must be gone before AI is eligible to resume
-ai_wake_epochs = 2             # consecutive active epochs required before a bored-paused AI wakes back up (avoids flipping back on from one attempt against a single faint AP)
-environment_change_threshold = 0.5   # fraction of the AP set visible at bored-time that must have gone out of range before AI is eligible to wake -- distinguishes an actual location change from a stray new hotspot passing by while the original APs are all still there
-wifi_hop_period_ms = 1000      # ms bettercap spends per channel during passive recon (bettercap default: 250) -- raised as a general safety margin since walking-speed recon hops far more often than this device was originally tuned for, see agent.py's _apply_hop_period(). Was reverted to 500 after fixing a real bettercap userspace data race (v2.41.5-pwnagotchi3, see setup.py), but a genuine brcmfmac/nexmon *firmware* crash (dmesg: "Set Channel failed" timeout followed minutes later by "Firmware has halted or crashed") still occurred at 500ms under real combined recon+hop+deauth+assoc load on 2026-07-15 -- a different failure mode from the userspace race, not fully explained by it. Raised back to 1000 as the two are independent issues; the bettercap fix stands on its own merits regardless of this value.
-action_throttle = 0.5          # seconds to wait after each association/deauth before the next action -- 0 disables throttling entirely. Also gives the epoch's channel-hold timer a chance to catch a reply.
+home_absent_epochs = 5
+ai_wake_epochs = 2
+environment_change_threshold = 0.5
+wifi_hop_period_ms = 1000
+action_throttle = 0.5
 
 [ui]
 fps = 0.0
-cursor = true                  # blink the cursor after the name -- independent of fps, safe to leave on for e-ink
-cursor_interval = 3            # seconds between blinks
+cursor = true
+cursor_interval = 3
 
 [ui.font]
-name = "DejaVuSansMono"  # for japanese: fonts-japanese-gothic
-size_offset = 0          # will be added to the font size
+name = "DejaVuSansMono"
+size_offset = 0
 
 [ui.faces]
 look_r = ["( ⚆_⚆)", "( ◕_◕)"]
@@ -158,7 +158,7 @@ enabled = true
 rotation = 180
 type = "waveshare_4"
 color = "black"
-full_refresh_every = 300       # portrait drivers only: partial refreshes between each forced full one (resets e-ink fade) -- 300 confirmed on-device as the point it starts visibly greying, override in config.toml to change
+full_refresh_every = 300
 
 [bettercap]
 scheme = "http"
