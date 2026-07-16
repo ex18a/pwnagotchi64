@@ -32,12 +32,19 @@ log = logging.getLogger(__name__)
 # writeup); this installs that patched arm64 build in place of whatever
 # apt-requirements.txt pulled in, rather than trying to get the fix
 # upstream into Kali's package first.
-BETTERCAP_PATCH_VERSION = "v2.41.5-pwnagotchi3"
+#
+# pwnagotchi4 additionally fixes a nil-pointer panic in wifi.recon clear
+# (called by agent.py's recon() as of the stickChan-based channel-hold
+# fix): it called mod.iface.Name() with no nil-check, unlike the sibling
+# wifi.recon.channel clear handler which already guards this -- crashed
+# on every single call made before the wifi module had fully started,
+# confirmed live to wedge the whole recon cycle indefinitely.
+BETTERCAP_PATCH_VERSION = "v2.41.5-pwnagotchi4"
 BETTERCAP_PATCH_URL = (
     "https://github.com/ex18a/bettercap/releases/download/"
-    f"{BETTERCAP_PATCH_VERSION}/bettercap-arm64-pwnagotchi3"
+    f"{BETTERCAP_PATCH_VERSION}/bettercap-arm64-pwnagotchi4"
 )
-BETTERCAP_PATCH_SHA256 = "e49fe72774115e9e811e27da8e35e164685e1421aa6f1cf1b0ce269d4171e85c"
+BETTERCAP_PATCH_SHA256 = "8eca6f2ef9127f6a84240b9566fe89a1da912f0c0c3008aca9b8f9d418a45838"
 
 def install_file(source_filename, dest_filename):
     # do not overwrite network configuration if it exists already
