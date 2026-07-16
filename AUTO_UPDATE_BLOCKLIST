@@ -1,0 +1,19 @@
+# Safety net for automatic-updates.py.
+#
+# List a release tag (e.g. 0.0.0.8) or a dev-branch commit SHA (short or
+# full, e.g. 83937c3) on its own line to stop every device's
+# automatic-updates plugin from auto-installing that specific version,
+# starting from the very next check any device makes -- no new release
+# or device-side code change needed.
+#
+# This file is always fetched fresh from the main branch's current HEAD,
+# separately from whatever release/commit is actually being considered
+# for install. That means it works retroactively: even a version that's
+# already published and already tagged bad can be blocked after the
+# fact just by adding a line here and pushing to main.
+#
+# A blocked version still shows as "update available" on the device --
+# it just won't be auto-installed. Whoever's running that device needs
+# to update it manually (SSH in, or reflash).
+#
+# Lines starting with # and blank lines are ignored.

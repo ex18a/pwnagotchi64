@@ -153,6 +153,12 @@ class AutomaticUpdates(plugins.Plugin):
 
                 logging.warning(f"[automatic-updates] update available: {info['label']} ({info['kind']})")
 
+                if self._is_blocked(info):
+                    logging.error(f"[automatic-updates] {info['label']} is on the auto-update "
+                                   "blocklist -- NOT auto-installing, update this device manually")
+                    agent.view().on_update_available(f"{info['label']} (manual update required)")
+                    return
+
                 if not self.options['install']:
                     agent.view().on_update_available(info['label'])
                     return
@@ -190,6 +196,46 @@ class AutomaticUpdates(plugins.Plugin):
             except Exception as e:
                 self._end_progress(agent)
                 logging.error(f"[automatic-updates] {e}")
+
+    # Safety net: lets a bad release/commit be blocked from auto-install
+    # after the fact, with no new release and no device-side code change
+    # needed. Always fetched fresh from main's current HEAD, independent
+    # of whatever release/commit is actually being evaluated -- that's
+    # what makes it retroactive: even a version that's already published
+    # and already tagged bad can be blocked just by editing this file and
+    # pushing to main, and every device picks it up on its next check.
+    BLOCKLIST_URL_TEMPLATE = "https://raw.githubusercontent.com/{repo}/main/AUTO_UPDATE_BLOCKLIST"
+    BLOCKLIST_FETCH_TIMEOUT = 10
+
+    def _fetch_blocklist(self):
+        url = self.BLOCKLIST_URL_TEMPLATE.format(repo=self.options['repo'])
+        try:
+            resp = requests.get(url, timeout=self.BLOCKLIST_FETCH_TIMEOUT)
+            if resp.status_code == 404:
+                return set()  # no blocklist file published -- nothing blocked
+            resp.raise_for_status()
+            return {
+                line.strip() for line in resp.text.splitlines()
+                if line.strip() and not line.strip().startswith('#')
+            }
+        except Exception as e:
+            # fail-open: this is an extra safety net, not a security gate --
+            # a transient fetch failure (network blip, GitHub hiccup)
+            # shouldn't be able to permanently block otherwise-good updates
+            logging.warning(f"[automatic-updates] couldn't fetch blocklist, proceeding anyway: {e}")
+            return set()
+
+    def _is_blocked(self, info):
+        blocklist = self._fetch_blocklist()
+        if not blocklist:
+            return False
+
+        label = info.get('label', '')
+        full_sha = info.get('sha', '')
+        for entry in blocklist:
+            if entry == label or (full_sha and (entry == full_sha or full_sha.startswith(entry))):
+                return True
+        return False
 
     def _check_latest(self):
         release_candidate = self._check_latest_release()
