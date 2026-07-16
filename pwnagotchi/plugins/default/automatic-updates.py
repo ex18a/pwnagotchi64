@@ -36,15 +36,24 @@ class AutomaticUpdates(plugins.Plugin):
     PROGRESS_FACES = (faces.UPLOAD, faces.UPLOAD1, faces.UPLOAD2)
     PROGRESS_FRAME_INTERVAL = 0.5
 
+    # how often on_ui_update() re-asserts the blocked-update status message
+    # -- it competes with the main loop's own frequent status text (Looking
+    # around, Waiting for Ns, etc.), so this just needs to be frequent
+    # enough that anyone glancing at the screen at a random moment has a
+    # decent chance of catching it, not a hard guarantee
+    BLOCKED_REMINDER_INTERVAL = 30
+
     def __init__(self):
         self.ready = False
         self.status = StatusFile('/root/.automatic-updates')
         self.lock = Lock()
         self._sha_file = '/root/.automatic-updates-sha'
+        self._blocked_marker_path = '/root/.automatic-updates-blocked'
         self._tmp_base_dir = '/tmp/automatic-updates'
         self._animating = False
         self._anim_paused = False
         self._anim_thread = None
+        self._last_blocked_reminder = 0
 
     def on_loaded(self):
         missing = [k for k in ('repo', 'interval') if k not in self.options or not self.options[k]]
@@ -149,6 +158,7 @@ class AutomaticUpdates(plugins.Plugin):
 
                 if info is None:
                     logging.debug("[automatic-updates] no update found")
+                    self._clear_blocked_marker()
                     return
 
                 logging.warning(f"[automatic-updates] update available: {info['label']} ({info['kind']})")
@@ -156,8 +166,13 @@ class AutomaticUpdates(plugins.Plugin):
                 if self._is_blocked(info):
                     logging.error(f"[automatic-updates] {info['label']} is on the auto-update "
                                    "blocklist -- NOT auto-installing, update this device manually")
+                    self._mark_blocked(info['label'])
                     agent.view().on_update_available(f"{info['label']} (manual update required)")
                     return
+
+                # not (or no longer) blocked -- clear a stale marker left by
+                # a previously-blocked different version
+                self._clear_blocked_marker()
 
                 if not self.options['install']:
                     agent.view().on_update_available(info['label'])
@@ -208,22 +223,35 @@ class AutomaticUpdates(plugins.Plugin):
     BLOCKLIST_FETCH_TIMEOUT = 10
 
     def _fetch_blocklist(self):
+        # each non-comment line is "<target> [min_from_version]" -- target is
+        # a release tag or dev commit SHA (short or full) to block; the
+        # optional second field means "only block if the device's CURRENT
+        # version is older than this" -- e.g. a migration that only breaks
+        # devices jumping in from more than one version back, but is fine
+        # updating from the immediately preceding version. Omit it to block
+        # unconditionally regardless of what the device is currently on.
         url = self.BLOCKLIST_URL_TEMPLATE.format(repo=self.options['repo'])
         try:
             resp = requests.get(url, timeout=self.BLOCKLIST_FETCH_TIMEOUT)
             if resp.status_code == 404:
-                return set()  # no blocklist file published -- nothing blocked
+                return []  # no blocklist file published -- nothing blocked
             resp.raise_for_status()
-            return {
-                line.strip() for line in resp.text.splitlines()
-                if line.strip() and not line.strip().startswith('#')
-            }
+            entries = []
+            for line in resp.text.splitlines():
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                parts = line.split()
+                target = parts[0]
+                min_from = parts[1] if len(parts) > 1 else None
+                entries.append((target, min_from))
+            return entries
         except Exception as e:
             # fail-open: this is an extra safety net, not a security gate --
             # a transient fetch failure (network blip, GitHub hiccup)
             # shouldn't be able to permanently block otherwise-good updates
             logging.warning(f"[automatic-updates] couldn't fetch blocklist, proceeding anyway: {e}")
-            return set()
+            return []
 
     def _is_blocked(self, info):
         blocklist = self._fetch_blocklist()
@@ -232,10 +260,71 @@ class AutomaticUpdates(plugins.Plugin):
 
         label = info.get('label', '')
         full_sha = info.get('sha', '')
-        for entry in blocklist:
-            if entry == label or (full_sha and (entry == full_sha or full_sha.startswith(entry))):
+        current = pwnagotchi.__version__
+
+        for target, min_from in blocklist:
+            matches = target == label or (full_sha and (target == full_sha or full_sha.startswith(target)))
+            if not matches:
+                continue
+            if min_from is None:
+                return True  # unconditional block
+            # only blocks devices older than min_from -- one already on
+            # min_from (or newer) is explicitly considered a safe path
+            try:
+                if version_to_tuple(current) < version_to_tuple(min_from):
+                    return True
+            except Exception as e:
+                logging.warning(f"[automatic-updates] couldn't compare version against blocklist "
+                                 f"entry '{target} {min_from}', blocking to be safe: {e}")
                 return True
         return False
+
+    # Persisted so a blocked update stays visible on screen across
+    # restarts/reboots too, not just for the rest of the current process
+    # lifetime -- on_ready() below reads this back at every boot.
+    def _mark_blocked(self, label):
+        try:
+            with open(self._blocked_marker_path, 'w') as f:
+                f.write(label)
+        except Exception as e:
+            logging.error(f"[automatic-updates] couldn't write blocked marker: {e}")
+
+    def _clear_blocked_marker(self):
+        try:
+            if os.path.exists(self._blocked_marker_path):
+                os.remove(self._blocked_marker_path)
+        except Exception as e:
+            logging.error(f"[automatic-updates] couldn't clear blocked marker: {e}")
+
+    def _read_blocked_marker(self):
+        try:
+            with open(self._blocked_marker_path, 'r') as f:
+                return f.read().strip() or None
+        except FileNotFoundError:
+            return None
+        except Exception as e:
+            logging.error(f"[automatic-updates] couldn't read blocked marker: {e}")
+            return None
+
+    def on_ready(self, agent):
+        # shows the last-known blocked update immediately at boot, without
+        # waiting for the next on_internet_available() check cycle -- the
+        # whole point of this is that someone glancing at the screen right
+        # after a reboot should see it without needing to SSH in and check
+        # logs
+        blocked_label = self._read_blocked_marker()
+        if blocked_label:
+            agent.view().on_update_available(f"{blocked_label} (manual update required)")
+
+    def on_ui_update(self, ui):
+        blocked_label = self._read_blocked_marker()
+        if not blocked_label:
+            return
+        now = time.time()
+        if now - self._last_blocked_reminder < self.BLOCKED_REMINDER_INTERVAL:
+            return
+        self._last_blocked_reminder = now
+        ui.set('status', f"{blocked_label} available\nbut can't auto-install")
 
     def _check_latest(self):
         release_candidate = self._check_latest_release()
