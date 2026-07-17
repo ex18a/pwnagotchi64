@@ -13,7 +13,7 @@ ${GREEN}        (◕‿‿◕) ${TARGET_HOSTNAME}
         for an easy guided setup instead of hand-editing the toml, use
         sudo pwnagotchi --setup
 
-        If you want to change my more advaanced configuration options, use 
+        If you want to change my more advanced configuration options, use
         sudo nano /etc/pwnagotchi/config.toml
 
         All the default configuration options can be found in /etc/pwnagotchi/default.toml,
@@ -34,7 +34,7 @@ ${GREEN}        (◕‿‿◕) ${TARGET_HOSTNAME}
         You can restart me using
         systemctl restart pwnagotchi
 
-        if you find and bugs or having trouble with anything please raise an issue at
+        if you find any bugs or having trouble with anything please raise an issue at
         github.com/ex18a/pwnagotchi64
         ${NC}
 MOTD_EOF
