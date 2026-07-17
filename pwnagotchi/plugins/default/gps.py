@@ -5,7 +5,12 @@ import os
 import pwnagotchi.plugins as plugins
 import pwnagotchi.ui.fonts as fonts
 from pwnagotchi.ui.components import LabeledValue
-from pwnagotchi.ui.view import BLACK
+import pwnagotchi.ui.view as view
+# NOT "from pwnagotchi.ui.view import BLACK" -- that grabs a static
+# snapshot of BLACK at plugin-import time, before View.__init__'s
+# ui.display.color-based inversion has run, so it never reflects the
+# swap. view.BLACK is looked up fresh every time it's actually used
+# below, by which point the inversion has happened.
 
 
 class GPS(plugins.Plugin):
@@ -110,7 +115,7 @@ class GPS(plugins.Plugin):
         ui.add_element(
             "latitude",
             LabeledValue(
-                color=BLACK,
+                color=view.BLACK,
                 label="lat:",
                 value="-",
                 position=lat_pos,
@@ -122,7 +127,7 @@ class GPS(plugins.Plugin):
         ui.add_element(
             "longitude",
             LabeledValue(
-                color=BLACK,
+                color=view.BLACK,
                 label="long:",
                 value="-",
                 position=lon_pos,
@@ -134,7 +139,7 @@ class GPS(plugins.Plugin):
         ui.add_element(
             "altitude",
             LabeledValue(
-                color=BLACK,
+                color=view.BLACK,
                 label="alt:",
                 value="-",
                 position=alt_pos,

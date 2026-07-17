@@ -1,7 +1,12 @@
 import pwnagotchi.plugins as plugins
 import pwnagotchi.ui.fonts as fonts
 from pwnagotchi.ui.components import LabeledValue
-from pwnagotchi.ui.view import BLACK
+import pwnagotchi.ui.view as view
+# NOT "from pwnagotchi.ui.view import BLACK" -- that grabs a static
+# snapshot of BLACK at plugin-import time, before View.__init__'s
+# ui.display.color-based inversion has run, so it never reflects the
+# swap. view.BLACK is looked up fresh every time it's actually used
+# below, by which point the inversion has happened.
 import json
 import os
 import logging
@@ -34,7 +39,7 @@ class DevAiTrained(plugins.Plugin):
         self.trained_count = self.get_completed_epochs()
 
         # 2. Setup the element and push the initial value immediately
-        ui.add_element('lifetime_trained', LabeledValue(color=BLACK, label='AGE', value=str(self.trained_count),
+        ui.add_element('lifetime_trained', LabeledValue(color=view.BLACK, label='AGE', value=str(self.trained_count),
                                                        position=(110, 90),
                                                        label_font=fonts.Bold, text_font=fonts.Medium))
 

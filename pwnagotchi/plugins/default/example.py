@@ -2,7 +2,12 @@ import logging
 
 import pwnagotchi.plugins as plugins
 from pwnagotchi.ui.components import LabeledValue
-from pwnagotchi.ui.view import BLACK
+import pwnagotchi.ui.view as view
+# NOT "from pwnagotchi.ui.view import BLACK" -- that grabs a static
+# snapshot of BLACK at plugin-import time, before View.__init__'s
+# ui.display.color-based inversion has run, so it never reflects the
+# swap. view.BLACK is looked up fresh every time it's actually used
+# below, by which point the inversion has happened.
 import pwnagotchi.ui.fonts as fonts
 
 
@@ -36,7 +41,7 @@ class Example(plugins.Plugin):
     # called to setup the ui elements
     def on_ui_setup(self, ui):
         # add custom UI elements
-        ui.add_element('ups', LabeledValue(color=BLACK, label='UPS', value='0%/0V', position=(ui.width() / 2 - 25, 0),
+        ui.add_element('ups', LabeledValue(color=view.BLACK, label='UPS', value='0%/0V', position=(ui.width() / 2 - 25, 0),
                                            label_font=fonts.Bold, text_font=fonts.Medium))
 
     # called when the ui is updated

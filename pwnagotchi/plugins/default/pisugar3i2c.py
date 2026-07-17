@@ -5,7 +5,12 @@ import pwnagotchi
 import pwnagotchi.plugins as plugins
 import pwnagotchi.ui.fonts as fonts
 from pwnagotchi.ui.components import LabeledValue
-from pwnagotchi.ui.view import BLACK
+import pwnagotchi.ui.view as view
+# NOT "from pwnagotchi.ui.view import BLACK" -- that grabs a static
+# snapshot of BLACK at plugin-import time, before View.__init__'s
+# ui.display.color-based inversion has run, so it never reflects the
+# swap. view.BLACK is looked up fresh every time it's actually used
+# below, by which point the inversion has happened.
 
 # PiSugar 3's own firmware capacity estimate (register 0x2A) is voltage-
 # based but not calibrated for this device's actual load -- confirmed via a
@@ -90,7 +95,7 @@ class PiSugar3i2c(plugins.Plugin):
         ui.add_element(
             "sugar_lbl",
             LabeledValue(
-                color=BLACK,
+                color=view.BLACK,
                 label="",
                 value="BAT",
                 position=(ui.width() / 2 + 5, 0),
@@ -101,7 +106,7 @@ class PiSugar3i2c(plugins.Plugin):
         ui.add_element(
             "sugar_val",
             LabeledValue(
-                color=BLACK,
+                color=view.BLACK,
                 label="",
                 value="0%",
                 position=(ui.width() / 2 + 25, 0),

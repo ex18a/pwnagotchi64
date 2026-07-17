@@ -11,7 +11,12 @@
 # main.plugins.IPDisplay.delay_time = 2 # how many seconds to delay cycling devices
 
 from pwnagotchi.ui.components import LabeledValue
-from pwnagotchi.ui.view import BLACK
+import pwnagotchi.ui.view as view
+# NOT "from pwnagotchi.ui.view import BLACK" -- that grabs a static
+# snapshot of BLACK at plugin-import time, before View.__init__'s
+# ui.display.color-based inversion has run, so it never reflects the
+# swap. view.BLACK is looked up fresh every time it's actually used
+# below, by which point the inversion has happened.
 import pwnagotchi.ui.fonts as fonts
 import pwnagotchi.plugins as plugins
 import logging
@@ -52,7 +57,7 @@ class IPDisplay(plugins.Plugin):
             pos1 = pos
         except Exception:
             pos1 = (0, 82)
-        ui.add_element('ip1', LabeledValue(color=BLACK, label="", value='Initializing...',
+        ui.add_element('ip1', LabeledValue(color=view.BLACK, label="", value='Initializing...',
                                            position=pos1, label_font=fonts.Bold, text_font=fonts.Medium))
 
     def get_iface_addrs(self):
