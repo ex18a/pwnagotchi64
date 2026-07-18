@@ -156,7 +156,13 @@ class View(object):
         # jittering as the cursor blinks: the name's own draw call is now
         # identical between blink states no matter where the cursor sits.
         name_elem = self._state._state.get('name')
-        if self._width == 122 and name_elem is not None:
+        # Was "self._width == 122" -- true for both portrait panels today
+        # (waveshare3portrait/waveshare4portrait are both exactly 122 wide),
+        # but a hardcoded exact-width check would silently stop matching
+        # the moment either one's canvas ever changes size. Comparing width
+        # to height instead is resolution-independent and still portrait-
+        # specific, so it keeps working regardless.
+        if self._width < self._height and name_elem is not None:
             try:
                 # measure the *actual* font currently on the element, not an
                 # assumed pixel-per-char constant -- portrait-mode.py swaps
