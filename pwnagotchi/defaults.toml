@@ -66,6 +66,9 @@ enabled = true
 scale = "celsius"
 orientation = "horizontal"
 
+[main.plugins.tweak_view]
+enabled = true
+
 [ai]
 enabled = true
 path = "/root/brain.nn"
