@@ -46,8 +46,12 @@ enabled = true
 [main.plugins.dev-ai-trained]
 enabled = true
 
-[main.plugins.pisugar3i2c]
+[main.plugins.pisugar3]
 enabled = true
+shutdown = 10
+
+[main.plugins.pisugar3i2c]
+enabled = false
 low_battery_shutdown_pct = 10
 
 [main.plugins.face_only]
@@ -83,29 +87,29 @@ rms_prop_eps = 0.00001
 verbose = 1
 
 [personality]
-advertise = false
+advertise = true
 deauth = true
 associate = true
 channels = []
 min_rssi = -75
 ap_ttl = 240
 sta_ttl = 300
-recon_time = 150
+recon_time = 30
 max_inactive_scale = 3
 recon_inactive_multiplier = 2
 hop_recon_time = 30
 min_recon_time = 15
-max_interactions = 4
+max_interactions = 3
 max_misses_for_recon = 6
 excited_num_epochs = 3
-bored_num_epochs = 4
+bored_num_epochs = 3
 sad_num_epochs = 6
 bond_encounters_factor = 20000
-home_absent_epochs = 5
+home_absent_epochs = 2
 ai_wake_epochs = 2
-environment_change_threshold = 0.5
-wifi_hop_period_ms = 1000
-action_throttle = 0.5
+environment_change_threshold = 0.3
+wifi_hop_period_ms = 3000
+action_throttle = 0.2
 
 [ui]
 fps = 0.0
