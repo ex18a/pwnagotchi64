@@ -18,7 +18,7 @@ from pwnagotchi.utils import StatusFile, parse_version as version_to_tuple
 
 class AutomaticUpdates(plugins.Plugin):
     __author__ = 'ex18a'
-    __version__ = '1.0.2'
+    __version__ = '1.0.3'
     __name__ = 'automatic-updates'
     __license__ = 'GPL3'
     __description__ = ('Checks GitHub Releases on a configured fork and self-updates the '
