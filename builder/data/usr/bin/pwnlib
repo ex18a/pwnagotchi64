@@ -1,33 +1,41 @@
 #!/usr/bin/env bash
 
-# well ... it blinks the led
+hardware_led_enabled() {
+  python3 - <<'PY' 2>/dev/null
+import os, sys, toml
+try:
+    import pwnagotchi
+    defaults = toml.load(os.path.join(os.path.dirname(pwnagotchi.__file__), 'defaults.toml'))
+except Exception:
+    sys.exit(0)
+enabled = defaults.get('main', {}).get('hardware_led', True)
+try:
+    user = toml.load('/etc/pwnagotchi/config.toml')
+    if 'hardware_led' in user.get('main', {}):
+        enabled = user['main']['hardware_led']
+except Exception:
+    pass
+sys.exit(0 if enabled else 1)
+PY
+}
+
 blink_led() {
+  local led_dir=/sys/class/leds/led0
+  [ -d "$led_dir" ] || led_dir=/sys/class/leds/ACT
+
   for i in $(seq 1 "$1"); do
-    if [ -d /sys/class/leds/led0 ]
-    then
-      echo 0 | tee /sys/class/leds/led0/brightness
-    else
-      echo 0 | tee /sys/class/leds/ACT/brightness
-    fi
+    echo 0 | tee "$led_dir/brightness"
     sleep 0.3
-
-    if [ -d /sys/class/leds/led0 ]
-    then
-      echo 1 | tee /sys/class/leds/led0/brightness
-    else
-      echo 1 | tee /sys/class/leds/ACT/brightness
-    fi
+    echo 1 | tee "$led_dir/brightness"
     sleep 0.3
-
   done
 
-  if [ -d /sys/class/leds/led0 ]
-  then
-    echo 0 | tee /sys/class/leds/led0/brightness
+  if hardware_led_enabled; then
+    echo mmc0 | tee "$led_dir/trigger"
   else
-    echo 0 | tee /sys/class/leds/ACT/brightness
+    echo none | tee "$led_dir/trigger"
+    echo 0 | tee "$led_dir/brightness"
   fi
-  sleep 0.3
 }
 
 # check if brcm is stuck

@@ -13,6 +13,7 @@ main.no_restart = false
 main.whitelist = ['home-wifi-name', 'example2',]
 main.home_networks = []
 main.filter = ""
+main.hardware_led = true
 
 [main.log]
 debug = false
