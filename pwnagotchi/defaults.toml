@@ -11,6 +11,7 @@ main.mon_stop_cmd = "/usr/bin/monstop"
 main.mon_max_blind_epochs = 5
 main.no_restart = false
 main.whitelist = ['home-wifi-name', 'example2',]
+main.home_networks = []
 main.filter = ""
 
 [main.log]
@@ -41,6 +42,9 @@ enabled = true
 enabled = true
 
 [main.plugins.hashvault]
+enabled = true
+
+[main.plugins.whitelist]
 enabled = true
 
 [main.plugins.dev-ai-trained]

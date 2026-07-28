@@ -348,30 +348,25 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
 
     def get_access_points(self):
         whitelist = self._config['main']['whitelist']
+        home_networks = self._config['main'].get('home_networks', [])
         aps = []
         try:
             s = self.session()
             plugins.on("unfiltered_ap_list", self, s['wifi']['aps'])
-            # checked against the unfiltered list, so this still catches whitelisted
-            # APs even though they never make it into the aps list below
-            self._whitelist_ap_visible = bool(whitelist) and any(
-                ap['hostname'] in whitelist or ap['mac'].lower() in whitelist or ap['mac'][:8].lower() in whitelist
+            self._whitelist_ap_visible = bool(home_networks) and any(
+                ap['hostname'] in home_networks or ap['mac'].lower() in home_networks
+                or ap['mac'][:8].lower() in home_networks
                 for ap in s['wifi']['aps']
             )
             for ap in s['wifi']['aps']:
                 if ap['encryption'] == '' or ap['encryption'] == 'OPEN':
                     continue
-                elif ap['hostname'] not in whitelist \
-                        and ap['mac'].lower() not in whitelist \
-                        and ap['mac'][:8].lower() not in whitelist:
+                elif ap['hostname'] not in whitelist and ap['hostname'] not in home_networks \
+                        and ap['mac'].lower() not in whitelist and ap['mac'].lower() not in home_networks \
+                        and ap['mac'][:8].lower() not in whitelist and ap['mac'][:8].lower() not in home_networks:
                     if self._filter_included(ap):
                         aps.append(ap)
         except Exception as e:
-            # session() has no retry/backoff of its own (unlike run()), so
-            # this fires every single epoch bettercap is deliberately
-            # stopped for during an update -- same EXPECTED_DOWNTIME flag
-            # bettercap.py's own retry loops check, so this doesn't dump a
-            # full traceback for something that isn't actually a problem
             if bettercap.EXPECTED_DOWNTIME:
                 logging.debug("error while getting access points (expected -- update in progress): %s", e)
             else:

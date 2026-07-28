@@ -213,32 +213,23 @@ class Automata(object):
             if self.mode == 'auto' and self.is_ai_paused() and not self.is_training():
                 self._restore_default_personality()
 
-            # home-network guard: whitelisted APs are never attacked, but if any
-            # is currently visible we also treat that like being bored -- pause
-            # the AI and keep it down until none have been seen for
-            # personality.home_absent_epochs epochs in a row
-            whitelist = self._config['main']['whitelist']
-            home_visible = bool(whitelist) and self.is_whitelisted_ap_visible()
-            if whitelist:
+            home_networks = self._config['main'].get('home_networks', [])
+            home_visible = bool(home_networks) and self.is_whitelisted_ap_visible()
+            if home_networks:
                 self._home_absent_for = 0 if home_visible else self._home_absent_for + 1
             home_absent_epochs = self._config['personality'].get('home_absent_epochs', 5)
-            home_on_cooldown = bool(whitelist) and self._home_absent_for < home_absent_epochs
+            home_on_cooldown = bool(home_networks) and self._home_absent_for < home_absent_epochs
 
             if home_visible and not self.is_ai_paused():
-                # gated on is_ai_paused() rather than mode == 'ai': mode can still be
-                # stuck on 'auto' here if the home network was already visible at
-                # boot, before the wake branch below ever got a chance to run
                 logging.info("[AI SLEEP] Home network detected. Suspending AI and dropping to AUTO.")
                 self.mode = 'auto'
-                self.pause_ai()          # stops inference/training -- view label updates once the
-                                          # worker actually goes idle (see train.py _ai_worker), not here,
-                                          # since a training batch already in flight runs to completion first
+                self.pause_ai()
 
             elif self.mode == 'ai' and self._epoch.bored_for >= 1:
                 logging.info("[AI SLEEP] Pwnagotchi is Bored. Suspending AI and dropping to AUTO.")
                 self.mode = 'auto'
                 self._env_snapshot_at_bored = self._snapshot_environment()
-                self.pause_ai()          # stops inference/training -- see comment above
+                self.pause_ai()
 
             elif self.mode == 'auto' and not home_visible and not home_on_cooldown \
                     and self._epoch.inactive_for == 0 and self._epoch.active_for >= self._ai_wake_epochs \
