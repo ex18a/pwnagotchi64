@@ -19,6 +19,7 @@ Werkzeug>=2.2.2
 inky>=1.5.0
 spidev>=3.5
 Pillow>=9.0.0
+rpi-hardware-pwm>=0.2.0
 
 # Core Data / Config Parsing
 python-dateutil>=2.8.2

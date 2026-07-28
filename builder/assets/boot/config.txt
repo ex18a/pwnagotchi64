@@ -14,3 +14,6 @@ dtparam=i2c_arm=on
 dtoverlay=i2c-rtc,ds3231
 dtparam=krnbt=on
 enable_uart=1
+
+# Hardware PWM (GPIO12/13) for Display Hat Mini's backlight
+dtoverlay=pwm-2chan,pin=12,func=4,pin2=13,func2=4
