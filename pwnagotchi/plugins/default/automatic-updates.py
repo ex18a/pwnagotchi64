@@ -423,7 +423,6 @@ class AutomaticUpdates(plugins.Plugin):
         self._anim_paused = False
         logging.info("[automatic-updates] Installing Python core ...")
         agent.view().on_update_installing_core()
-        logging.info("[automatic-updates] running pip install -- output goes to /tmp/pip-install.log")
 
         was_ai_paused = agent.is_ai_paused()
         if not was_ai_paused:
@@ -435,6 +434,11 @@ class AutomaticUpdates(plugins.Plugin):
 
         pip_log_path = '/tmp/pip-install.log'
         try:
+            pip_req_file = os.path.join(source_dir, 'requirements.txt')
+            if os.path.exists(pip_req_file) and not self._install_missing_pip_requirements(pip_req_file):
+                return False
+
+            logging.info("[automatic-updates] running pip install -- output goes to /tmp/pip-install.log")
             with open(pip_log_path, 'w') as pip_log:
                 result = subprocess.run(
                     ['pip3', 'install', '--break-system-packages', '--no-deps',
@@ -451,7 +455,7 @@ class AutomaticUpdates(plugins.Plugin):
                 logging.error(f"[automatic-updates] pip install failed:\n{tail}")
                 return False
 
-            self._install_patched_bettercap(source_dir)
+            self._run_post_install_steps(source_dir)
         except subprocess.TimeoutExpired:
             logging.error("[automatic-updates] pip install timed out after 5 minutes")
             return False
@@ -473,10 +477,50 @@ class AutomaticUpdates(plugins.Plugin):
         logging.info("[automatic-updates] pip install completed successfully")
         return True
 
-    def _install_patched_bettercap(self, source_dir):
+    def _install_missing_pip_requirements(self, req_file):
+        try:
+            from packaging.requirements import Requirement
+            from importlib.metadata import version as installed_version, PackageNotFoundError
+        except Exception as e:
+            logging.error(f"[automatic-updates] can't check pip requirements: {e}")
+            return True
+
+        with open(req_file, 'r') as f:
+            lines = [line.strip() for line in f if line.strip() and not line.startswith('#') and not line.startswith('--')]
+
+        missing = []
+        for line in lines:
+            try:
+                req = Requirement(line)
+            except Exception:
+                continue
+            try:
+                current = installed_version(req.name)
+                if req.specifier and not req.specifier.contains(current, prereleases=True):
+                    missing.append(line)
+            except PackageNotFoundError:
+                missing.append(line)
+
+        if not missing:
+            logging.info("[automatic-updates] all pip requirements already satisfied")
+            return True
+
+        logging.info(f"[automatic-updates] installing missing/updated pip requirements: {', '.join(missing)}")
+        for req_str in missing:
+            result = subprocess.run(
+                ['pip3', 'install', '--break-system-packages', '--no-deps',
+                 '--no-build-isolation', req_str],
+                capture_output=True, text=True, timeout=180
+            )
+            if result.returncode != 0:
+                logging.error(f"[automatic-updates] failed to install {req_str}: {result.stderr.strip()}")
+                return False
+        return True
+
+    def _run_post_install_steps(self, source_dir):
         setup_path = os.path.join(source_dir, 'setup.py')
         if not os.path.exists(setup_path):
-            logging.debug("[automatic-updates] no setup.py in this release, skipping bettercap patch check")
+            logging.debug("[automatic-updates] no setup.py in this release, skipping post-install steps")
             return
 
         original_cwd = os.getcwd()
@@ -485,9 +529,13 @@ class AutomaticUpdates(plugins.Plugin):
             spec = importlib.util.spec_from_file_location('_pwnagotchi_setup', setup_path)
             setup_module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(setup_module)
+            setup_module.install_system_files()
+            setup_module.install_bt_wizard()
             setup_module.install_patched_bettercap()
+            setup_module.remove_stale_eth0_interfaces_file()
+            setup_module.restart_services()
         except Exception as e:
-            logging.error(f"[automatic-updates] failed to install patched bettercap: {e}")
+            logging.error(f"[automatic-updates] post-install steps failed: {e}")
         finally:
             os.chdir(original_cwd)
 
