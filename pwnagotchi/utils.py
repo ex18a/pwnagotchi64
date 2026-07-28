@@ -322,11 +322,18 @@ def total_unique_handshakes(path):
 
 def iface_channels(ifname):
     channels = []
-    output = subprocess.getoutput("/sbin/iwlist %s freq" % ifname)
-    for line in output.split("\n"):
-        line = line.strip()
-        if line.startswith("Channel "):
-            channels.append(int(line.split()[1]))
+    try:
+        info = subprocess.getoutput("iw %s info" % ifname)
+        phy_match = re.search(r"wiphy\s+(\d+)", info)
+        if not phy_match:
+            return channels
+        phy_info = subprocess.getoutput("iw phy%s info" % phy_match.group(1))
+        for line in phy_info.split("\n"):
+            m = re.match(r"\s*\*\s+(\d+)(?:\.\d+)?\s+MHz\s+\[(\d+)\].*dBm", line)
+            if m:
+                channels.append(int(m.group(2)))
+    except Exception:
+        pass
     return channels
 
 

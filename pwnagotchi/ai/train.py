@@ -54,12 +54,14 @@ class Stats(object):
         with self._lock:
             if os.path.exists(self.path) and os.path.getsize(self.path) > 0:
                 logging.info("[ai] loading %s" % self.path)
-                with open(self.path, 'rt') as fp:
-                    obj = json.load(fp)
-
-                self.born_at = obj['born_at']
-                self.epochs_lived, self.epochs_trained = obj['epochs_lived'], obj['epochs_trained']
-                self.best_reward, self.worst_reward = obj['rewards']['best'], obj['rewards']['worst']
+                try:
+                    with open(self.path, 'rt') as fp:
+                        obj = json.load(fp)
+                    self.born_at = obj['born_at']
+                    self.epochs_lived, self.epochs_trained = obj['epochs_lived'], obj['epochs_trained']
+                    self.best_reward, self.worst_reward = obj['rewards']['best'], obj['rewards']['worst']
+                except (json.JSONDecodeError, KeyError) as e:
+                    logging.warning("[ai] %s is corrupt (%s) -- starting stats fresh" % (self.path, e))
 
     def save(self):
         with self._lock:

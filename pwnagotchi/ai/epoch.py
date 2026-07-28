@@ -10,56 +10,35 @@ from pwnagotchi.ai.reward import RewardFunction
 
 
 class Epoch(object):
-    def __init__(self, config):
+    def __init__(self, config, extended_spectrum=False):
         self.epoch = 0
         self.config = config
-        # how many consecutive epochs with no activity
+        self._histogram_size = wifi.NumChannelsExt if extended_spectrum else wifi.NumChannels
         self.inactive_for = 0
-        # how many consecutive epochs with activity
         self.active_for = 0
-        # number of epochs with no visible access points
         self.blind_for = 0
-        # number of epochs in sad state
         self.sad_for = 0
-        # number of epochs in bored state
         self.bored_for = 0
-        # did deauth in this epoch in the current channel?
         self.did_deauth = False
-        # number of deauths in this epoch
         self.num_deauths = 0
-        # did associate in this epoch in the current channel?
         self.did_associate = False
-        # number of associations in this epoch
         self.num_assocs = 0
-        # number of assocs or deauths missed
         self.num_missed = 0
-        # did get any handshake in this epoch?
         self.did_handshakes = False
-        # number of handshakes captured in this epoch
         self.num_shakes = 0
-        # number of channels hops
         self.num_hops = 0
-        # number of seconds sleeping
         self.num_slept = 0
-        # number of peers seen during this epoch
         self.num_peers = 0
-        # cumulative bond factor
-        self.tot_bond_factor = 0.0  # cum_bond_factor sounded really bad ...
-        # average bond factor
+        self.tot_bond_factor = 0.0
         self.avg_bond_factor = 0.0
-        # any activity at all during this epoch?
         self.any_activity = False
-        # when the current epoch started
         self.epoch_started = time.time()
-        # last epoch duration
         self.epoch_duration = 0
-        # https://www.metageek.com/training/resources/why-channels-1-6-11.html
         self.non_overlapping_channels = {1: 0, 6: 0, 11: 0}
-        # observation vectors
         self._observation = {
-            'aps_histogram': [0.0] * wifi.NumChannels,
-            'sta_histogram': [0.0] * wifi.NumChannels,
-            'peers_histogram': [0.0] * wifi.NumChannels
+            'aps_histogram': [0.0] * self._histogram_size,
+            'sta_histogram': [0.0] * self._histogram_size,
+            'peers_histogram': [0.0] * self._histogram_size
         }
         self._observation_ready = threading.Event()
         self._epoch_data = {}
@@ -67,9 +46,6 @@ class Epoch(object):
         self._reward = RewardFunction()
 
     def wait_for_epoch_data(self, with_observation=True, timeout=None):
-        # if with_observation:
-        #    self._observation_ready.wait(timeout)
-        #    self._observation_ready.clear()
         self._epoch_data_ready.wait(timeout)
         self._epoch_data_ready.clear()
         return self._epoch_data if with_observation is False else {**self._observation, **self._epoch_data}
@@ -87,16 +63,16 @@ class Epoch(object):
         bond_unit_scale = self.config['personality']['bond_encounters_factor']
 
         self.num_peers = len(peers)
-        num_peers = self.num_peers + 1e-10  # avoid division by 0
+        num_peers = self.num_peers + 1e-10
 
         self.tot_bond_factor = sum((peer.encounters for peer in peers)) / bond_unit_scale
         self.avg_bond_factor = self.tot_bond_factor / num_peers
 
         num_aps = len(aps) + 1e-10
         num_sta = sum(len(ap['clients']) for ap in aps) + 1e-10
-        aps_per_chan = [0.0] * wifi.NumChannels
-        sta_per_chan = [0.0] * wifi.NumChannels
-        peers_per_chan = [0.0] * wifi.NumChannels
+        aps_per_chan = [0.0] * self._histogram_size
+        sta_per_chan = [0.0] * self._histogram_size
+        peers_per_chan = [0.0] * self._histogram_size
 
         for ap in aps:
             ch_idx = ap['channel'] - 1
@@ -104,16 +80,15 @@ class Epoch(object):
                 aps_per_chan[ch_idx] += 1.0
                 sta_per_chan[ch_idx] += len(ap['clients'])
             except IndexError:
-                logging.error("got data on channel %d, we can store %d channels" % (ap['channel'], wifi.NumChannels))
+                logging.error("got data on channel %d, we can store %d channels" % (ap['channel'], self._histogram_size))
 
         for peer in peers:
             try:
                 peers_per_chan[peer.last_channel - 1] += 1.0
             except IndexError:
                 logging.error(
-                    "got peer data on channel %d, we can store %d channels" % (peer.last_channel, wifi.NumChannels))
+                    "got peer data on channel %d, we can store %d channels" % (peer.last_channel, self._histogram_size))
 
-        # normalize
         aps_per_chan = [e / num_aps for e in aps_per_chan]
         sta_per_chan = [e / num_sta for e in sta_per_chan]
         peers_per_chan = [e / num_peers for e in peers_per_chan]
@@ -141,9 +116,6 @@ class Epoch(object):
 
         if hop:
             self.num_hops += inc
-            # these two are used in order to determine the sleep time in seconds
-            # before switching to a new channel ... if nothing happened so far
-            # during this epoch on the current channel, we will sleep less
             self.did_deauth = False
             self.did_associate = False
 
@@ -165,11 +137,9 @@ class Epoch(object):
             self.bored_for = 0
 
         if self.inactive_for >= self.config['personality']['sad_num_epochs']:
-            # sad > bored; cant be sad and bored
             self.bored_for = 0
             self.sad_for += 1
         elif self.inactive_for >= self.config['personality']['bored_num_epochs']:
-            # sad_treshhold > inactive > bored_treshhold; cant be sad and bored
             self.sad_for = 0
             self.bored_for += 1
         else:
@@ -183,7 +153,6 @@ class Epoch(object):
 
         self.epoch_duration = now - self.epoch_started
 
-        # cache the state of this epoch for other threads to read
         self._epoch_data = {
             'duration_secs': self.epoch_duration,
             'slept_for_secs': self.num_slept,

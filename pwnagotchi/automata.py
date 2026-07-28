@@ -7,10 +7,11 @@ from pwnagotchi.ai.epoch import Epoch
 
 # basic mood system
 class Automata(object):
-    def __init__(self, config, view):
+    def __init__(self, config, view, supported_channels=None):
         self._config = config
         self._view = view
-        self._epoch = Epoch(config)
+        extended_spectrum = bool(supported_channels) and any(ch > 140 for ch in supported_channels)
+        self._epoch = Epoch(config, extended_spectrum)
 
         # --- AI AUTO-TOGGLE INIT ---
         # Track if the user originally wanted AI enabled

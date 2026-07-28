@@ -122,8 +122,8 @@ class Client(object):
     def run(self, command, verbose_errors=True):
         while True:
             try:
-                r = requests.post("%s/session" % self.url, auth=self.auth, json={'cmd': command})
-            except requests.exceptions.ConnectionError as e:
+                r = requests.post("%s/session" % self.url, auth=self.auth, json={'cmd': command}, timeout=30)
+            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
                 sleep_time = min_sleep + max_sleep*random.random()
                 _log_retry("can't run my request... connection to the bettercap endpoint failed...")
                 _log_retry('retrying run in {} sec'.format(sleep_time))

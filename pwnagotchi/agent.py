@@ -47,7 +47,8 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
                         config['bettercap']['port'],
                         config['bettercap']['username'],
                         config['bettercap']['password'])
-        Automata.__init__(self, config, view)
+        self._supported_channels = utils.iface_channels(config['main']['iface'])
+        Automata.__init__(self, config, view, self._supported_channels)
         AsyncAdvertiser.__init__(self, config, view, keypair)
         AsyncTrainer.__init__(self, config)
 
@@ -56,7 +57,6 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         self._current_channel = 0
         self._tot_aps = 0
         self._aps_on_channel = 0
-        self._supported_channels = utils.iface_channels(config['main']['iface'])
         self._view = view
         self._view.set_agent(self)
         self._web_ui = Server(self, config['ui'])
