@@ -69,16 +69,14 @@ check_bt() {
 }
 
 reload_bt() {
-  systemctl stop bt-agent bluetooth hciuart 2>/dev/null
+  systemctl stop bt-agent bluetooth 2>/dev/null
   timeout 5 hciconfig hci0 down 2>/dev/null
   if ! modprobe -r hci_uart; then
     return 1
   fi
-  dmesg -C
   if ! modprobe hci_uart; then
     return 1
   fi
-  systemctl start hciuart
   sleep 4
   systemctl start bluetooth bt-agent
   hciconfig hci0 2>/dev/null | grep -q 'UP RUNNING'
