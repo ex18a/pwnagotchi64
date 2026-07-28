@@ -1,7 +1,3 @@
-# ==========================================
-# SYSTEM DEPENDENCIES (APT-GET)
-# ==========================================
-
 aircrack-ng
 tcpdump
 bettercap
@@ -26,6 +22,5 @@ python3-smbus
 python3-torch
 python3-numpy
 python3-pandas
-
-#not essential but usefull
+util-linux-extra
 htop
