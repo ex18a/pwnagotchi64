@@ -77,9 +77,9 @@ class Epoch(object):
     def data(self):
         return self._epoch_data
 
-    def observe(self, aps, peers):
+    def observe(self, aps, peers, unfiltered_count=0):
         num_aps = len(aps)
-        if num_aps == 0:
+        if unfiltered_count == 0:
             self.blind_for += 1
         else:
             self.blind_for = 0

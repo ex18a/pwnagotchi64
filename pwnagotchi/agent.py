@@ -328,7 +328,7 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
                self._filter.match(ap['hostname']) is not None or \
                self._filter.match(ap['mac']) is not None
 
-    def set_access_points(self, aps):
+    def set_access_points(self, aps, unfiltered_count=0):
         self._access_points = aps
 
         # --- INTERACTION HISTORY DECAY: NEW ---
@@ -343,16 +343,18 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         # ---------------------------------------
 
         plugins.on('wifi_update', self, aps)
-        self._epoch.observe(aps, list(self._peers.values()))
+        self._epoch.observe(aps, list(self._peers.values()), unfiltered_count)
         return self._access_points
 
     def get_access_points(self):
         whitelist = self._config['main']['whitelist']
         home_networks = self._config['main'].get('home_networks', [])
         aps = []
+        unfiltered_count = 0
         try:
             s = self.session()
             plugins.on("unfiltered_ap_list", self, s['wifi']['aps'])
+            unfiltered_count = len(s['wifi']['aps'])
             self._whitelist_ap_visible = bool(home_networks) and any(
                 ap['hostname'] in home_networks or ap['mac'].lower() in home_networks
                 or ap['mac'][:8].lower() in home_networks
@@ -373,7 +375,7 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
                 logging.exception("Error while getting acces points (%s)", e)
 
         aps.sort(key=lambda ap: ap['channel'])
-        return self.set_access_points(aps)
+        return self.set_access_points(aps, unfiltered_count)
 
     def is_whitelisted_ap_visible(self):
         return self._whitelist_ap_visible
