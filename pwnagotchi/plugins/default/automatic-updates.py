@@ -540,6 +540,7 @@ class AutomaticUpdates(plugins.Plugin):
             setup_module.install_bt_wizard()
             setup_module.install_patched_bettercap()
             setup_module.remove_stale_eth0_interfaces_file()
+            setup_module.regenerate_motd()
             setup_module.restart_services()
         except Exception as e:
             logging.error(f"[automatic-updates] post-install steps failed: {e}")
