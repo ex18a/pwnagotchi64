@@ -39,12 +39,20 @@ log = logging.getLogger(__name__)
 # wifi.recon.channel clear handler which already guards this -- crashed
 # on every single call made before the wifi module had fully started,
 # confirmed live to wedge the whole recon cycle indefinitely.
-BETTERCAP_PATCH_VERSION = "v2.41.5-pwnagotchi4"
+BETTERCAP_PATCH_VERSION = "v2.41.5-pwnagotchi5"
 BETTERCAP_PATCH_URL = (
     "https://github.com/ex18a/bettercap/releases/download/"
-    f"{BETTERCAP_PATCH_VERSION}/bettercap-arm64-pwnagotchi4"
+    f"{BETTERCAP_PATCH_VERSION}/bettercap-arm64-pwnagotchi5"
 )
-BETTERCAP_PATCH_SHA256 = "8eca6f2ef9127f6a84240b9566fe89a1da912f0c0c3008aca9b8f9d418a45838"
+# pwnagotchi5: channel hopping now sets frequency via a direct nl80211
+# netlink call instead of forking a new `iw` process on every single hop
+# -- avoids process-spawn overhead (confirmed a real, measured cost on
+# pwndroid's Mi Mix 3 port, see that project's notes/02-monitor-mode.md)
+# on every channel switch, not just the occasional one. Falls back to the
+# old iw/iwconfig path on any netlink failure, so this can't behave worse
+# than pwnagotchi4 on hardware/kernels where it doesn't apply cleanly,
+# only better where it does.
+BETTERCAP_PATCH_SHA256 = "72ab2fe2795f9a743b3c36b7298ce16e3a7f53b6f8d14aad512bed384edb4890"
 
 def install_file(source_filename, dest_filename):
     # do not overwrite network configuration if it exists already
