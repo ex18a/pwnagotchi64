@@ -152,16 +152,9 @@ echo "  -> [Chroot] Enabling hardware watchdog (recovers from full kernel lockup
 # the kernel itself is stuck. The SoC's own hardware watchdog (bcm2835_wdt,
 # /dev/watchdog) is independent of software entirely: systemd (PID 1) pets
 # it as long as its own event loop is responsive, and the hardware forces
-# a real reset if that stops straight through the configured window --
-# the only thing that can actually recover from this class of failure.
-# 60s (was 30s, widened after setup.py's own restart_services() hit a
-# false-positive reboot arming this same margin live on an already-
-# provisioned device mid-update, under real load from that update's own
-# work) is still far faster than the 18+ minute freeze this was confirmed
-# to catch had it been enabled -- the tighter number bought nothing a
-# genuine lockup cares about, kept here in sync with restart_services()
-# so a fresh image and an in-place-updated older device end up with the
-# same margin either way.
+# a real reset if that stops for 60s straight -- the only thing that can
+# actually recover from this class of failure. See
+# .claude-notes/hardware-watchdog-reboot-loop.md.
 sed -i \
   -e 's/^#RuntimeWatchdogSec=off/RuntimeWatchdogSec=60s/' \
   -e 's/^#RebootWatchdogSec=10min/RebootWatchdogSec=60s/' \

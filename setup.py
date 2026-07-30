@@ -205,21 +205,8 @@ def restart_services():
     # time (see builder/pwnagotchi.sh); this covers already-provisioned
     # devices picking it up via an in-place update. daemon-reexec (not
     # just daemon-reload) is required for PID 1 to actually re-read
-    # system.conf and arm the watchdog live, without a reboot.
-    #
-    # Deliberately last in this function, after every other systemctl call
-    # above, and widened from 30s to 60s -- confirmed live on an already-
-    # provisioned device (first in-place update after this feature was
-    # added) that arming a fresh 30s watchdog *before* several more
-    # blocking systemctl round-trips still had to run, on a device already
-    # under real load from this same update's own pip build + bettercap
-    # download moments earlier, caused a genuine unwanted reboot: PID 1
-    # hadn't fully settled back into its normal petting rhythm post-
-    # daemon-reexec before the first deadline hit. The watchdog's actual
-    # job -- catching a genuine kernel lockup -- doesn't care about the
-    # difference between a 30s and 60s margin (a real lockup doesn't
-    # recover on its own either way); the tighter number bought nothing
-    # and cost a false-positive reboot on ordinary update load.
+    # system.conf and arm the watchdog live, without a reboot. See
+    # .claude-notes/hardware-watchdog-reboot-loop.md.
     with open('/etc/systemd/system.conf') as f:
         system_conf = f.read()
     new_system_conf = system_conf \
