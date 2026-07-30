@@ -137,6 +137,13 @@ class AutomaticUpdates(plugins.Plugin):
 
                 self._clear_blocked_marker()
 
+                if self._bluetooth_only_connectivity():
+                    logging.warning(f"[automatic-updates] {info['label']} available but only "
+                                     "bluetooth tether connectivity present -- notify only, "
+                                     "not auto-installing")
+                    agent.view().on_update_available(info['label'])
+                    return
+
                 if not self.options['install']:
                     agent.view().on_update_available(info['label'])
                     return
