@@ -9,7 +9,7 @@ NC=$(printf '\033[0m')
 cat <<MOTD_EOF > /etc/motd
 ┏━(${CYAN}pwnagotchi${NC})
 ┃
-┃ ${GREEN}(◕‿‿◕)${NC} ${TARGET_HOSTNAME}
+┃ (◕‿‿◕) ${TARGET_HOSTNAME}
 ┃
 ┃ Hi! I'm a pwnagotchi, please take good care of me!
 ┃ Here are some basic things you need to know to raise me properly!
