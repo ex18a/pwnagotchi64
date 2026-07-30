@@ -176,25 +176,6 @@ def restart_services():
     # covers already-provisioned devices picking it up via an in-place update.
     os.system("systemctl disable --now hciuart.service 2>/dev/null")
 
-    # Hardware watchdog (bcm2835_wdt, /dev/watchdog) -- recovers from full
-    # kernel lockups (confirmed on-device: a nexmon/SDIO-level lockup can
-    # freeze the entire kernel, not just wifi, which no userspace watchdog
-    # can do anything about) by forcing a real hardware reset if systemd's
-    # own event loop stops petting it for 30s. Fresh images enable this at
-    # build time (see builder/pwnagotchi.sh); this covers already-
-    # provisioned devices picking it up via an in-place update. daemon-
-    # reexec (not just daemon-reload) is required for PID 1 to actually
-    # re-read system.conf and arm the watchdog live, without a reboot.
-    with open('/etc/systemd/system.conf') as f:
-        system_conf = f.read()
-    new_system_conf = system_conf \
-        .replace('#RuntimeWatchdogSec=off', 'RuntimeWatchdogSec=30s') \
-        .replace('#RebootWatchdogSec=10min', 'RebootWatchdogSec=30s')
-    if new_system_conf != system_conf:
-        with open('/etc/systemd/system.conf', 'w') as f:
-            f.write(new_system_conf)
-        os.system("systemctl daemon-reexec")
-
     # opt-in only: pwnagotchi-soaktest deliberately reboots a healthy device
     # every hour, which is only ever wanted for overnight soak-testing on a
     # specific device -- never as default behavior for every user. Enabled
@@ -215,6 +196,39 @@ def restart_services():
         os.system("systemctl enable --now pwnagotchi-battery-curve-log.timer")
     else:
         os.system("systemctl disable --now pwnagotchi-battery-curve-log.timer")
+
+    # Hardware watchdog (bcm2835_wdt, /dev/watchdog) -- recovers from full
+    # kernel lockups (confirmed on-device: a nexmon/SDIO-level lockup can
+    # freeze the entire kernel, not just wifi, which no userspace watchdog
+    # can do anything about) by forcing a real hardware reset if systemd's
+    # own event loop stops petting it. Fresh images enable this at build
+    # time (see builder/pwnagotchi.sh); this covers already-provisioned
+    # devices picking it up via an in-place update. daemon-reexec (not
+    # just daemon-reload) is required for PID 1 to actually re-read
+    # system.conf and arm the watchdog live, without a reboot.
+    #
+    # Deliberately last in this function, after every other systemctl call
+    # above, and widened from 30s to 60s -- confirmed live on an already-
+    # provisioned device (first in-place update after this feature was
+    # added) that arming a fresh 30s watchdog *before* several more
+    # blocking systemctl round-trips still had to run, on a device already
+    # under real load from this same update's own pip build + bettercap
+    # download moments earlier, caused a genuine unwanted reboot: PID 1
+    # hadn't fully settled back into its normal petting rhythm post-
+    # daemon-reexec before the first deadline hit. The watchdog's actual
+    # job -- catching a genuine kernel lockup -- doesn't care about the
+    # difference between a 30s and 60s margin (a real lockup doesn't
+    # recover on its own either way); the tighter number bought nothing
+    # and cost a false-positive reboot on ordinary update load.
+    with open('/etc/systemd/system.conf') as f:
+        system_conf = f.read()
+    new_system_conf = system_conf \
+        .replace('#RuntimeWatchdogSec=off', 'RuntimeWatchdogSec=60s') \
+        .replace('#RebootWatchdogSec=10min', 'RebootWatchdogSec=60s')
+    if new_system_conf != system_conf:
+        with open('/etc/systemd/system.conf', 'w') as f:
+            f.write(new_system_conf)
+        os.system("systemctl daemon-reexec")
 
 def install_bt_wizard():
     # Only ever installed at full image-build time (builder/pwnagotchi.sh
