@@ -152,61 +152,27 @@ def install_system_files():
             install_file(source_filename, dest_filename)
 
 def restart_services():
-    # Check if we are running inside a Docker container or chroot environment
-    # where systemd is not actively running as the init system.
     if os.path.exists('/.dockerenv') or not os.path.isdir('/run/systemd/system'):
         log.info("Running in a chroot/Docker build environment. Skipping systemctl commands.")
         return
 
-    # Only reload systemd units if the OS is actually booted with systemd
     log.info("Reloading systemd daemon...")
     os.system("systemctl daemon-reload")
     os.system("systemctl enable fstrim.timer")
-    # --now: an existing device picking this up via an in-place update should
-    # start getting covered right away, not just on its next reboot
     os.system("systemctl enable --now pwnagotchi-syswatchdog.timer")
 
-    # krnbt=on (boot/config.txt) makes the kernel attach the BT UART chip
-    # directly at boot; hciuart.service (userspace btuart/hciattach) does the
-    # same job the traditional way and ships enabled by default on the base
-    # image. Left enabled alongside krnbt, both fight over the same UART
-    # connection to the combo WiFi+BT chip -- suspected contributor to
-    # nexmon/mon0 instability whenever bluetooth is actually in use.
-    # Fresh images no longer enable it (see builder/pwnagotchi.sh); this
-    # covers already-provisioned devices picking it up via an in-place update.
     os.system("systemctl disable --now hciuart.service 2>/dev/null")
 
-    # opt-in only: pwnagotchi-soaktest deliberately reboots a healthy device
-    # every hour, which is only ever wanted for overnight soak-testing on a
-    # specific device -- never as default behavior for every user. Enabled
-    # only if /root/.soaktest exists, disabled (not just left alone)
-    # otherwise so removing that flag file actually turns it back off.
     if os.path.exists('/root/.soaktest'):
         os.system("systemctl enable --now pwnagotchi-soaktest.timer")
     else:
         os.system("systemctl disable --now pwnagotchi-soaktest.timer")
 
-    # opt-in only, same pattern as soaktest above: this is a diagnostic tool
-    # for one specific investigation (a suspect battery percentage curve),
-    # not something that should log every user's battery every 30s forever.
-    # Enabled only if /root/.battery-curve-test exists, disabled (not just
-    # left alone) otherwise so removing that flag file actually turns it
-    # back off.
     if os.path.exists('/root/.battery-curve-test'):
         os.system("systemctl enable --now pwnagotchi-battery-curve-log.timer")
     else:
         os.system("systemctl disable --now pwnagotchi-battery-curve-log.timer")
 
-    # Hardware watchdog (bcm2835_wdt, /dev/watchdog) -- recovers from full
-    # kernel lockups (confirmed on-device: a nexmon/SDIO-level lockup can
-    # freeze the entire kernel, not just wifi, which no userspace watchdog
-    # can do anything about) by forcing a real hardware reset if systemd's
-    # own event loop stops petting it. Fresh images enable this at build
-    # time (see builder/pwnagotchi.sh); this covers already-provisioned
-    # devices picking it up via an in-place update. daemon-reexec (not
-    # just daemon-reload) is required for PID 1 to actually re-read
-    # system.conf and arm the watchdog live, without a reboot. See
-    # .claude-notes/hardware-watchdog-reboot-loop.md.
     with open('/etc/systemd/system.conf') as f:
         system_conf = f.read()
     new_system_conf = system_conf \
