@@ -446,7 +446,7 @@ class AutomaticUpdates(plugins.Plugin):
                     cwd=source_dir,
                     stdout=pip_log,
                     stderr=pip_log,
-                    timeout=300
+                    timeout=900
                 )
             if result.returncode != 0:
                 with open(pip_log_path, 'r') as f:
