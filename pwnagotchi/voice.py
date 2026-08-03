@@ -29,9 +29,7 @@ class Voice:
             self._('Pretty fly 4 a Wi-Fi!'),
             self._('Sniff. Deauth. Repeat.'),
             self._('Good Pwning!'), # Battlestar Galactica
-            self._('Ensign, Engage!'), # Star trek
             self._('Free your Wi-Fi!'), # Matrix
-            self._('Chevron Seven, locked.'), # Stargate
             self._('May the Wi-fi be with you'), # Star wars
         ])
 
@@ -41,11 +39,7 @@ class Voice:
             self._('The neural network is ready.')])
 
     def on_keys_generation(self):
-        return random.choice([
-            self._('Generating keys, do not turn off ...'),
-            self._('Are you the keymaster?'), # Ghostbusters
-            self._('I am the keymaster!'), # Ghostbusters
-        ])
+        return self._('Generating keys, do not turn off ...')
 
     def on_normal(self):
         return random.choice([
@@ -71,7 +65,6 @@ class Voice:
     def on_motivated(self, reward):
         return random.choice([
             self._('This is the best day of my life!'),
-            self._('All your base are belong to us'),
             self._('Fascinating!'), # Star trek
         ])
 
@@ -83,7 +76,6 @@ class Voice:
             self._('I\'m extremely bored ...'),
             self._('I\'m very sad ...'),
             self._('I\'m sad'),
-            self._('I\'m so happy ...'), #  Marvin in H2G2
             self._('Life? Don\'t talk to me about life.'), # Also Marvin in H2G2
             '...'])
 
@@ -153,13 +145,12 @@ class Voice:
         return random.choice([
             '...',
             '!',
-            'Hello World!',
-            self._('I dreamed of electric sheep'),
+            'Hello',
         ])
 
     def on_waiting(self, secs):
         return random.choice([
-            self._('Waiting for {secs}s ...').format(secs=secs),
+            self._('Scanning for {secs}s ...').format(secs=secs),
             self._('Looking around ({secs}s)').format(secs=secs)])
 
     def on_assoc(self, ap):
@@ -168,10 +159,7 @@ class Voice:
         return random.choice([
             self._('Hey {what} let\'s be friends!').format(what=what),
             self._('Associating to {what}').format(what=what),
-            self._('Yo {what}!').format(what=what),
-            self._('Hello there, {what}').format(what=what),
             self._('Mind if I join, {what}?').format(what=what),
-            self._('Rise and Shine Mr. {what}!').format(what=what), # Half Life
         ])
 
     def on_deauth(self, sta):
@@ -179,7 +167,6 @@ class Voice:
             self._('Just decided that {mac} needs no Wi-Fi!').format(mac=sta['mac']),
             self._('Deauthenticating {mac}').format(mac=sta['mac']),
             self._('No more Wi-Fi for {mac}').format(mac=sta['mac']),
-            self._('It\'s a trap! {mac}').format(mac=sta['mac']),  # Star wars
             self._('Consider yourself unplugged, {mac}').format(mac=sta['mac']),
             self._('Hasta la vista, {mac}').format(mac=sta['mac']), # Terminator
             self._('You shall not pass, {mac}').format(mac=sta['mac']), # LOTR
