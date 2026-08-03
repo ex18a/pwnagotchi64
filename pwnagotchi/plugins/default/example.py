@@ -13,7 +13,7 @@ import pwnagotchi.ui.fonts as fonts
 
 class Example(plugins.Plugin):
     __author__ = 'evilsocket@gmail.com'
-    __version__ = '1.0.0'
+    __version__ = '1.0.1'
     __license__ = 'GPL3'
     __description__ = 'An example plugin for pwnagotchi that implements all the available callbacks.'
 
@@ -89,10 +89,6 @@ class Example(plugins.Plugin):
 
     # called when the AI got the worst reward so far
     def on_ai_worst_reward(self, agent, reward):
-        pass
-
-    # called when a non overlapping wifi channel is found to be free
-    def on_free_channel(self, agent, channel):
         pass
 
     # called when the status is set to bored

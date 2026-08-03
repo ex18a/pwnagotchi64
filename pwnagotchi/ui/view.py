@@ -338,11 +338,6 @@ class View(object):
         self.set('status', self._voice.on_lost_peer(peer))
         self.update()
 
-    def on_free_channel(self, channel):
-        self.set('face', faces.SMART)
-        self.set('status', self._voice.on_free_channel(channel))
-        self.update()
-
     def on_reading_logs(self, lines_so_far=0):
         self.set('face', faces.SMART)
         self.set('status', self._voice.on_reading_logs(lines_so_far))
