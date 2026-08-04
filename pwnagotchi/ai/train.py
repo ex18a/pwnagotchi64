@@ -364,6 +364,9 @@ class AsyncTrainer(object):
                     elif obs is None:
                         obs = self._model.env.reset()
 
+                    if self._ai_paused.is_set():
+                        continue
+
                     action, _ = self._model.predict(obs, deterministic=True)
                     obs, _, _, _ = self._model.env.step(action)
                 except Exception as e:
