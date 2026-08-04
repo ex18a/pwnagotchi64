@@ -226,7 +226,7 @@ class Automata(object):
                 self.mode = 'auto'
                 self.pause_ai()
 
-            elif self.mode == 'ai' and self._epoch.bored_for >= 1:
+            elif self.mode == 'ai' and self._epoch.bored_for >= 1 and not self.is_training():
                 logging.info("[AI SLEEP] Pwnagotchi is Bored. Suspending AI and dropping to AUTO.")
                 self.mode = 'auto'
                 self._env_snapshot_at_bored = self._snapshot_environment()
