@@ -147,8 +147,10 @@ class AsyncTrainer(object):
         self._training_epochs = for_epochs
 
         if training:
+            self._view.set('mode', 'TRAIN')
             plugins.on('ai_training_start', self, for_epochs)
         else:
+            self._view.set('mode', '  AI')
             plugins.on('ai_training_end', self)
 
     def is_training(self):

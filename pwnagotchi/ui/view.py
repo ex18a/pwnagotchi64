@@ -54,6 +54,15 @@ class View(object):
         self._layout = impl.layout()
         self._width = self._layout['width']
         self._height = self._layout['height']
+
+        if 'mode_right_edge' in self._layout:
+            mode_x, mode_y = self._layout['mode_right_edge']
+            mode_widget = Text(value='AUTO', position=(0, mode_y), right_edge=mode_x,
+                                font=fonts.Bold, color=BLACK)
+        else:
+            mode_widget = Text(value='AUTO', position=self._layout['mode'],
+                                font=fonts.Bold, color=BLACK)
+
         self._state = State(state={
             'channel': LabeledValue(color=BLACK, label='CH', value='00', position=self._layout['channel'],
                                     label_font=fonts.Bold,
@@ -93,8 +102,7 @@ class View(object):
                                    position=(self._layout['shakes'][0], self._layout['shakes'][1]),
                                    font=fonts.Medium),
 
-            'mode': Text(value='AUTO', position=self._layout['mode'],
-                         font=fonts.Bold, color=BLACK),
+            'mode': mode_widget,
         })
 
         if state:
