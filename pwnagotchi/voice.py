@@ -76,7 +76,7 @@ class Voice:
             self._('I\'m extremely bored ...'),
             self._('I\'m very sad ...'),
             self._('I\'m sad'),
-            self._('Life? Don\'t talk to me about life.'), # Also Marvin in H2G2
+            self._('Life? Don\'t talk to me about life.'), # Marvin in H2G2
             '...'])
 
     def on_angry(self):
@@ -195,10 +195,7 @@ class Voice:
     def on_uploading(self, to):
         return random.choice([
             self._("Uploading data to {to} ...").format(to=to),
-            self._("Beam me up to {to}").format(to=to),
-            self._("Engage warp drive, {to}").format(to=to), # Star Trek
             self._("Gift-wrapping data for {to}").format(to=to),
-            self._("Please wait, magic happening at {to}").format(to=to),
         ])
 
     def on_downloading(self, name):
