@@ -47,12 +47,11 @@ BETTERCAP_PATCH_URL = (
 )
 # pwnagotchi5: channel hopping now sets frequency via a direct nl80211
 # netlink call instead of forking a new `iw` process on every single hop
-# -- avoids process-spawn overhead (confirmed a real, measured cost on
-# pwndroid's Mi Mix 3 port, see that project's notes/02-monitor-mode.md)
-# on every channel switch, not just the occasional one. Falls back to the
-# old iw/iwconfig path on any netlink failure, so this can't behave worse
-# than pwnagotchi4 on hardware/kernels where it doesn't apply cleanly,
-# only better where it does.
+# -- avoids process-spawn overhead (confirmed a real, measured cost
+# elsewhere) on every channel switch, not just the occasional one. Falls
+# back to the old iw/iwconfig path on any netlink failure, so this can't
+# behave worse than pwnagotchi4 on hardware/kernels where it doesn't apply
+# cleanly, only better where it does.
 BETTERCAP_PATCH_SHA256 = "72ab2fe2795f9a743b3c36b7298ce16e3a7f53b6f8d14aad512bed384edb4890"
 
 def install_file(source_filename, dest_filename):
