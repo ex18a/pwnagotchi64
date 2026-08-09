@@ -466,11 +466,11 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             return None
 
     def _format_shakes_text(self, session, tot):
-        # On portrait, 'shakes' (label "PWND ") and 'mode' share row y=223 with
-        # 'mode' starting at x=93 -- if the value grows too wide it draws right
-        # into the mode text. Preserve the lifetime total in full always, and
-        # cap the session count to whatever digits still fit, so the two never
-        # overlap regardless of how large either number gets.
+        # On portrait, 'shakes' and 'mode' share row y=223, mode right-anchored
+        # at x=121 -- if the value grows too wide it draws right into the mode
+        # text. Preserve the lifetime total in full always, and cap the session
+        # count to whatever digits still fit, so the two never overlap
+        # regardless of how large either number gets.
         total_str = str(tot)
         session_str = str(session)
         try:
