@@ -32,8 +32,6 @@ class PortraitMode(plugins.Plugin):
         'lifetime_trained': (0, 196),   # just above the channel/aps row (y=207)
         'memtemp_header':   (16, 157),
         'memtemp_data':     (16, 167),
-        'sugar_lbl':        (70, 3),
-        'sugar_val':        (90, 3),
     }
 
     def __init__(self):
@@ -65,9 +63,21 @@ class PortraitMode(plugins.Plugin):
             'lifetime_trained': ImageFont.truetype(self.FONT_REGULAR, 10),
             'memtemp_header':   ImageFont.truetype(self.FONT_REGULAR, 10),
             'memtemp_data':     ImageFont.truetype(self.FONT_REGULAR, 10),
-            'sugar_lbl':        ImageFont.truetype(self.FONT_REGULAR, 10),
-            'sugar_val':        ImageFont.truetype(self.FONT_REGULAR, 10),
         }
+
+    def _sync_layout_extras(self, elements, layout):
+        if 'mode' in elements:
+            if 'mode_right_edge' in layout:
+                mode_x, mode_y = layout['mode_right_edge']
+                elements['mode'].xy = (0, mode_y)
+                elements['mode'].right_edge = mode_x
+            elif 'mode' in layout:
+                elements['mode'].xy = tuple(layout['mode'])
+                elements['mode'].right_edge = None
+        if 'status' in elements:
+            elements['status'].center_width = layout.get('status', {}).get('width')
+        if 'face' in elements:
+            elements['face'].center_width = layout.get('face_width')
 
     def _write_display_type(self, display_type):
         try:
@@ -122,6 +132,7 @@ class PortraitMode(plugins.Plugin):
                     elements['status'].xy = new_layout['status']['pos']
                     self._original_fonts['status'] = getattr(elements['status'], 'font', None)
                     elements['status'].font = self._portrait_fonts['status']
+                self._sync_layout_extras(elements, new_layout)
                 self.ready = True
                 return
 
@@ -161,6 +172,8 @@ class PortraitMode(plugins.Plugin):
                 elements['status'].xy = new_layout['status']['pos']
                 self._original_fonts['status'] = getattr(elements['status'], 'font', None)
                 elements['status'].font = self._portrait_fonts['status']
+
+            self._sync_layout_extras(elements, new_layout)
 
             # Write portrait driver to config for clean next boot
             self._write_display_type(portrait_type)
@@ -245,6 +258,8 @@ class PortraitMode(plugins.Plugin):
                     elements['status'].xy = landscape_layout['status']['pos']
                     if 'status' in self._original_fonts and self._original_fonts['status'] is not None:
                         elements['status'].font = self._original_fonts['status']
+
+                self._sync_layout_extras(elements, landscape_layout)
 
                 for key, pos in self._original_plugin_positions.items():
                     if key in elements:

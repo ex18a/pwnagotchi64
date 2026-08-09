@@ -146,9 +146,18 @@ class PiSugar3i2c(plugins.Plugin):
             ui.set('sugar_lbl', "CHG" if is_charging else "BAT")
             ui.set('sugar_val', val_text)
 
+            # Recomputed every cycle, not just once at on_ui_setup() -- a
+            # live driver swap (portrait-mode.py) changes ui._layout/
+            # ui.width() without this plugin's own setup ever re-running,
+            # so a value cached at setup time can point off the edge of
+            # a since-resized canvas. Self-correcting here means this
+            # never depends on portrait-mode.py (or anything else) knowing
+            # this plugin exists.
+            edge = ui._layout.get('battery_right_edge', ui.width() - 1)
             sugar_val = ui._state._state['sugar_val']
+            sugar_val.right_edge = edge
             val_width = sugar_val.font.getlength(val_text)
-            ui._state._state['sugar_lbl'].right_edge = sugar_val.right_edge - val_width - 4
+            ui._state._state['sugar_lbl'].right_edge = edge - val_width - 4
 
             # --- SAFE SHUTDOWN LOGIC ---
             # Actually cutting PiSugar's own output power happens separately,
