@@ -26,7 +26,7 @@ size = "10M"
 [main.plugins.automatic-updates]
 enabled = true
 repo = "ex18a/pwnagotchi64"
-interval = 6
+interval = 1
 install = true
 
 [main.plugins.grid]
