@@ -1,6 +1,4 @@
 import os
-import shutil
-import subprocess
 import time
 import tomlkit
 
@@ -141,8 +139,16 @@ def run_wizard(args):
     print(f"\n{YELLOW}[*] Basics{NC}")
     set_value('main.name', _ask_str("Device name", _get(effective, 'main.name')))
 
+    current_home = ', '.join(_get(effective, 'main.home_networks', []))
+    home_raw = input(f"Home WiFi network name(s), comma-separated [{current_home}]: ").strip()
+    if home_raw != '':
+        set_value('main.home_networks', [w.strip() for w in home_raw.split(',') if w.strip()])
+
     current_whitelist = ', '.join(_get(effective, 'main.whitelist', []))
-    whitelist_raw = input(f"Home network name(s) to never attack, comma-separated [{current_whitelist}]: ").strip()
+    whitelist_raw = input(
+        f"Any other network name(s) to never attack, e.g. friends/neighbors, comma-separated "
+        f"[{current_whitelist}]: "
+    ).strip()
     if whitelist_raw != '':
         set_value('main.whitelist', [w.strip() for w in whitelist_raw.split(',') if w.strip()])
 
@@ -204,16 +210,8 @@ def run_wizard(args):
 
     print(f"\n{GREEN}[+] Configuration saved.{NC}")
 
-    # --- Bluetooth tethering ---
-    print(f"\n{YELLOW}[*] Bluetooth{NC}")
-    if _ask_yesno("Would you like to set up a Bluetooth tethering connection to your phone now", False):
-        bt_wizard_path = shutil.which('bt-wizard') or '/usr/local/bin/bt-wizard'
-        if os.path.exists(bt_wizard_path):
-            print(f"\n{CYAN}[*] Handing off to the Bluetooth tethering wizard ...{NC}\n")
-            subprocess.call([bt_wizard_path])
-        else:
-            print(f"{RED}[!] bt-wizard not found at {bt_wizard_path} -- skipping. "
-                  f"You can run it separately later with: sudo bt-wizard{NC}")
+    print(f"\n{YELLOW}[*] Bluetooth tethering setup is disabled here for now -- known stability "
+          f"issues under heavy use, not fixed yet.{NC}")
 
     print(f"\n{GREEN}[+] Config saved, restarting pwnagotchi to apply changes...{NC}")
     for remaining in range(10, 0, -1):
