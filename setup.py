@@ -14,44 +14,11 @@ import warnings
 
 log = logging.getLogger(__name__)
 
-# Kali's apt-packaged bettercap has real, unpatched, still-open upstream
-# concurrency bugs (bettercap/bettercap#803 and two related, previously
-# unreported ones): several Station fields (WPS; separately Encryption/
-# Cipher/Authentication; separately Frequency/RSSI/LastSeen/Hostname/
-# Alias) are written with no synchronization against the same mutex that
-# Station.MarshalJSON() reads them under, while being read concurrently
-# every time the REST API streams an event or a client polls session()
-# -- confirmed on-device to panic and crash the whole bettercap process
-# under real deauth-heavy traffic, on three separate occasions covering
-# three different sets of fields. The third one was specifically
-# confirmed to require pwnagotchi's own REST/websocket polling to
-# trigger at all: two isolated tests (pure channel hopping with no
-# polling client, and standalone bettercap injection with no external
-# polling client) both ran crash-free for 30-45+ minutes each, unable to
-# reproduce it without that polling layer present. Fixed in
-# ex18a/bettercap (see branch pwnagotchi-wps-fix for the root-cause
-# writeup); this installs that patched arm64 build in place of whatever
-# apt-requirements.txt pulled in, rather than trying to get the fix
-# upstream into Kali's package first.
-#
-# pwnagotchi4 additionally fixes a nil-pointer panic in wifi.recon clear
-# (called by agent.py's recon() as of the stickChan-based channel-hold
-# fix): it called mod.iface.Name() with no nil-check, unlike the sibling
-# wifi.recon.channel clear handler which already guards this -- crashed
-# on every single call made before the wifi module had fully started,
-# confirmed live to wedge the whole recon cycle indefinitely.
 BETTERCAP_PATCH_VERSION = "v2.41.5-pwnagotchi5"
 BETTERCAP_PATCH_URL = (
     "https://github.com/ex18a/bettercap/releases/download/"
     f"{BETTERCAP_PATCH_VERSION}/bettercap-arm64-pwnagotchi5"
 )
-# pwnagotchi5: channel hopping now sets frequency via a direct nl80211
-# netlink call instead of forking a new `iw` process on every single hop
-# -- avoids process-spawn overhead (confirmed a real, measured cost
-# elsewhere) on every channel switch, not just the occasional one. Falls
-# back to the old iw/iwconfig path on any netlink failure, so this can't
-# behave worse than pwnagotchi4 on hardware/kernels where it doesn't apply
-# cleanly, only better where it does.
 BETTERCAP_PATCH_SHA256 = "72ab2fe2795f9a743b3c36b7298ce16e3a7f53b6f8d14aad512bed384edb4890"
 
 def install_file(source_filename, dest_filename):
