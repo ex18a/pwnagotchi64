@@ -78,7 +78,8 @@ class View(object):
             'line1': Line(self._layout['line1'], color=BLACK),
             'line2': Line(self._layout['line2'], color=BLACK),
 
-            'face': Text(value=faces.SLEEP, position=self._layout['face'], color=BLACK, font=fonts.Huge),
+            'face': Text(value=faces.SLEEP, position=self._layout['face'], color=BLACK, font=fonts.Huge,
+                         center_width=self._layout.get('face_width')),
 
             'friend_face': Text(value=None, position=self._layout['friend_face'], font=fonts.Bold, color=BLACK),
             'friend_name': Text(value=None, position=self._layout['friend_name'], font=fonts.BoldSmall,
