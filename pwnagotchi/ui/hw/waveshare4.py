@@ -34,6 +34,7 @@ class WaveshareV4(DisplayImpl):
         self._layout['friend_name'] = (40, 94)
         self._layout['shakes'] = (0, 109)
         self._layout['mode_right_edge'] = (249, 109)
+        self._layout.pop('mode', None)
         self._layout['status'] = {
             'pos': (125, 20),
             'font': fonts.status_font(fonts.Medium),

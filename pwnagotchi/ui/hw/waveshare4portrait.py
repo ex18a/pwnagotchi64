@@ -40,6 +40,7 @@ class WaveshareV4Portrait(DisplayImpl):
         self._layout['shakes'] = (0, 223)
         self._layout['last_pwnd_name'] = (0, 233)
         self._layout['mode_right_edge'] = (121, 223)
+        self._layout.pop('mode', None)
         self._layout['status'] = {
             'pos': (4, 45),
             'font': fonts.status_font(fonts.Medium),
