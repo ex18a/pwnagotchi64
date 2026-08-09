@@ -40,7 +40,7 @@ class DevAiTrained(plugins.Plugin):
 
         # 2. Setup the element and push the initial value immediately
         ui.add_element('lifetime_trained', LabeledValue(color=view.BLACK, label='AGE', value=str(self.trained_count),
-                                                       position=(110, 90),
+                                                       position=(125, 96),
                                                        label_font=fonts.Bold, text_font=fonts.Medium))
 
     def on_epoch(self, agent, epoch, epoch_data):
