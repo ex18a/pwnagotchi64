@@ -41,7 +41,7 @@ class FilledRect(Widget):
 
 class Text(Widget):
     def __init__(self, value="", position=(0, 0), font=None, color=0, wrap=False, max_length=0, max_lines=0,
-                 suffix="", suffix_font=None, right_edge=None):
+                 suffix="", suffix_font=None, center_width=None, right_edge=None):
         super().__init__(position, color)
         self.value = value
         self.font = font
@@ -51,6 +51,7 @@ class Text(Widget):
         self.suffix = suffix
         self.suffix_font = suffix_font
         self.suffix_xy = None
+        self.center_width = center_width
         self.right_edge = right_edge
         self.wrapper = TextWrapper(width=self.max_length, replace_whitespace=False) if wrap else None
 
@@ -65,7 +66,11 @@ class Text(Widget):
                 lines = text.split('\n')
                 if len(lines) > self.max_lines:
                     text = '\n'.join(lines[:self.max_lines])
-            if self.right_edge is not None:
+            if self.center_width:
+                center_x = self.xy[0] + self.center_width / 2
+                drawer.text((center_x, self.xy[1]), text, font=self.font, fill=self.color,
+                            anchor="ma", align="center")
+            elif self.right_edge is not None:
                 drawer.text((self.right_edge, self.xy[1]), text, font=self.font, fill=self.color,
                             anchor="ra")
             else:

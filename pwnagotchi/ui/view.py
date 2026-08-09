@@ -92,7 +92,8 @@ class View(object):
                            font=self._layout['status']['font'],
                            wrap=True,
                            max_length=self._layout['status']['max'],
-                           max_lines=self._layout['status'].get('lines', 0)),
+                           max_lines=self._layout['status'].get('lines', 0),
+                           center_width=self._layout['status'].get('width')),
 
             'shakes': LabeledValue(label='PWND ', value='0 (00)', color=BLACK,
                                    position=self._layout['shakes'], label_font=fonts.Bold,
