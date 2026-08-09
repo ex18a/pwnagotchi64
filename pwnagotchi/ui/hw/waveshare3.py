@@ -31,8 +31,8 @@ class WaveshareV3(DisplayImpl):
         self._layout['battery_right_edge'] = 175
         self._layout['line1'] = [0, 14, 250, 14]
         self._layout['line2'] = [0, 108, 250, 108]
-        self._layout['friend_face'] = (0, 92)
-        self._layout['friend_name'] = (40, 94)
+        self._layout['friend_face'] = (0, 80)
+        self._layout['friend_name'] = (40, 82)
         self._layout['shakes'] = (0, 109)
         self._layout['mode_right_edge'] = (249, 109)
         self._layout.pop('mode', None)

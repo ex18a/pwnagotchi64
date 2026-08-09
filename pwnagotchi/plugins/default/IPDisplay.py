@@ -7,7 +7,7 @@
 #     'wlan0',
 #     'ect...'
 # ]
-# main.plugins.IPDisplay.position = "0, 82"
+# main.plugins.IPDisplay.position = "0, 96"
 # main.plugins.IPDisplay.delay_time = 2 # how many seconds to delay cycling devices
 
 from pwnagotchi.ui.components import LabeledValue
@@ -56,7 +56,7 @@ class IPDisplay(plugins.Plugin):
                 pos = tuple(int(x.strip()) for x in pos.split(','))
             pos1 = pos
         except Exception:
-            pos1 = (0, 82)
+            pos1 = (0, 96)
         ui.add_element('ip1', LabeledValue(color=view.BLACK, label="", value='Initializing...',
                                            position=pos1, label_font=fonts.Bold, text_font=fonts.Medium))
 
