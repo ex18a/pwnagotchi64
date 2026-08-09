@@ -48,7 +48,7 @@ class Server:
             logging.info("web ui available at http://%s:%d/" % (self._address, self._port))
 
             # Start the server using the modern Werkzeug WSGI server
-            server = make_server(self._address, self._port, app)
+            server = make_server(self._address, self._port, app, threaded=True)
             server.serve_forever()
         else:
             logging.info("could not get ip of usb0, video server not starting")

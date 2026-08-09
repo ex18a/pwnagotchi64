@@ -14,7 +14,7 @@ import time
 
 class MemTemp(plugins.Plugin):
     __author__ = 'https://github.com/xenDE'
-    __version__ = '1.0.2'
+    __version__ = '1.0.3'
     __license__ = 'GPL3'
     __description__ = 'A plugin that will display memory/cpu usage and temperature'
 
@@ -38,7 +38,7 @@ class MemTemp(plugins.Plugin):
         return f"{int(pwnagotchi.mem_usage() * 100)}%"
 
     def cpu_load(self):
-        return f"{int(pwnagotchi.cpu_load() * 100)}%"
+        return f"{int(pwnagotchi.process_cpu_load() * 100)}%"
 
     def cpu_temp(self):
         if self.options['scale'] == "fahrenheit":

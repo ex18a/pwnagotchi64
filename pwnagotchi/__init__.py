@@ -116,6 +116,24 @@ def cpu_load():
     return non_idle_sum / total
 
 
+def _process_cpu_ticks():
+    with open('/proc/self/stat', 'rt') as fp:
+        content = fp.read()
+    fields = content.rsplit(')', 1)[1].split()
+    utime, stime = int(fields[11]), int(fields[12])
+    return utime + stime
+
+
+def process_cpu_load():
+    ticks0 = _process_cpu_ticks()
+    t0 = time.time()
+    time.sleep(0.1)
+    ticks1 = _process_cpu_ticks()
+    elapsed = time.time() - t0
+    hz = os.sysconf('SC_CLK_TCK')
+    return ((ticks1 - ticks0) / hz) / elapsed
+
+
 def temperature(celsius=True):
     with open('/sys/class/thermal/thermal_zone0/temp', 'rt') as fp:
         temp = int(fp.read().strip())
