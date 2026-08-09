@@ -10,8 +10,8 @@ main.mon_start_cmd = "/usr/bin/monstart"
 main.mon_stop_cmd = "/usr/bin/monstop"
 main.mon_max_blind_epochs = 5
 main.no_restart = false
-main.whitelist = ['home-wifi-name', 'example2',]
-main.home_networks = []
+main.whitelist = ['neighbors', 'friends',]
+main.home_networks = ['home-wifi-name', 'example2',]
 main.filter = ""
 main.hardware_led = true
 
