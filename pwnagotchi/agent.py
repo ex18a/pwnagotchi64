@@ -513,7 +513,7 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             self._last_pwnd = self._get_historical_last_pwnd()
 
         if self._last_pwnd is not None:
-            self._view.set('last_pwnd_name', '[%s]' % self._last_pwnd)
+            self._view.set('last_pwnd_name', self._last_pwnd)
         else:
             self._view.set('last_pwnd_name', '')
 
