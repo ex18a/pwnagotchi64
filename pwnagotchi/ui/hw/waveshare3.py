@@ -28,6 +28,7 @@ class WaveshareV3(DisplayImpl):
         self._layout['channel'] = (0, 0)
         self._layout['aps'] = (38, 0)
         self._layout['uptime'] = (185, 0)
+        self._layout['battery_right_edge'] = 175
         self._layout['line1'] = [0, 14, 250, 14]
         self._layout['line2'] = [0, 108, 250, 108]
         self._layout['friend_face'] = (0, 92)

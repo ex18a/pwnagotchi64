@@ -92,7 +92,7 @@ class PiSugar3i2c(plugins.Plugin):
             logging.error(f"[PiSugar3i2c] Could not open I2C bus: {e}")
 
     def on_ui_setup(self, ui):
-        edge = ui.width() - 1
+        edge = ui._layout.get('battery_right_edge', ui.width() - 1)
         ui.add_element(
             "sugar_lbl",
             Text(
