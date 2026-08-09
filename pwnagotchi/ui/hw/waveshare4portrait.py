@@ -31,16 +31,16 @@ class WaveshareV4Portrait(DisplayImpl):
         self._layout['face'] = (0, 87)
         self._layout['face_width'] = 122
         self._layout['name'] = (4, 22)   # aligned with status's x so the two columns line up
-        self._layout['channel'] = (0, 207)
-        self._layout['aps'] = (40, 207)
+        self._layout['channel'] = (0, 210)
+        self._layout['aps'] = (40, 210)
         self._layout['uptime'] = (0, 0)
         self._layout['line1'] = [0, 14, 125, 14]
-        self._layout['line2'] = [0, 221, 125, 221]
-        self._layout['friend_face'] = (85, 128)
-        self._layout['friend_name'] = (4, 130)
-        self._layout['shakes'] = (0, 223)
-        self._layout['last_pwnd_name'] = (0, 233)
-        self._layout['mode_right_edge'] = (121, 223)
+        self._layout['line2'] = [0, 224, 125, 224]
+        self._layout['friend_face'] = (85, 131)
+        self._layout['friend_name'] = (4, 133)
+        self._layout['shakes'] = (0, 226)
+        self._layout['last_pwnd_name'] = (0, 236)
+        self._layout['mode_right_edge'] = (121, 226)
         self._layout.pop('mode', None)
         self._layout['status'] = {
             'pos': (4, 42),

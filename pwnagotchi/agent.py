@@ -466,7 +466,7 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             return None
 
     def _format_shakes_text(self, session, tot):
-        # On portrait, 'shakes' and 'mode' share row y=223, mode right-anchored
+        # On portrait, 'shakes' and 'mode' share row y=226, mode right-anchored
         # at x=121 -- if the value grows too wide it draws right into the mode
         # text. Preserve the lifetime total in full always, and cap the session
         # count to whatever digits still fit, so the two never overlap
@@ -502,7 +502,7 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             shakes_x, shakes_y = self._view._state._state['shakes'].xy
             if self._view._width == 122:
             # Portrait mode -- static position on line below shakes
-                self._view._state._state['last_pwnd_name'].xy = (shakes_x, 233)
+                self._view._state._state['last_pwnd_name'].xy = (shakes_x, 236)
             else:
                 dynamic_offset = 32 + (len(txt) * 6)
                 self._view._state._state['last_pwnd_name'].xy = (shakes_x + dynamic_offset, shakes_y)
