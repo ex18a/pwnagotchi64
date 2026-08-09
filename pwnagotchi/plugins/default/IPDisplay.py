@@ -56,7 +56,7 @@ class IPDisplay(plugins.Plugin):
                 pos = tuple(int(x.strip()) for x in pos.split(','))
             pos1 = pos
         except Exception:
-            pos1 = (0, 96)
+            pos1 = ui._layout.get('ip1', (0, 96))
         ui.add_element('ip1', LabeledValue(color=view.BLACK, label="", value='Initializing...',
                                            position=pos1, label_font=fonts.Bold, text_font=fonts.Medium))
 

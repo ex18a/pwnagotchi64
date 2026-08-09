@@ -86,8 +86,17 @@ class MemTemp(plugins.Plugin):
             else:
                 h_pos = (pos[0], pos[1])
         except Exception:
-            # Set default position based on screen type
-            if ui.is_waveshare_v2():
+            # This fork's own drivers (waveshare_3/4[_portrait]) don't match
+            # any of the is_waveshare_vN() checks below (those are for
+            # upstream's differently-named waveshare_1/waveshare_2 drivers)
+            # -- so those checks always fell through to the generic 'else'
+            # regardless of portrait/landscape here. Each driver now sets
+            # its own 'memtemp_header' layout key instead, checked first.
+            layout_header = ui._layout.get('memtemp_header')
+            if layout_header and self.options['orientation'] != 'vertical':
+                h_pos = layout_header
+                v_pos = layout_header
+            elif ui.is_waveshare_v2():
                 h_pos = (178, 84)
                 v_pos = (197, 74)
             elif ui.is_waveshare_v1():

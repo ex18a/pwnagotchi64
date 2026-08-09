@@ -27,13 +27,6 @@ class PortraitMode(plugins.Plugin):
     LANDSCAPE_FOR = {v: k for k, v in PORTRAIT_FOR.items()}
     SUPPORTED_DISPLAYS = tuple(DISPLAY_IMPL.keys())
 
-    PORTRAIT_POSITIONS = {
-        'ip1':              (0, 185),   # under the face, just above lifetime_trained (y=196)
-        'lifetime_trained': (0, 196),   # just above the channel/aps row (y=207)
-        'memtemp_header':   (16, 157),
-        'memtemp_data':     (16, 167),
-    }
-
     def __init__(self):
         self.ready = False
         self._did_swap = False
@@ -45,8 +38,6 @@ class PortraitMode(plugins.Plugin):
         self._original_height = None
         self._original_fonts = {}
         self._portrait_fonts = {}
-        self._original_plugin_positions = {}
-        self._original_plugin_fonts = {}
 
     def _load_fonts(self):
         self._portrait_fonts = {
@@ -208,22 +199,6 @@ class PortraitMode(plugins.Plugin):
         if self._pending_swap and time.time() >= self._swap_after:
             self._pending_swap = False
             self._apply_portrait(ui)
-            return
-
-        if not self.ready:
-            return
-
-        # Reposition and refont plugin elements
-        elements = ui._state._state
-        for key, pos in self.PORTRAIT_POSITIONS.items():
-            if key in elements:
-                if key not in self._original_plugin_positions:
-                    self._original_plugin_positions[key] = tuple(elements[key].xy)
-                    self._original_plugin_fonts[key] = getattr(elements[key], 'font', None)
-                if list(elements[key].xy) != list(pos):
-                    elements[key].xy = pos
-                if key in self._portrait_fonts:
-                    elements[key].font = self._portrait_fonts[key]
 
     def on_unload(self, ui):
         if not self.ready:
@@ -261,12 +236,6 @@ class PortraitMode(plugins.Plugin):
 
                 self._sync_layout_extras(elements, landscape_layout)
 
-                for key, pos in self._original_plugin_positions.items():
-                    if key in elements:
-                        elements[key].xy = pos
-                        if key in self._original_plugin_fonts and self._original_plugin_fonts[key] is not None:
-                            elements[key].font = self._original_plugin_fonts[key]
-
                 self._write_display_type(landscape_type)
 
             else:
@@ -279,8 +248,6 @@ class PortraitMode(plugins.Plugin):
                 return
 
             self._original_fonts.clear()
-            self._original_plugin_positions.clear()
-            self._original_plugin_fonts.clear()
             self._did_swap = False
             self.ready = False
             logging.info("[Portrait Mode] Reverted to landscape.")
