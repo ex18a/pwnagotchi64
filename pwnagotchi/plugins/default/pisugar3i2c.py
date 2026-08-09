@@ -4,7 +4,7 @@ import time
 import pwnagotchi
 import pwnagotchi.plugins as plugins
 import pwnagotchi.ui.fonts as fonts
-from pwnagotchi.ui.components import LabeledValue
+from pwnagotchi.ui.components import Text
 import pwnagotchi.ui.view as view
 # NOT "from pwnagotchi.ui.view import BLACK" -- that grabs a static
 # snapshot of BLACK at plugin-import time, before View.__init__'s
@@ -92,26 +92,25 @@ class PiSugar3i2c(plugins.Plugin):
             logging.error(f"[PiSugar3i2c] Could not open I2C bus: {e}")
 
     def on_ui_setup(self, ui):
+        edge = ui.width() - 1
         ui.add_element(
             "sugar_lbl",
-            LabeledValue(
+            Text(
                 color=view.BLACK,
-                label="",
                 value="BAT",
-                position=(ui.width() / 2 + 5, 0),
-                label_font=fonts.Bold,
-                text_font=fonts.Bold,
+                position=(0, 0),
+                right_edge=edge,
+                font=fonts.Bold,
             ),
         )
         ui.add_element(
             "sugar_val",
-            LabeledValue(
+            Text(
                 color=view.BLACK,
-                label="",
                 value="0%",
-                position=(ui.width() / 2 + 25, 0),
-                label_font=fonts.Bold,
-                text_font=fonts.Medium,
+                position=(0, 0),
+                right_edge=edge,
+                font=fonts.Medium,
             ),
         )
 
@@ -143,8 +142,13 @@ class PiSugar3i2c(plugins.Plugin):
             capacity = int(round(avg_capacity))
             # --------------------------------------
 
+            val_text = f"{capacity}%"
             ui.set('sugar_lbl', "CHG" if is_charging else "BAT")
-            ui.set('sugar_val', f"{capacity}%")
+            ui.set('sugar_val', val_text)
+
+            sugar_val = ui._state._state['sugar_val']
+            val_width = sugar_val.font.getlength(val_text)
+            ui._state._state['sugar_lbl'].right_edge = sugar_val.right_edge - val_width - 4
 
             # --- SAFE SHUTDOWN LOGIC ---
             # Actually cutting PiSugar's own output power happens separately,
