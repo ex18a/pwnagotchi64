@@ -1,33 +1,84 @@
 # Pwnagotchi 64-Bit AI Edition
 
-This is a specialized, high-performance fork of the Pwnagotchi project. This build is designed for 64-bit architecture, utilizing **PyTorch** for AI inference and training, providing a significant boost in intelligence and processing stability over the original A2C implementation.
+## What is Pwnagotchi?
 
-## Why does Pwnagotchi even have an "AI"?
+Pwnagotchi is a WiFi-auditing tool that carries a face and a personality, running on a small piece
+of hardware (usually a Raspberry Pi) you take with you. The actual attack work — deauthing,
+associating, capturing handshakes — is all done by [**bettercap**](https://www.bettercap.org/); a
+lot of people assume the "AI" is what's hacking the WiFi, but it isn't. What the AI does is learn
+how to *run* bettercap well: how long to linger on a channel before hopping, how aggressively to
+hop between channels, how long to wait for a handshake before giving up on a target, how weak a
+signal is even worth bothering with, and a dozen other timing/behavior knobs. Every epoch, it sees
+what those settings produced — handshakes captured, time spent blind, targets missed — and that
+becomes a reward signal nudging its *next* set of settings. Over time it learns which behavior
+actually works in whatever environment it's really operating in, instead of running forever on one
+fixed configuration that might be great sitting still on a desk and useless out on a walk.
 
-A lot of people assume the AI is what actually hacks the WiFi — it isn't. The real attack work (deauthing, associating, capturing handshakes) is all done by **bettercap**. What the AI does is learn how to *run* bettercap well: how long to linger on a channel before hopping, how aggressively to hop between channels, how long to wait for a handshake before giving up on a target, how far away (signal-wise) is even worth bothering with, and a dozen other timing/behavior knobs. Every epoch, it sees what those settings produced — handshakes captured, time spent blind, targets missed — and that becomes a reward signal nudging its *next* set of settings. Over time it learns which behavior actually works in whatever environment it's really operating in, instead of running forever on one fixed configuration that might be great sitting still on a desk and useless out on a walk. That's the whole original idea behind the project (credit to evilsocket, see Acknowledgments below) — this fork keeps that same reinforcement-learning core, just rebuilt on a modern PyTorch/stable-baselines3 engine instead of the original's older TensorFlow-based one, and with the epoch/personality logic reworked specifically for walking-speed use rather than sitting stationary.
+Credit for the original concept and the reinforcement-learning core goes to
+[**evilsocket**](https://github.com/evilsocket), who created Pwnagotchi — see Acknowledgments below.
 
-> **Hardware Support:** specifically optimized for the **Raspberry Pi Zero 2 W** with **waveshare eink 2.13 v4** and **pisugar 3**.
+## About This Fork
+
+This build keeps that same reinforcement-learning core but rebuilds the platform underneath it:
+
+* **64-bit, PyTorch/stable-baselines3** instead of the original's older 32-bit, TensorFlow-based
+  A2C implementation — faster epoch processing and better training stability.
+* **Kali Linux base** instead of the legacy 32-bit image, for native Nexmon firmware support —
+  reliable monitor mode and packet injection without extra driver work.
+* **Epoch/personality logic reworked for walking-speed use** rather than sitting stationary on a
+  desk (see [Fork-Only AI Behavior](#fork-only-ai-behavior) below for the specifics).
+
+> **Hardware Support:** specifically optimized for the **Raspberry Pi Zero 2 W** with **waveshare
+> eink 2.13 v4** and **pisugar 3**.
 >
->  The **Raspberry Pi 3B+** is also supported.
+> The **Raspberry Pi 3B+** is also supported.
 >
-> *Note: While this 64-bit image may run on other ARM64 devices, these two boards are the only platforms I actively test against.*
+> *Note: while this 64-bit image may run on other ARM64 devices, these two boards are the only
+> platforms I actively test against.*
 
 ---
 
-## What makes this build different?
+## Fork-Only AI Behavior
 
-This fork maintains the classic Pwnagotchi AI personality while completely overhauling the underlying architecture. By migrating to a 64-bit Kali Linux base, I have removed the legacy 32-bit bottlenecks that previously limited processing stability.
+Two behaviors specific to this fork, both about *when the AI is allowed to train*, not just how it
+runs bettercap:
 
-### Key Features
-* **Modern AI Engine:** I have ported the AI inference to PyTorch. The core learning logic remains faithful to the original, but running it on a modern PyTorch framework allows for significantly faster epoch processing and improved stability, ensuring the Pwnagotchi learns smarter without the lag.
-* **Kali Linux Backbone:** This build is standardized on Kali Linux to ensure native support for Nexmon firmware. This provides rock-solid monitor mode and reliable packet injection, ensuring deauth frames land accurately.
-* **Bluetooth Tethering Wizard:** I developed an automated setup wizard that solves the most frustrating part of the Pwnagotchi experience. It handles kernel-level networking, IP routing, and pairing configuration automatically, making reliable Bluetooth tethering possible in just a few simple steps.
+### Pauses training at home
 
-## Purpose-Built Plugins:
+If you tell it about your home network(s) (`main.home_networks` in `config.toml`), the AI drops to
+plain AUTO mode and stops training the moment one of them is visible, resuming once you leave.
+
+**Why this matters:** home is a fixed, recurring environment — if a disproportionate share of all
+training data comes from sitting in the one place you spend the most time, the model can't tell
+"genuinely common" apart from "I've just been sitting here a lot." A concrete example: if your home
+APs happen to sit on channels 3/7/9, an AI that trains on home a lot could learn to favor those
+channels as if they were broadly common, when that's really just local sampling bias from one
+location dominating the training data. Excluding home time from training entirely removes that bias
+at the source, rather than trying to correct for it after the fact.
+
+### Pauses training when bored
+
+If nothing's happening — a genuinely dead area, or every visible AP already exhausted and given up
+on — the AI finishes whatever training batch is already in progress, then drops to AUTO instead of
+continuing to grind through the dead stretch. It only resumes once real activity has come back *and*
+stayed for a few epochs *and* the surrounding APs have genuinely changed since it went idle — not
+just the first random blip AUTO's own background scanning happens to see.
+
+**Why this matters:** by the time it's gone bored, that stretch's outcome is already locked in —
+nothing available right now can add more interactions to an already-exhausted target or conjure a
+new AP out of nowhere. Continuing to train through the idle stretch doesn't teach it anything new;
+it just adds negative-reward noise on top of signal that's already been collected, and Pwnagotchi's
+boredom penalty gets *worse* the longer the dead stretch continues — so letting it keep training
+through that window actively drags the learned policy in the wrong direction instead of just wasting
+time.
+
+---
+
+## Purpose-Built Plugins
 
 * **Portrait Mode:** A custom UI plugin that rotates the display for a fresh, vertical aesthetic.
-
-* **HashVault:** An automated utility that monitors for captured handshakes, automatically validates them, and converts them into ready-to-crack hashcat files, eliminating the need for manual cleanup.
+* **HashVault:** An automated utility that monitors for captured handshakes, automatically validates
+  them, and converts them into ready-to-crack hashcat files, eliminating the need for manual cleanup.
 
 ---
 
@@ -39,8 +90,6 @@ default ip for gadgetmode is `10.42.0.2`
 User configuration file is at `/etc/pwnagotchi/config.toml`.
 
 Do not edit `/etc/pwnagotchi/default.toml` — it is overwritten on every restart.
-
-For bluetooth setup use: `sudo bt-wizard`
 
 ---
 
