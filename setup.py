@@ -14,12 +14,12 @@ import warnings
 
 log = logging.getLogger(__name__)
 
-BETTERCAP_PATCH_VERSION = "v2.41.5-pwnagotchi5"
+BETTERCAP_PATCH_VERSION = "v2.41.5-pwnagotchi6"
 BETTERCAP_PATCH_URL = (
     "https://github.com/ex18a/bettercap/releases/download/"
-    f"{BETTERCAP_PATCH_VERSION}/bettercap-arm64-pwnagotchi5"
+    f"{BETTERCAP_PATCH_VERSION}/bettercap-arm64-pwnagotchi6"
 )
-BETTERCAP_PATCH_SHA256 = "72ab2fe2795f9a743b3c36b7298ce16e3a7f53b6f8d14aad512bed384edb4890"
+BETTERCAP_PATCH_SHA256 = "5d9fb9e8da88a89c7d962be99595ce401a86f81229e751eda06304a75ef922bd"
 
 def install_file(source_filename, dest_filename):
     # do not overwrite network configuration if it exists already
@@ -63,7 +63,8 @@ def install_patched_bettercap():
         except Exception as e:
             log.warning(f"could not hash existing bettercap binary, reinstalling to be safe: {e}")
 
-    log.info(f"installing patched bettercap {BETTERCAP_PATCH_VERSION} (fixes bettercap/bettercap#803) ...")
+    log.info(f"installing patched bettercap {BETTERCAP_PATCH_VERSION} "
+             f"(fixes bettercap/bettercap#803, plus a hopChanges deadlock and a full upstream sync) ...")
     tmp_path = "/tmp/bettercap-pwnagotchi-patch"
     try:
         urllib.request.urlretrieve(BETTERCAP_PATCH_URL, tmp_path)
