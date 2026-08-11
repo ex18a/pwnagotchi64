@@ -10,6 +10,14 @@ RED = '\033[0;31m'
 YELLOW = '\033[1;33m'
 NC = '\033[0m'
 
+CONFIG_HEADER_LINES = [
+    "This file only contains what you've explicitly set via 'sudo pwnagotchi --setup'",
+    "(or added by hand). Anything not listed here falls back to",
+    "/etc/pwnagotchi/default.toml, which has every available setting -- for more",
+    "advanced tuning than the wizard covers, copy the relevant key/section from",
+    "there into this file.",
+]
+
 COMMON_DISPLAY_TYPES = [
     'waveshare_4',
     'waveshare_3',
@@ -86,6 +94,21 @@ def _ask_list(prompt, current):
     if raw.lower() == 'clear':
         return []
     return [w.strip() for w in raw.split(',') if w.strip()]
+
+
+def _ensure_header(doc):
+    if CONFIG_HEADER_LINES[0] in tomlkit.dumps(doc):
+        return doc
+    new_doc = tomlkit.document()
+    for line in CONFIG_HEADER_LINES:
+        new_doc.add(tomlkit.comment(line))
+    new_doc.add(tomlkit.nl())
+    for key, value in doc.body:
+        if key is None:
+            new_doc.add(value)
+        else:
+            new_doc.add(key, value)
+    return new_doc
 
 
 def _ask_choice(prompt, options, current):
@@ -202,6 +225,7 @@ def run_wizard(args):
         print(f"{RED}[!] Aborted, nothing was written.{NC}")
         return 1
 
+    doc = _ensure_header(doc)
     with open(args.user_config, 'w') as fp:
         fp.write(tomlkit.dumps(doc))
 
