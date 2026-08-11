@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 import logging
 import argparse
+import random
 import time
 import signal
 import sys
@@ -71,43 +72,29 @@ def do_auto_mode(agent):
 
     while True:
         try:
-            # recon on all channels
             agent.recon()
-            # get nearby access points grouped by channel
             channels = agent.get_access_points_by_channel()
-            # only attack the busiest channel this epoch (channels[0], since
-            # get_access_points_by_channel() sorts by AP count descending),
-            # then close out and let the next epoch's recon() rescan fresh.
-            # Working through every channel a scan turns up can take long
-            # enough that, walking around, you've already passed the
-            # networks on the later channels by the time it gets to them.
             for ch, aps in channels[:1]:
                 agent.set_channel(ch)
 
                 if not agent.is_stale() and agent.any_activity():
                     logging.info("%d access points on channel %d" % (len(aps), ch))
 
-                # for each ap on this channel
                 for ap in aps:
-                    # send an association frame in order to get for a PMKID
                     agent.associate(ap)
-                    # deauth all client stations in order to get a full handshake
                     for sta in ap['clients']:
                         agent.deauth(ap, sta)
 
-            # scan > attack > wait on channel > new epoch: give the last
-            # channel we attacked a chance at a reply before the epoch
-            # closes out, so the wait counts against the epoch that earned
-            # it rather than bleeding into the next one's recon().
             agent.flush_pending_wait()
 
-            # An interesting effect of this:
-            #
-            # From Pwnagotchi's perspective, the more new access points
-            # and / or client stations nearby, the longer one epoch of
-            # its relative time will take ... basically, in Pwnagotchi's universe,
-            # WiFi electromagnetic fields affect time like gravitational fields
-            # affect ours ... neat ^_^
+            if agent.mode == 'auto' and not agent.is_training() and not agent.any_activity():
+                wait_channel = random.choice([1, 6, 11])
+                hop_recon_time = agent._config['personality']['hop_recon_time']
+                logging.info("nothing to attack this epoch -- holding on channel %d for %ds anyway ...",
+                              wait_channel, hop_recon_time)
+                agent.set_channel(wait_channel)
+                agent.wait_for(hop_recon_time)
+
             agent.next_epoch()
 
             if grid.is_connected():
