@@ -36,6 +36,14 @@ class WaveshareV4(DisplayImpl):
         self._layout['shakes'] = (0, 109)
         self._layout['mode_right_edge'] = (249, 109)
         self._layout.pop('mode', None)
+        # last_pwnd_name (the last-handshake SSID, dynamically positioned
+        # just right of 'shakes' -- see agent.py's _update_handshakes())
+        # shares this row with mode_right_edge and has no length limit of
+        # its own, so a long SSID runs straight into AUTO/MANU/'  AI'/
+        # TRAIN. Measured against TRAIN's real rendered width (the widest
+        # of the four), not a guessed character count, plus 6px of
+        # breathing room.
+        self._layout['last_pwnd_max_x'] = self._layout['mode_right_edge'][0] - fonts.Bold.getlength('TRAIN') - 6
         self._layout['ip1'] = (0, 96)
         self._layout['lifetime_trained'] = (125, 96)
         self._layout['memtemp_header'] = (155, 76)

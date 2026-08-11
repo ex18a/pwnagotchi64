@@ -101,7 +101,8 @@ class View(object):
 
             'last_pwnd_name': Text(value='', color=BLACK,
                                    position=(self._layout['shakes'][0], self._layout['shakes'][1]),
-                                   font=fonts.Medium),
+                                   font=fonts.Medium,
+                                   max_x=self._layout.get('last_pwnd_max_x')),
 
             'mode': mode_widget,
         })
