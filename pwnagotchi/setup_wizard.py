@@ -12,15 +12,19 @@ NC = '\033[0m'
 
 COMMON_DISPLAY_TYPES = [
     'waveshare_4',
-    'waveshare_4_portrait',
     'waveshare_3',
-    'waveshare_3_portrait',
     'waveshare_2',
     'waveshare_1',
     'inky',
     'oledhat',
     'displayhatmini',
 ]
+
+PORTRAIT_DRIVER_MAP = {
+    'waveshare_4': 'waveshare_4_portrait',
+    'waveshare_3': 'waveshare_3_portrait',
+}
+REVERSE_PORTRAIT_DRIVER_MAP = {v: k for k, v in PORTRAIT_DRIVER_MAP.items()}
 
 SECRET_KEYS = {'ui.web.password'}
 
@@ -152,11 +156,13 @@ def run_wizard(args):
     display_enabled = _ask_yesno("Do you have a screen attached", _get(effective, 'ui.display.enabled'))
     set_value('ui.display.enabled', display_enabled)
     if display_enabled:
-        set_value('ui.display.type', _ask_choice(
+        current_type = _get(effective, 'ui.display.type')
+        chosen_type = _ask_choice(
             "What screen do you have?",
             COMMON_DISPLAY_TYPES,
-            _get(effective, 'ui.display.type')
-        ))
+            REVERSE_PORTRAIT_DRIVER_MAP.get(current_type, current_type)
+        )
+        set_value('ui.display.type', PORTRAIT_DRIVER_MAP.get(chosen_type, chosen_type))
 
     print(f"\n{YELLOW}[*] Battery (PiSugar 3){NC}")
     has_pisugar = _ask_yesno("Do you have a PiSugar 3 battery HAT",
