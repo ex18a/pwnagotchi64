@@ -27,6 +27,7 @@ COMMON_DISPLAY_TYPES = [
     'inky',
     'oledhat',
     'displayhatmini',
+    'i2coled',
 ]
 
 PORTRAIT_DRIVER_MAP = {
