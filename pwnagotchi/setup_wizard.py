@@ -10,10 +10,6 @@ RED = '\033[0;31m'
 YELLOW = '\033[1;33m'
 NC = '\033[0m'
 
-# Kept short and curated on purpose -- the full driver list in
-# pwnagotchi/ui/hw/__init__.py has ~25 entries, most of which nobody
-# running this wizard will ever have. Anyone on something obscure can
-# still type its exact `type` string manually via the "other" option.
 COMMON_DISPLAY_TYPES = [
     'waveshare_4',
     'waveshare_4_portrait',
@@ -26,8 +22,6 @@ COMMON_DISPLAY_TYPES = [
     'displayhatmini',
 ]
 
-# Never echoed back in the confirmation summary, even though the real
-# value is what actually gets written to disk.
 SECRET_KEYS = {'ui.web.password'}
 
 
@@ -80,6 +74,16 @@ def _ask_password(prompt, current):
     return current if raw == '' else raw
 
 
+def _ask_list(prompt, current):
+    current_str = ', '.join(current)
+    raw = input(f"{prompt} [{current_str}] (type 'clear' to remove all): ").strip()
+    if raw == '':
+        return None
+    if raw.lower() == 'clear':
+        return []
+    return [w.strip() for w in raw.split(',') if w.strip()]
+
+
 def _ask_choice(prompt, options, current):
     print(prompt)
     for i, opt in enumerate(options, 1):
@@ -113,14 +117,6 @@ def run_wizard(args):
     print(f"{CYAN}==========================================={NC}")
     print("Press Enter on any question to keep the current value shown in [brackets].\n")
 
-    # utils.load_config() also makes sure /etc/pwnagotchi/default.toml exists
-    # and migrates any /boot-dropped config -- reused here so this wizard
-    # works correctly on a totally fresh, never-booted-pwnagotchi install too,
-    # same as the real startup path in bin/pwnagotchi. It's only used here to
-    # read the *effective* current values to show as prompt defaults -- the
-    # actual on-disk write further down goes through tomlkit against the raw
-    # override file instead, so any comments/formatting already in
-    # config.toml survive untouched.
     effective = utils.load_config(args)
 
     if os.path.exists(args.user_config):
@@ -135,24 +131,23 @@ def run_wizard(args):
         changes[dotted_key] = value
         _set_tomlkit(doc, dotted_key, value)
 
-    # --- Basics ---
     print(f"\n{YELLOW}[*] Basics{NC}")
     set_value('main.name', _ask_str("Device name", _get(effective, 'main.name')))
 
-    current_home = ', '.join(_get(effective, 'main.home_networks', []))
-    home_raw = input(f"Home WiFi network name(s), comma-separated [{current_home}]: ").strip()
-    if home_raw != '':
-        set_value('main.home_networks', [w.strip() for w in home_raw.split(',') if w.strip()])
+    home_networks = _ask_list(
+        "Home WiFi network name(s), comma-separated",
+        _get(effective, 'main.home_networks', [])
+    )
+    if home_networks is not None:
+        set_value('main.home_networks', home_networks)
 
-    current_whitelist = ', '.join(_get(effective, 'main.whitelist', []))
-    whitelist_raw = input(
-        f"Any other network name(s) to never attack, e.g. friends/neighbors, comma-separated "
-        f"[{current_whitelist}]: "
-    ).strip()
-    if whitelist_raw != '':
-        set_value('main.whitelist', [w.strip() for w in whitelist_raw.split(',') if w.strip()])
+    whitelist = _ask_list(
+        "Any other network name(s) to never attack, e.g. friends/neighbors, comma-separated",
+        _get(effective, 'main.whitelist', [])
+    )
+    if whitelist is not None:
+        set_value('main.whitelist', whitelist)
 
-    # --- Display ---
     print(f"\n{YELLOW}[*] Display{NC}")
     display_enabled = _ask_yesno("Do you have a screen attached", _get(effective, 'ui.display.enabled'))
     set_value('ui.display.enabled', display_enabled)
@@ -163,7 +158,6 @@ def run_wizard(args):
             _get(effective, 'ui.display.type')
         ))
 
-    # --- PiSugar 3 ---
     print(f"\n{YELLOW}[*] Battery (PiSugar 3){NC}")
     has_pisugar = _ask_yesno("Do you have a PiSugar 3 battery HAT",
                               _get(effective, 'main.plugins.pisugar3i2c.enabled'))
@@ -174,14 +168,12 @@ def run_wizard(args):
             _get(effective, 'main.plugins.pisugar3i2c.low_battery_shutdown_pct')
         ))
 
-    # --- AI ---
     print(f"\n{YELLOW}[*] AI{NC}")
     set_value('ai.enabled', _ask_yesno(
         "Let the built-in AI tune behavior through trial and error (disable for a fixed, static personality instead)",
         _get(effective, 'ai.enabled')
     ))
 
-    # --- Web UI ---
     print(f"\n{YELLOW}[*] Web UI{NC}")
     print(f"{YELLOW}The default web UI login (pwnagotchi/pwnagotchi) is public knowledge -- "
           f"worth changing if this device will ever be reachable from a network you don't fully trust.{NC}")
@@ -191,7 +183,6 @@ def run_wizard(args):
         set_value('ui.web.username', _ask_str("Web UI username", _get(effective, 'ui.web.username')))
         set_value('ui.web.password', _ask_password("Web UI password", _get(effective, 'ui.web.password')))
 
-    # --- Confirm and save ---
     print(f"\n{CYAN}==========================================={NC}")
     print(f"{CYAN}   About to write these changes to:{NC}")
     print(f"{CYAN}   {args.user_config}{NC}")
@@ -214,9 +205,15 @@ def run_wizard(args):
           f"issues under heavy use, not fixed yet.{NC}")
 
     print(f"\n{GREEN}[+] Config saved, restarting pwnagotchi to apply changes...{NC}")
-    for remaining in range(10, 0, -1):
-        print(f"\r{YELLOW}Restarting in {remaining} seconds...{NC}", end='', flush=True)
-        time.sleep(1)
+    print(f"{YELLOW}Press Ctrl+C to cancel the restart (the config is already saved).{NC}")
+    try:
+        for remaining in range(10, 0, -1):
+            print(f"\r{YELLOW}Restarting in {remaining} seconds...{NC}", end='', flush=True)
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print(f"\n{RED}[!] Restart cancelled -- run 'sudo systemctl restart pwnagotchi' "
+              f"whenever you're ready.{NC}")
+        return 0
     print()
     os.system('systemctl restart pwnagotchi')
     return 0
