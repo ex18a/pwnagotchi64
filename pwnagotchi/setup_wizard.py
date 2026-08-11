@@ -1,4 +1,5 @@
 import os
+import re
 import time
 import tomlkit
 
@@ -59,6 +60,19 @@ def _set_tomlkit(doc, dotted_key, value):
 def _ask_str(prompt, current):
     raw = input(f"{prompt} [{current}]: ").strip()
     return current if raw == '' else raw
+
+
+NAME_PATTERN = re.compile(r'^[a-zA-Z0-9\-]{2,25}$')
+
+
+def _ask_hostname(prompt, current):
+    while True:
+        raw = input(f"{prompt} [{current}]: ").strip()
+        value = current if raw == '' else raw
+        if NAME_PATTERN.match(value):
+            return value
+        print(f"{RED}Invalid name: 2-25 characters, letters/numbers/hyphens only "
+              f"(this becomes the device's real hostname).{NC}")
 
 
 def _ask_int(prompt, current):
@@ -159,7 +173,7 @@ def run_wizard(args):
         _set_tomlkit(doc, dotted_key, value)
 
     print(f"\n{YELLOW}[*] Basics{NC}")
-    set_value('main.name', _ask_str("Device name", _get(effective, 'main.name')))
+    set_value('main.name', _ask_hostname("Device name", _get(effective, 'main.name')))
 
     home_networks = _ask_list(
         "Home WiFi network name(s), comma-separated",
