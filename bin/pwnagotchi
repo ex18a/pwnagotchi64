@@ -88,7 +88,9 @@ def do_auto_mode(agent):
             agent.flush_pending_wait()
 
             if agent.mode == 'auto' and not agent.is_training() and not agent.any_activity():
-                wait_channel = random.choice([1, 6, 11])
+                personality_channels = agent._config['personality']['channels']
+                wait_channel = random.choice(personality_channels) if personality_channels \
+                    else random.choice([1, 6, 11])
                 hop_recon_time = agent._config['personality']['hop_recon_time']
                 logging.info("nothing to attack this epoch -- holding on channel %d for %ds anyway ...",
                               wait_channel, hop_recon_time)
