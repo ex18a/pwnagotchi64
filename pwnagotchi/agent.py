@@ -68,6 +68,7 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
 
         self._access_points = []
         self._last_pwnd = None
+        self._tot_handshakes_cache = None
         self._history = {}
         # --- INTERACTION HISTORY DECAY ---
         self._last_seen = {}     # mac -> last time we actually saw it on the radio
@@ -495,7 +496,9 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
     def _update_handshakes(self, new_shakes=0):
         if new_shakes > 0:
             self._epoch.track(handshake=True, inc=new_shakes)
-        tot = utils.total_unique_handshakes(self._config['bettercap']['handshakes'])
+        if new_shakes > 0 or self._tot_handshakes_cache is None:
+            self._tot_handshakes_cache = utils.total_unique_handshakes(self._config['bettercap']['handshakes'])
+        tot = self._tot_handshakes_cache
         txt = self._format_shakes_text(len(self._handshakes), tot)
         self._view.set('shakes', txt)
         try:
