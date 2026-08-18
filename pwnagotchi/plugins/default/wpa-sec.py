@@ -10,7 +10,7 @@ from json.decoder import JSONDecodeError
 
 class WpaSec(plugins.Plugin):
     __author__ = '33197631+dadav@users.noreply.github.com'
-    __version__ = '2.1.0'
+    __version__ = '2.1.1'
     __license__ = 'GPL3'
     __description__ = 'This plugin automatically uploads handshakes to https://wpa-sec.stanev.org'
 
@@ -58,8 +58,20 @@ class WpaSec(plugins.Plugin):
         cookie = {'key': self.options['api_key']}
         try:
             result = requests.get(api_url, cookies=cookie, timeout=timeout)
-            with open(output, 'wb') as output_file:
-                output_file.write(result.content)
+            result.raise_for_status()
+            content = result.content
+
+            existing_size = os.path.getsize(output) if os.path.exists(output) else 0
+            if len(content) < existing_size:
+                raise ValueError(
+                    f"downloaded {len(content)} bytes, smaller than the {existing_size} bytes "
+                    f"already at {output}"
+                )
+
+            tmp_output = f"{output}.tmp"
+            with open(tmp_output, 'wb') as output_file:
+                output_file.write(content)
+            os.replace(tmp_output, output)
         except requests.exceptions.RequestException as req_e:
             raise req_e
         except OSError as os_e:
@@ -133,7 +145,7 @@ class WpaSec(plugins.Plugin):
                 if os.path.exists(cracked_file):
                     last_check = datetime.fromtimestamp(os.path.getmtime(cracked_file))
                     download_interval = int(self.options['download_interval'])
-                    if last_check is not None and ((datetime.now() - last_check).seconds / download_interval) < 1:
+                    if last_check is not None and ((datetime.now() - last_check).total_seconds() / download_interval) < 1:
                         return
                 try:
                     self._download_from_wpasec(os.path.join(handshake_dir, 'wpa-sec.cracked.potfile'))
@@ -142,3 +154,5 @@ class WpaSec(plugins.Plugin):
                     logging.debug("WPA_SEC: %s", req_e)
                 except OSError as os_e:
                     logging.debug("WPA_SEC: %s", os_e)
+                except ValueError as val_e:
+                    logging.debug("WPA_SEC: %s", val_e)

@@ -302,6 +302,9 @@ def load_config(args):
     elif config['ui']['display']['type'] in ('displayhatmini'):
         config['ui']['display']['type'] = 'displayhatmini'
 
+    elif config['ui']['display']['type'] in ('i2coled',):
+        config['ui']['display']['type'] = 'i2coled'
+
     else:
         print("unsupported display type %s" % config['ui']['display']['type'])
         sys.exit(1)

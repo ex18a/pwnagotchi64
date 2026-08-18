@@ -2,6 +2,27 @@ from PIL import Image
 from textwrap import TextWrapper
 
 
+def _fit_to_max_x(value, value_x, max_x, font):
+    # Shared by Text and LabeledValue -- trims value_x-anchored text so it
+    # never draws past max_x, measured against the real font's getlength()
+    # rather than a guessed character count (a fixed-width guess breaks as
+    # soon as the neighbouring element it must not collide with isn't a
+    # fixed width itself, e.g. mode_right_edge's AUTO/MANU/'  AI'/TRAIN).
+    if max_x is None or font is None:
+        return value
+    budget = max_x - value_x
+    if font.getlength(value) <= budget:
+        return value
+    # These are short single-line strings (a handshake SSID, not a
+    # paragraph), so a plain linear trim is plenty -- no need for
+    # anything fancier like a binary search or word-wrapping.
+    ellipsis = '…'
+    trimmed = value
+    while trimmed and font.getlength(trimmed + ellipsis) > budget:
+        trimmed = trimmed[:-1]
+    return (trimmed + ellipsis) if trimmed else ellipsis
+
+
 class Widget(object):
     def __init__(self, xy, color=0):
         self.xy = xy
@@ -41,7 +62,7 @@ class FilledRect(Widget):
 
 class Text(Widget):
     def __init__(self, value="", position=(0, 0), font=None, color=0, wrap=False, max_length=0, max_lines=0,
-                 suffix="", suffix_font=None, center_width=None, right_edge=None):
+                 suffix="", suffix_font=None, center_width=None, right_edge=None, max_x=None):
         super().__init__(position, color)
         self.value = value
         self.font = font
@@ -53,6 +74,12 @@ class Text(Widget):
         self.suffix_xy = None
         self.center_width = center_width
         self.right_edge = right_edge
+        # Absolute x-coordinate the value must not be drawn past -- see
+        # _fit_to_max_x() above. Only meaningful for the plain xy-anchored
+        # draw path (not wrap/center_width/right_edge, which each already
+        # bound their own width differently); None (default) means no
+        # limit, so every other Text user is unaffected.
+        self.max_x = max_x
         self.wrapper = TextWrapper(width=self.max_length, replace_whitespace=False) if wrap else None
 
     def draw(self, canvas, drawer):
@@ -74,6 +101,7 @@ class Text(Widget):
                 drawer.text((self.right_edge, self.xy[1]), text, font=self.font, fill=self.color,
                             anchor="ra")
             else:
+                text = _fit_to_max_x(text, self.xy[0], self.max_x, self.font)
                 drawer.text(self.xy, text, font=self.font, fill=self.color)
             if self.suffix:
                 suffix_font = self.suffix_font or self.font

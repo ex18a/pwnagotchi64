@@ -263,8 +263,6 @@ chmod +x /usr/bin/pwnagotchi-launcher /usr/bin/bettercap-launcher /usr/bin/monst
 echo "  -> [Chroot] Pre-creating Pwnagotchi system directories..."
 mkdir -p /etc/pwnagotchi/
 chmod 755 /etc/pwnagotchi/
-echo "  -> [Chroot] Seeding initial config.toml..."
-cp /tmp/pwn_source/pwnagotchi/defaults.toml /etc/pwnagotchi/config.toml
 
 echo "  -> [Chroot] Registering systemd network unit configurations..."
 systemctl enable bettercap.service

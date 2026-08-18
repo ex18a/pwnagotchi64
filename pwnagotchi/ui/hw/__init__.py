@@ -22,6 +22,7 @@ from pwnagotchi.ui.hw.waveshare213inb_v4 import Waveshare213bV4
 from pwnagotchi.ui.hw.waveshare35lcd import Waveshare35lcd
 from pwnagotchi.ui.hw.spotpear24inch import Spotpear24inch
 from pwnagotchi.ui.hw.displayhatmini import DisplayHatMini
+from pwnagotchi.ui.hw.i2coled import I2COled
 
 def display_for(config):
     # config has been normalized already in utils.load_config
@@ -96,3 +97,6 @@ def display_for(config):
 
     elif config['ui']['display']['type'] == 'displayhatmini':
         return DisplayHatMini(config)
+
+    elif config['ui']['display']['type'] == 'i2coled':
+        return I2COled(config)

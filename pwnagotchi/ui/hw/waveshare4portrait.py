@@ -37,7 +37,7 @@ class WaveshareV4Portrait(DisplayImpl):
         self._layout['line1'] = [0, 14, 125, 14]
         self._layout['line2'] = [0, 224, 125, 224]
         self._layout['friend_face'] = (85, 131)
-        self._layout['friend_name'] = (4, 133)
+        self._layout['friend_name'] = (0, 133)
         self._layout['shakes'] = (0, 226)
         self._layout['last_pwnd_name'] = (0, 236)
         self._layout['mode_right_edge'] = (121, 226)

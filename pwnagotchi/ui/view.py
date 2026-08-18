@@ -81,7 +81,6 @@ class View(object):
             'face': Text(value=faces.SLEEP, position=self._layout['face'], color=BLACK, font=fonts.Huge,
                          center_width=self._layout.get('face_width')),
 
-            'friend_face': Text(value=None, position=self._layout['friend_face'], font=fonts.Bold, color=BLACK),
             'friend_name': Text(value=None, position=self._layout['friend_name'], font=fonts.BoldSmall,
                                 color=BLACK),
 
@@ -102,7 +101,8 @@ class View(object):
 
             'last_pwnd_name': Text(value='', color=BLACK,
                                    position=(self._layout['shakes'][0], self._layout['shakes'][1]),
-                                   font=fonts.Medium),
+                                   font=fonts.Medium,
+                                   max_x=self._layout.get('last_pwnd_max_x')),
 
             'mode': mode_widget,
         })
