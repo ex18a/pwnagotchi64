@@ -319,12 +319,6 @@ class View(object):
             name += '│' * (4 - num_bars)
             name += ' %s %d' % (peer.name(), peer.pwnd_total())
 
-            if num_total > 1:
-                if num_total > 9000:
-                    name += ' of over 9000'
-                else:
-                    name += ' of %d' % num_total
-
             self.set('friend_face', peer.face())
             self.set('friend_name', name)
         self.update()
