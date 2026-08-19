@@ -317,7 +317,7 @@ class View(object):
 
             name = '▌' * num_bars
             name += '│' * (4 - num_bars)
-            name += ' %s (%d)' % (peer.name(), peer.pwnd_total())
+            name += ' %s %d' % (peer.name(), peer.pwnd_total())
 
             if num_total > 1:
                 if num_total > 9000:
