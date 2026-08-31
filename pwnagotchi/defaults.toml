@@ -49,6 +49,10 @@ enabled = true
 [main.plugins.dev-ai-trained]
 enabled = true
 
+[main.plugins.channel_control]
+enabled = true
+enable_5ghz = true
+
 [main.plugins.pisugar3i2c]
 enabled = true
 low_battery_shutdown_pct = 10
