@@ -58,30 +58,6 @@ reload_brcm() {
   return 0
 }
 
-check_bt() {
-  if [[ "$(journalctl -k --since -5m 2>/dev/null | grep -c 'hci0: hardware error')" -ge 1 ]]; then
-    return 1
-  fi
-  if ! hciconfig hci0 2>/dev/null | grep -q 'UP RUNNING'; then
-    return 1
-  fi
-  return 0
-}
-
-reload_bt() {
-  systemctl stop bt-agent bluetooth 2>/dev/null
-  timeout 5 hciconfig hci0 down 2>/dev/null
-  if ! modprobe -r hci_uart; then
-    return 1
-  fi
-  if ! modprobe hci_uart; then
-    return 1
-  fi
-  sleep 4
-  systemctl start bluetooth bt-agent
-  hciconfig hci0 2>/dev/null | grep -q 'UP RUNNING'
-}
-
 start_monitor_interface() {
   rfkill unblock all
   iw dev wlan0 set power_save off

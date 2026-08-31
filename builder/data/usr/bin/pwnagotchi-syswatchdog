@@ -15,7 +15,6 @@ CPU_TEMP_RESUME_C=50
 CPU_TEMP_HARD_REBOOT_C=85
 CPU_HOT_PAUSE_MARKER="/run/pwnagotchi-syswatchdog-hot-pause"
 BRCM_RECOVERY_MARKER="/run/pwnagotchi-syswatchdog-brcm-recovery"
-BT_RECOVERY_MARKER="/run/pwnagotchi-syswatchdog-bt-recovery"
 PIP_INSTALL_MAX_SECONDS=240
 USB0_GATEWAY="10.42.0.1"
 
@@ -78,21 +77,6 @@ if ! check_brcm; then
         log "reload_brcm succeeded, bettercap restarted"
     else
         reboot_with_reason "reload_brcm failed outright"
-        exit 0
-    fi
-fi
-
-if ! check_bt; then
-    if [ -f "$BT_RECOVERY_MARKER" ]; then
-        reboot_with_reason "bluetooth hci0 still down after an earlier reload_bt attempt this boot -- reload didn't hold"
-        exit 0
-    fi
-    log "bluetooth hci0 hardware error detected -- attempting reload_bt (no reboot) ..."
-    touch "$BT_RECOVERY_MARKER"
-    if reload_bt; then
-        log "reload_bt succeeded, hci0 back up"
-    else
-        reboot_with_reason "reload_bt failed outright"
         exit 0
     fi
 fi

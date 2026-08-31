@@ -61,22 +61,6 @@ class AutomaticUpdates(plugins.Plugin):
     def _dev_mode(self):
         return os.path.exists(self.DEV_FLAG_PATH)
 
-    def _bluetooth_only_connectivity(self):
-        try:
-            out = subprocess.check_output(['ip', '-o', 'route', 'show', 'default'],
-                                           text=True, timeout=5)
-        except Exception as e:
-            logging.debug(f"[automatic-updates] couldn't check default routes, assuming ok: {e}")
-            return False
-
-        ifaces = set()
-        for line in out.splitlines():
-            parts = line.split()
-            if 'dev' in parts:
-                ifaces.add(parts[parts.index('dev') + 1])
-
-        return bool(ifaces) and all(iface.startswith('bnep') for iface in ifaces)
-
     def _start_progress(self, agent):
         agent.view().pin()
         self._animating = True
@@ -136,13 +120,6 @@ class AutomaticUpdates(plugins.Plugin):
                     return
 
                 self._clear_blocked_marker()
-
-                if self._bluetooth_only_connectivity():
-                    logging.warning(f"[automatic-updates] {info['label']} available but only "
-                                     "bluetooth tether connectivity present -- notify only, "
-                                     "not auto-installing")
-                    agent.view().on_update_available(info['label'])
-                    return
 
                 if not self.options['install']:
                     agent.view().on_update_available(info['label'])
@@ -390,12 +367,6 @@ class AutomaticUpdates(plugins.Plugin):
                         missing.append(pkg)
 
                 if missing:
-                    if self._bluetooth_only_connectivity():
-                        logging.error(f"[automatic-updates] {', '.join(missing)} need installing but "
-                                       "only bluetooth tether connectivity is available -- unable to "
-                                       "update over bluetooth, aborting")
-                        return False
-
                     self._anim_paused = False
                     agent.view().on_update_installing_deps()
                     logging.info(f"[automatic-updates] missing packages, installing: {', '.join(missing)}")

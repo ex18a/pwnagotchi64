@@ -3,7 +3,6 @@
 # main.plugins.IPDisplay.skip_devices = [
 #     'eth0',
 #     'usb0',
-#     'bnep0',
 #     'wlan0',
 #     'ect...'
 # ]
@@ -83,18 +82,6 @@ class IPDisplay(plugins.Plugin):
             if self.device_index >= len(ifaces):
                 self.device_index = 0
             current_device = ifaces[self.device_index]
-            if current_device.startswith("bnep0:"):
-                try:
-                    connected_devices = subprocess.check_output(['hcitool', 'con'], timeout=5)
-                    if b'ACL' not in connected_devices:
-                        self.device_index += 1
-                        if self.device_index >= len(ifaces):
-                            self.device_index = 0
-                        if not ifaces:
-                            return
-                        current_device = ifaces[self.device_index]
-                except Exception:
-                    pass
             # label matches the AGE-style "BOLD LABEL  value" look instead of
             # one plain lowercase "iface:ip" string
             iface, _, addr = current_device.partition(':')

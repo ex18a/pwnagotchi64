@@ -23,8 +23,6 @@ cat <<MOTD_EOF > /etc/motd
 ┃ All the default configuration options can be found in /etc/pwnagotchi/default.toml,
 ┃ but don't change this file because I will recreate it every time I'm restarted!
 ┃
-┃ you can set up bluetooth connection, use sudo bt-wizard
-┃
 ┃ I'm managed by systemd. Here are some basic commands.
 ┃
 ┃ If you want to know what I'm doing, you can check my logs with the command

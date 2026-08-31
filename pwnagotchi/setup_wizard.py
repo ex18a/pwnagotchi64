@@ -246,9 +246,6 @@ def run_wizard(args):
 
     print(f"\n{GREEN}[+] Configuration saved.{NC}")
 
-    print(f"\n{YELLOW}[*] Bluetooth tethering setup is disabled here for now -- known stability "
-          f"issues under heavy use, not fixed yet.{NC}")
-
     print(f"\n{GREEN}[+] Config saved, restarting pwnagotchi to apply changes...{NC}")
     print(f"{YELLOW}Press Ctrl+C to cancel the restart (the config is already saved).{NC}")
     try:

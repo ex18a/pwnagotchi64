@@ -3,9 +3,6 @@
 # AI Enabled (PyTorch A2C Engine)
 # ==========================================
 
-# Bluetooth Tethering
-dbus-python>=1.2.18
-
 # Log parsing
 file-read-backwards>=2.0.0
 

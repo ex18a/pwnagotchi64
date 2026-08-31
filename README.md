@@ -110,7 +110,7 @@ make
 The build process will automatically:
 * Package the local source code.
 * Launch an isolated Debian container.
-* Download the official Kali base image and apply all security patches, Bluetooth drivers, and custom UI plugins.
+* Download the official Kali base image and apply all security patches and custom UI plugins.
 * Output the final, ready-to-flash image to the `pwnagotchi64/dist/` folder called pwnagotchi64-0.0.0.0.img
 
 ---
