@@ -130,6 +130,9 @@ apt-get update -y
 echo "  -> [Chroot] PHASE 4.4: Installing core packages from apt-requirements.txt..."
 grep -vE '^\s*#|^\s*$' /tmp/apt-requirements.txt | xargs apt-get install -y
 
+echo "  -> [Chroot] PHASE 4.4b: Installing realtek-rtl88xxau-dkms (image-build only, see pwnagotchi.sh.md)..."
+apt-get install -y realtek-rtl88xxau-dkms
+
 echo "  -> [Chroot] Downloading and installing 64-bit Pwngrid engine..."
 wget -q "https://github.com/jayofelony/pwngrid/releases/download/v1.11.1/pwngrid-1.11.1-aarch64.zip" -O /tmp/pwngrid_engine.zip
 unzip -q /tmp/pwngrid_engine.zip -d /tmp/engine_extract
