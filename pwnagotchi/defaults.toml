@@ -44,7 +44,7 @@ enabled = true
 enabled = true
 
 [main.plugins.whitelist]
-enabled = true
+enabled = false
 
 [main.plugins.dev-ai-trained]
 enabled = true
