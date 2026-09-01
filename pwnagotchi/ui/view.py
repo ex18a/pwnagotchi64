@@ -231,7 +231,7 @@ class View(object):
             # something (e.g. a long-running plugin flow) has pinned this key
             # against ordinary writers -- only a force=True write gets through
             return
-        if key == 'status':
+        if key == 'status' and self._config['ui'].get('status-log', True):
             if not hasattr(self, '_last_logged_status') or self._last_logged_status != value:
                 import logging
                 # Flatten multi-line strings so the Web UI log parser doesn't eat the first words!
