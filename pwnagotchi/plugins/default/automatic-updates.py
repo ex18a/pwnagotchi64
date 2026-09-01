@@ -18,7 +18,7 @@ from pwnagotchi.utils import StatusFile, parse_version as version_to_tuple
 
 class AutomaticUpdates(plugins.Plugin):
     __author__ = 'ex18a'
-    __version__ = '1.0.3'
+    __version__ = '1.0.4'
     __name__ = 'automatic-updates'
     __license__ = 'GPL3'
     __description__ = ('Checks GitHub Releases on a configured fork and self-updates the '
@@ -508,7 +508,6 @@ class AutomaticUpdates(plugins.Plugin):
             setup_module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(setup_module)
             setup_module.install_system_files()
-            setup_module.install_bt_wizard()
             setup_module.install_patched_bettercap()
             setup_module.remove_stale_eth0_interfaces_file()
             setup_module.regenerate_motd()
