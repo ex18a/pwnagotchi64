@@ -707,6 +707,7 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             self._update_handshakes(1 if found_handshake else 0)
 
     def _event_poller(self, loop):
+        asyncio.set_event_loop(loop)
         self._load_recovery_data()
         self.run('events.clear')
 
@@ -719,7 +720,7 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
                 logging.debug("Error while polling via websocket (%s)", ex)
 
     def start_event_polling(self):
-        _thread.start_new_thread(self._event_poller, (asyncio.get_event_loop(),))
+        _thread.start_new_thread(self._event_poller, (asyncio.new_event_loop(),))
 
     def is_module_running(self, module):
         s = self.session()
