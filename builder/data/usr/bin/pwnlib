@@ -80,6 +80,15 @@ start_monitor_interface() {
   local iface
   iface="$(phy_iface)"
 
+  local driver kind
+  driver="$(basename "$(readlink -f "/sys/class/net/$iface/device/driver" 2>/dev/null)")"
+  if [ "$driver" = "brcmfmac" ]; then
+    kind="built-in WiFi"
+  else
+    kind="external WiFi adapter"
+  fi
+  logger -t pwnlib "mon0 will use $kind ($iface, driver: $driver)"
+
   rfkill unblock all
   iw dev "$iface" set power_save off
 
