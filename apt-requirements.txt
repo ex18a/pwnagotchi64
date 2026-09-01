@@ -1,5 +1,4 @@
 aircrack-ng
-realtek-rtl88xxau-dkms
 tcpdump
 bettercap
 bettercap-ui
