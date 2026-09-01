@@ -375,6 +375,7 @@ class AutomaticUpdates(plugins.Plugin):
                     env['DEBIAN_FRONTEND'] = 'noninteractive'
 
                     self._dpkg_configure_a()
+                    self._ensure_apt_force_ipv4()
 
                     update_result = subprocess.run(['apt-get', 'update'], capture_output=True, text=True, env=env, timeout=120)
                     if update_result.returncode != 0:
@@ -457,6 +458,16 @@ class AutomaticUpdates(plugins.Plugin):
     APT_INSTALL_HARD_TIMEOUT = 1800
     APT_PROGRESS_LOG_INTERVAL = 60
     DPKG_CONFIGURE_TIMEOUT = 120
+    APT_FORCE_IPV4_PATH = '/etc/apt/apt.conf.d/99force-ipv4'
+
+    def _ensure_apt_force_ipv4(self):
+        if os.path.exists(self.APT_FORCE_IPV4_PATH):
+            return
+        try:
+            with open(self.APT_FORCE_IPV4_PATH, 'w') as f:
+                f.write('Acquire::ForceIPv4 "true";\n')
+        except Exception as e:
+            logging.warning(f"[automatic-updates] couldn't write {self.APT_FORCE_IPV4_PATH}: {e}")
 
     def _dpkg_configure_a(self):
         try:

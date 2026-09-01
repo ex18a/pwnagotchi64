@@ -113,6 +113,9 @@ export DEBIAN_FRONTEND=noninteractive
 echo "  -> [Chroot] Enabling QEMU high-speed I/O..."
 echo "force-unsafe-io" > /etc/dpkg/dpkg.cfg.d/force-unsafe-io
 
+echo "  -> [Chroot] Forcing apt to IPv4 (avoids hangs on IPv6-without-a-route networks)..."
+echo 'Acquire::ForceIPv4 "true";' > /etc/apt/apt.conf.d/99force-ipv4
+
 echo "  -> [Chroot] PHASE 4.1: Aggressive Base System Purge..."
 apt-get purge -y --allow-remove-essential \
     kali-desktop-core kali-desktop-xfce kali-linux-default x11-common kali-linux-headless \
