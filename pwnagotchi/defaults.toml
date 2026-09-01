@@ -54,7 +54,7 @@ enabled = true
 enable_5ghz = true
 
 [main.plugins.pisugar3i2c]
-enabled = true
+enabled = false
 low_battery_shutdown_pct = 10
 
 [main.plugins.wpa-sec]
