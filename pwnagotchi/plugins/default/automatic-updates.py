@@ -374,16 +374,15 @@ class AutomaticUpdates(plugins.Plugin):
                     env = os.environ.copy()
                     env['DEBIAN_FRONTEND'] = 'noninteractive'
 
+                    self._dpkg_configure_a()
+
                     update_result = subprocess.run(['apt-get', 'update'], capture_output=True, text=True, env=env, timeout=120)
                     if update_result.returncode != 0:
                         logging.error(f"[automatic-updates] apt-get update failed: {update_result.stderr.strip()}")
                         return False
 
                     apt_cmd = ['apt-get', 'install', '-y'] + missing
-                    apt_result = subprocess.run(apt_cmd, capture_output=True, text=True, env=env, timeout=300)
-
-                    if apt_result.returncode != 0:
-                        logging.error(f"[automatic-updates] apt install failed: {apt_result.stderr.strip()}")
+                    if not self._apt_install_with_recovery(apt_cmd, env):
                         return False
 
                     self._anim_paused = True
@@ -454,6 +453,58 @@ class AutomaticUpdates(plugins.Plugin):
 
         logging.info("[automatic-updates] pip install completed successfully")
         return True
+
+    APT_INSTALL_HARD_TIMEOUT = 1800
+    APT_PROGRESS_LOG_INTERVAL = 60
+    DPKG_CONFIGURE_TIMEOUT = 120
+
+    def _dpkg_configure_a(self):
+        try:
+            result = subprocess.run(['dpkg', '--configure', '-a'],
+                                     capture_output=True, text=True, timeout=self.DPKG_CONFIGURE_TIMEOUT)
+            if result.returncode != 0:
+                logging.warning(f"[automatic-updates] dpkg --configure -a: {result.stderr.strip()}")
+        except Exception as e:
+            logging.warning(f"[automatic-updates] dpkg --configure -a failed to run: {e}")
+
+    def _run_apt_install(self, apt_cmd, env):
+        proc = subprocess.Popen(apt_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                 env=env, text=True)
+        start = time.time()
+        last_log = start
+        try:
+            while proc.poll() is None:
+                elapsed = time.time() - start
+                if elapsed >= self.APT_INSTALL_HARD_TIMEOUT:
+                    proc.kill()
+                    proc.wait()
+                    logging.error(f"[automatic-updates] apt install exceeded hard timeout of {self.APT_INSTALL_HARD_TIMEOUT}s, killed")
+                    return False
+                if time.time() - last_log >= self.APT_PROGRESS_LOG_INTERVAL:
+                    logging.info(f"[automatic-updates] apt install still running ({int(elapsed)}s elapsed) ...")
+                    last_log = time.time()
+                time.sleep(2)
+        finally:
+            output = proc.stdout.read() if proc.stdout else ''
+
+        if proc.returncode != 0:
+            logging.error(f"[automatic-updates] apt install failed: {output.strip()[-2000:]}")
+            return False
+        return True
+
+    def _apt_install_with_recovery(self, apt_cmd, env):
+        if self._run_apt_install(apt_cmd, env):
+            return True
+
+        logging.warning("[automatic-updates] apt install failed -- attempting dpkg recovery and one retry ...")
+        self._dpkg_configure_a()
+
+        if self._run_apt_install(apt_cmd, env):
+            logging.info("[automatic-updates] apt install succeeded after dpkg recovery")
+            return True
+
+        logging.error("[automatic-updates] apt install still failing after dpkg recovery, giving up for this cycle")
+        return False
 
     def _install_missing_pip_requirements(self, req_file):
         try:
