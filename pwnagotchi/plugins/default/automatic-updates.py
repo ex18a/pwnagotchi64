@@ -147,7 +147,7 @@ class AutomaticUpdates(plugins.Plugin):
                     self._apply()
                     return
                 else:
-                    agent.view().on_update_failed(info['label'])
+                    agent.view().on_update_failed(pwnagotchi.display_version())
                     logging.error(f"[automatic-updates] install of {info['label']} failed")
                     time.sleep(10)
                     agent.view().unpin()
