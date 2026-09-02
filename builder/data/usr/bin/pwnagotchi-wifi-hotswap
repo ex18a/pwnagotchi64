@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+
+source /usr/bin/pwnlib
+
+DEBOUNCE_MARKER="/run/pwnagotchi-wifi-hotswap-last-trigger"
+DEBOUNCE_SECONDS=15
+
+if [ -f "$DEBOUNCE_MARKER" ]; then
+  last=$(stat -c %Y "$DEBOUNCE_MARKER" 2>/dev/null || echo 0)
+  now=$(date +%s)
+  if [ $((now - last)) -lt "$DEBOUNCE_SECONDS" ]; then
+    exit 0
+  fi
+fi
+touch "$DEBOUNCE_MARKER"
+
+if pgrep -f 'pip3 install .*--no-build-isolation' >/dev/null 2>&1; then
+  logger -t pwnagotchi-wifi-hotswap "automatic-updates install in progress, skipping this trigger"
+  exit 0
+fi
+
+target_iface="$(phy_iface)"
+target_phy="$(iw dev "$target_iface" info 2>/dev/null | awk '/wiphy/{print "phy"$2}')"
+
+mon_phy=""
+if ip link show mon0 &>/dev/null && iw dev mon0 info &>/dev/null; then
+  mon_phy="$(iw dev mon0 info | awk '/wiphy/{print "phy"$2}')"
+fi
+
+if [ -n "$mon_phy" ] && [ "$mon_phy" = "$target_phy" ]; then
+  exit 0
+fi
+
+logger -t pwnagotchi-wifi-hotswap "mon0 needs to move to $target_iface -- restarting bettercap and pwnagotchi"
+systemctl restart bettercap.service
+systemctl restart pwnagotchi.service

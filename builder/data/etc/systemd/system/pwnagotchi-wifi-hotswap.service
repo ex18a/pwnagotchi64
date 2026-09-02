@@ -1,0 +1,7 @@
+[Unit]
+Description=pwnagotchi WiFi hotswap handler
+After=bettercap.service pwnagotchi.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/pwnagotchi-wifi-hotswap

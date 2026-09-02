@@ -126,6 +126,7 @@ def restart_services():
 
     log.info("Reloading systemd daemon...")
     os.system("systemctl daemon-reload")
+    os.system("udevadm control --reload-rules && udevadm trigger")
     os.system("systemctl enable fstrim.timer")
     os.system("systemctl enable --now pwnagotchi-syswatchdog.timer")
 
