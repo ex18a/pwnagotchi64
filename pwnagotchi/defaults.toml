@@ -3,7 +3,6 @@ main.lang = "en"
 main.confd = "/etc/pwnagotchi/conf.d/"
 main.custom_plugins = ""
 main.custom_plugin_repos = []
-main.iface = "mon0"
 main.mon_start_cmd = "/usr/bin/monstart"
 main.mon_stop_cmd = "/usr/bin/monstop"
 main.mon_max_blind_epochs = 5

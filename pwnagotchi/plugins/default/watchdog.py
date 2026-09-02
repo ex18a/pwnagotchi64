@@ -12,7 +12,7 @@ class Watchdog(plugins.Plugin):
     __description__ = 'wifi hardware check with crash logging'
 
     def __init__(self):
-        self.interface = pwnagotchi.config['main']['iface']
+        self.interface = 'mon0'
         self.lockdown_triggered = False
         self.crash_log_path = '/var/log/pwnagotchi_crashes.log'
 
