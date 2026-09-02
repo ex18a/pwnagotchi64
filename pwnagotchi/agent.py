@@ -170,6 +170,12 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             for iface in s['interfaces']:
                 if iface['name'] == mon_iface:
                     logging.info("found monitor interface: %s", iface['name'])
+                    try:
+                        driver = os.path.basename(os.path.realpath('/sys/class/net/%s/device/driver' % iface['name']))
+                        kind = 'built-in WiFi' if driver == 'brcmfmac' else 'external WiFi adapter'
+                        logging.info("%s is using %s (driver: %s)", iface['name'], kind, driver)
+                    except Exception:
+                        pass
                     has_mon = True
                     break
 
