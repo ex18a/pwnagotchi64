@@ -174,6 +174,14 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
                         driver = os.path.basename(os.path.realpath('/sys/class/net/%s/device/driver' % iface['name']))
                         kind = 'built-in WiFi' if driver == 'brcmfmac' else 'external WiFi adapter'
                         logging.info("%s is using %s (driver: %s)", iface['name'], kind, driver)
+                        if kind == 'external WiFi adapter':
+                            self._view.pin(keys=('status',))
+                            try:
+                                self._view.set('status', 'Using external WiFi adapter\n(driver: %s)' % driver, force=True)
+                                self._view.update(force=True)
+                                time.sleep(5)
+                            finally:
+                                self._view.unpin()
                     except Exception:
                         pass
                     has_mon = True
