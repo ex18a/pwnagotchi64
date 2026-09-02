@@ -22,6 +22,11 @@ fi
 target_iface="$(phy_iface)"
 target_phy="$(iw dev "$target_iface" info 2>/dev/null | awk '/wiphy/{print "phy"$2}')"
 
+if [ -z "$target_phy" ]; then
+  logger -t pwnagotchi-wifi-hotswap "$target_iface not available yet, skipping this trigger"
+  exit 0
+fi
+
 mon_phy=""
 if ip link show mon0 &>/dev/null && iw dev mon0 info &>/dev/null; then
   mon_phy="$(iw dev mon0 info | awk '/wiphy/{print "phy"$2}')"
