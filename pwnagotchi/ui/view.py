@@ -1,5 +1,6 @@
 import _thread
 import logging
+import os
 import random
 import time
 from threading import Lock
@@ -231,14 +232,21 @@ class View(object):
             # something (e.g. a long-running plugin flow) has pinned this key
             # against ordinary writers -- only a force=True write gets through
             return
-        if key == 'status' and self._config['ui'].get('status-log', True):
-            if not hasattr(self, '_last_logged_status') or self._last_logged_status != value:
-                import logging
-                # Flatten multi-line strings so the Web UI log parser doesn't eat the first words!
-                safe_log = value.strip().replace('\n', ' | ')
-                face = self._state.get('face') or ''
-                logging.info(f"{face} {safe_log}")
-                self._last_logged_status = value
+        if key == 'status':
+            # Flatten multi-line strings so the Web UI log parser doesn't eat the first words!
+            safe_log = value.strip().replace('\n', ' | ')
+            face = self._state.get('face') or ''
+            if self._config['ui'].get('status-log', True):
+                if not hasattr(self, '_last_logged_status') or self._last_logged_status != value:
+                    import logging
+                    logging.info(f"{face} {safe_log}")
+                    self._last_logged_status = value
+            try:
+                with open('/run/pwnagotchi-status.tmp', 'w') as f:
+                    f.write(f"{face} {safe_log}")
+                os.replace('/run/pwnagotchi-status.tmp', '/run/pwnagotchi-status')
+            except OSError:
+                pass
         self._state.set(key, value)
 
     def get(self, key):
