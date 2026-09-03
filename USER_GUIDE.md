@@ -80,8 +80,11 @@ Everything in this section is specific to this fork — none of it exists in ups
   epoch processing, better training stability.
 - **Kali Linux base** instead of the legacy 32-bit image, giving native Nexmon firmware support for the
   Raspberry Pi's built-in chip (reliable monitor mode + injection without extra driver work).
-- Actively tested against the **Raspberry Pi Zero 2 W** with a waveshare eink 2.13 v4 display. May run
-  on other ARM64 boards but isn't tested against them.
+- **A patched `bettercap` binary**, installed automatically — fixes several real upstream crash bugs
+  found through on-device testing (data races, a channel-hop deadlock), not stock bettercap.
+- Actively tested against the **Raspberry Pi Zero 2 W** with a waveshare eink 2.13 v4 display and
+  **PiSugar 3** battery. May run on other ARM64 boards but isn't tested against them. Also supports
+  I2C SSD1306 OLED displays (`i2coled`) as an alternative to the Waveshare drivers.
 
 ### AI-auto-toggle (training only when it matters)
 
@@ -112,6 +115,20 @@ continues — training through that window actively drags the learned policy in 
 Both directions (bored **or** sad) trigger the drop to `AUTO` — `bored_num_epochs` and `sad_num_epochs`
 are independent AI-learned thresholds with no fixed ordering between them, so checking only one could
 get stuck waiting on a threshold the AI's current policy has made temporarily unreachable.
+
+### Interaction history decay
+
+A target that's hit `max_interactions` isn't ignored forever. If it hasn't been seen again for a while,
+its interaction count slowly decays back down, fully resetting once you've been away from it long
+enough — so a network you hammered while out doesn't come back still on cooldown once you're home, and
+vice versa.
+
+### Brain/model self-healing & backups
+
+`brain.nn` self-heals instead of crashing the whole agent if it ever becomes incompatible (e.g. after an
+update changes the model's shape). Backups are tiered — dated snapshots plus rolling and permanent
+copies — and a bad reset gets backed up rather than silently deleted, so a corrupted or incompatible
+brain doesn't cost you the trained model.
 
 ### Automatic external WiFi adapter switching
 
@@ -145,6 +162,16 @@ keep a single plug/unplug event from causing more than one restart.
 - **`whitelist`** — harvests seen MACs/SSIDs, syncs with HashVault, supports case-sensitive SSIDs.
   Disabled by default.
 - **`IPDisplay`** — shows the device's current IP address(es) on screen.
+- **`pisugar3i2c`** — direct I2C PiSugar 3 battery plugin with reading smoothing (averages over a
+  window rather than letting the percentage jump around) and a configurable low-battery auto-shutdown
+  threshold. Disabled by default (enable it if you actually have a PiSugar 3 attached).
+- **`memtemp`** — CPU/memory usage and temperature on screen, refreshed on its own throttled interval
+  rather than every UI redraw. Enabled by default.
+- **`wpa-sec`** — optionally uploads captured handshakes to
+  [wpa-sec.stanev.org](https://wpa-sec.stanev.org) automatically. Disabled by default (needs your own
+  API key).
+- **`gps`** — stock upstream plugin, unmodified: saves GPS coordinates alongside any handshake
+  captured, if you have a supported GPS source attached.
 
 ### Bluetooth removed entirely
 
@@ -183,8 +210,10 @@ channel, uptime, handshake count, and whichever plugin elements are enabled. Tha
 mirrored into `pwnagotchi.log` (`ui.status-log`), so `tail -f /var/log/pwnagotchi.log` gives you the
 same picture over SSH without a display attached.
 
-**The web UI** (`http://<device-ip>:8080` by default) shows the same information plus a Plugins page —
-enable/disable any plugin live without editing config files or restarting.
+**The web UI** (`http://<device-ip>:8080` by default) — rebuilt on a dark, terminal-green theme in this
+fork — shows the same information plus a Plugins page with inline descriptions; enable/disable any
+plugin live without editing config files or restarting, and jump straight into a plugin's own web UI
+from there when it has one.
 
 **Modes**: boots in `AUTO` by default. A one-shot manual-mode override (`sudo pwnagotchi --manual`, or
 the web UI's restart-in-manual-mode action) drops it into `MANUAL` for that boot only. If
