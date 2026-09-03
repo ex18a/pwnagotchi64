@@ -112,6 +112,10 @@ class View(object):
             for key, value in state.items():
                 self._state.set(key, value)
 
+        self._write_status_file('mode', mode_widget.value.strip())
+        self._write_status_file('shakes', '0 (00)')
+        self._write_status_file('last-pwnd', '')
+
         plugins.on('ui_setup', self)
 
         if config['ui']['fps'] > 0.0:
@@ -255,6 +259,8 @@ class View(object):
             self._write_status_file('mode', value.strip())
         elif key == 'shakes':
             self._write_status_file('shakes', value.strip())
+        elif key == 'last_pwnd_name':
+            self._write_status_file('last-pwnd', (value or '').strip())
         self._state.set(key, value)
 
     def get(self, key):
