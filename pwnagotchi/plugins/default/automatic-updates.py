@@ -303,12 +303,6 @@ class AutomaticUpdates(plugins.Plugin):
             with open(self._sha_file, 'r') as f:
                 last_sha = f.read().strip()
 
-        if last_sha is None:
-            with open(self._sha_file, 'w') as f:
-                f.write(sha)
-            logging.info(f"[automatic-updates] seeded current dev SHA: {sha[:7]} - {message}")
-            return None
-
         if sha == last_sha:
             logging.debug(f"[automatic-updates] no new commits since {sha[:7]}")
             return None

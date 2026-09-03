@@ -273,8 +273,8 @@ push to `dev` becomes a live deployment to that device within one `interval`. En
 ```
 sudo touch /root/dev
 ```
-The very first check after enabling just records the current `dev` HEAD — it does **not** retroactively
-install whatever's already on `dev` at that point, only commits pushed after.
+The very first check after enabling installs whatever's currently on `dev`'s HEAD immediately, not just
+commits pushed afterward.
 
 A retroactive safety net (`AUTO_UPDATE_BLOCKLIST` at the repo root) can block a specific bad release or
 commit from auto-installing even after the fact, fetched fresh from `main` on every check.
