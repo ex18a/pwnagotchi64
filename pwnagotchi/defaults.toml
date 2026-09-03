@@ -72,6 +72,9 @@ orientation = "horizontal"
 [main.plugins.tweak_view]
 enabled = true
 
+[main.plugins.timezone-sync]
+enabled = true
+
 [ai]
 enabled = true
 path = "/root/brain.nn"
