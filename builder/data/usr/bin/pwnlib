@@ -48,6 +48,9 @@ check_brcm() {
   if [[ "$(journalctl -k --since -2m 2>/dev/null | grep -c 'brcmf_fw_crashed')" -ge 1 ]]; then
     return 1
   fi
+  if [[ "$(journalctl -k --since -2m 2>/dev/null | grep -c 'failed backplane access')" -ge 1 ]]; then
+    return 1
+  fi
   return 0
 }
 
