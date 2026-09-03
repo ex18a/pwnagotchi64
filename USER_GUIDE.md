@@ -76,8 +76,9 @@ underlying mode.
 
 ## What This Fork Changes
 
-Everything in this section is specific to this fork — none of it exists in upstream
-`evilsocket/pwnagotchi`.
+Most of what follows doesn't exist upstream at all. A couple of items are substantially rebuilt
+versions of something upstream also has in a simpler form — noted individually where that's the case,
+verified by actually diffing against `evilsocket/pwnagotchi` rather than assumed.
 
 ### Platform
 
@@ -158,9 +159,12 @@ keep a single plug/unplug event from causing more than one restart.
 - **`channel_control`** — live on/off switch (Web UI → Plugins) for whether the AI may pick 5GHz
   channels, without invalidating a trained `brain.nn` (the model's action space is still sized from
   real hardware capability at startup; this just filters the channel list it's offered).
-- **`watchdog`** — two-stage in-process safety net (see [System-Level Recovery](#system-level-recovery)
-  for how it differs from `pwnagotchi-syswatchdog`).
-- **`automatic-updates`** — self-updates in place; see [Auto-Updates](#auto-updates).
+- **`watchdog`** — upstream's own version is ~30 lines and does one thing: reboot if a specific
+  brcmfmac crash pattern shows up in the kernel log. This one is a substantially expanded multi-stage
+  safety net (see [System-Level Recovery](#system-level-recovery) for the full detail).
+- **`automatic-updates`** — upstream also has a GitHub-releases auto-update plugin (`auto-update.py`);
+  this is a rebuilt version with a retroactive blocklist, an on-screen install progress display, and
+  self-healing dependency installation. See [Auto-Updates](#auto-updates).
 - **`dev-ai-trained`** — shows lifetime completed training epochs read from `brain.json`.
 - **`tweak_view`** — mobile-friendly UI layout editor: drag-to-position elements, live preview,
   export/import/reset.
