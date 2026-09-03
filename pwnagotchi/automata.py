@@ -232,7 +232,7 @@ class Automata(object):
                 self._env_snapshot_at_bored = self._snapshot_environment()
                 self.pause_ai()
 
-            elif self.mode == 'auto' and not home_visible and not home_on_cooldown \
+            elif self.mode == 'auto' and not self.is_training() and not home_visible and not home_on_cooldown \
                     and self._epoch.inactive_for == 0 and self._epoch.active_for >= self._ai_wake_epochs \
                     and self._environment_changed_enough():
                 logging.info("[AI WAKE] Target engaged! Resuming AI mode.")
