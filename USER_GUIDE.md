@@ -202,25 +202,26 @@ give training a reasonable starting point.
 
 | Key | Meaning |
 |---|---|
-| `advertise` | Broadcast this unit's identity via WiFi beacon frames so other pwnagotchi units can discover and bond with it (`opwngrid`/mesh). Off by default in this fork. |
-| `deauth` | Whether to send deauth frames at found clients to provoke a handshake. |
-| `associate` | Whether to send association frames at found APs. |
-| `channels` | Restrict recon to specific channels; empty means all supported channels. |
-| `min_rssi` | Signal strength floor — APs weaker than this are ignored. |
-| `ap_ttl` / `sta_ttl` | Epochs without seeing an AP/station before it's forgotten. |
-| `recon_time` | Base seconds spent scanning per channel/epoch. |
-| `max_inactive_scale` / `recon_inactive_multiplier` | How much to extend `recon_time` during an inactive stretch. |
-| `hop_recon_time` | How long to hold on a channel when there's nothing to attack. |
-| `min_recon_time` | Floor for `recon_time` when scaled down. |
-| `max_interactions` | Cap on deauth/association attempts per target per epoch. |
-| `max_misses_for_recon` | Missed interactions before forcing a fresh recon pass. |
-| `excited_num_epochs` / `bored_num_epochs` / `sad_num_epochs` | Thresholds for those mood states. |
-| `bond_encounters_factor` | Scales how many peer encounters count as a "strong bond" for grateful/lonely mood checks. |
-| `home_absent_epochs` | Epochs away from a home network before the AI-wake cooldown clears. |
+| `advertise` | Whether this unit broadcasts its identity for mesh discovery/bonding (`pwngrid`). Off by default in this fork. |
+| `deauth` | Whether `associate()`/`deauth()` are actually allowed to fire — gates sending deauth frames at qualifying clients. |
+| `associate` | Same gate, for sending association frames at qualifying APs. |
+| `channels` | Passed straight to bettercap's `wifi.recon.channel`; empty means bettercap's own default hop list, not "all channels" explicitly. |
+| `min_rssi` | Passed straight to bettercap's `wifi.rssi.min` — APs weaker than this are ignored. |
+| `ap_ttl` / `sta_ttl` | Passed straight to bettercap's own `wifi.ap.ttl`/`wifi.sta.ttl` — **seconds**, not epochs, since bettercap has no concept of an epoch. |
+| `recon_time` | Seconds bettercap is left scanning before pwnagotchi reacts to what it found — one wait covering the whole configured channel set for that epoch, not per-channel. |
+| `max_inactive_scale` | Epoch-count *threshold* — once `inactive_for` reaches this many consecutive inactive epochs, `recon_time` gets multiplied by `recon_inactive_multiplier`. |
+| `recon_inactive_multiplier` | The multiplier itself, applied once `max_inactive_scale` is reached. |
+| `hop_recon_time` | How long to hold the current channel after a deauth, waiting for the handshake reply — the longer of the two action-holds, always wins if an associate-hold is also queued. Also reused as the idle-hold when there's nothing to attack that epoch at all. |
+| `min_recon_time` | How long to hold the current channel after an associate, waiting for a reply — shorter than `hop_recon_time`, despite the name it isn't a floor on `recon_time`. |
+| `max_interactions` | Cap on total deauth/associate attempts against one target before giving up on it. Cumulative across epochs — only cleared by a separate time-based decay, not reset every epoch. |
+| `max_misses_for_recon` | Missed-interaction threshold marking the current recon as stale (forces a fresh pass); also scales how angry vs. lonely the reaction is when exceeded. |
+| `excited_num_epochs` / `bored_num_epochs` / `sad_num_epochs` | Consecutive active/inactive epoch thresholds for those mood states. |
+| `bond_encounters_factor` | Two uses of the same value: the number of encounters with *one* peer needed to count it as a "good friend" (own face), and separately, the divisor applied to the *sum* of every peer's encounters to determine how strong the overall support network is (grateful/lonely/bored-vs-grateful checks). |
+| `home_absent_epochs` | Epochs away from a home network before the AI-wake cooldown clears — stops it flip-flopping right after leaving home. |
 | `ai_wake_epochs` | Minimum consecutive active epochs before the AI resumes from a bored-triggered pause. |
-| `environment_change_threshold` | How much the visible AP set must change before the AI resumes from a bored-triggered pause. |
-| `wifi_hop_period_ms` | bettercap's own channel-hop timing. |
-| `action_throttle` | Minimum delay between individual bettercap actions. |
+| `environment_change_threshold` | Fraction of the AP set that was visible when it went bored which must have dropped out of range before the AI will resume (default 0.5 = at least half must be gone). |
+| `wifi_hop_period_ms` | Passed straight to bettercap's `wifi.hop.period` — how fast bettercap itself hops channels while scanning. |
+| `action_throttle` | Seconds slept after sending an associate/deauth frame, throttling how fast consecutive actions fire. |
 
 ---
 
