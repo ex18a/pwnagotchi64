@@ -119,12 +119,9 @@ def call(path, obj=None):
         logging.error(f"grid.call unexpected status code {r.status_code} for {url}: {r.text}")
 
     except requests.exceptions.ConnectionError as e:
-        # matches both "connection refused" (daemon not running) and other
-        # connection-level failures; only the former is worth auto-starting
-        # for, but there's no clean way to distinguish them from the
-        # exception alone, and restarting an already-running-but-otherwise
-        # unreachable daemon is harmless
-        if _auto_start_grid():
+        if 'ReadTimeoutError' in str(e) or 'ConnectTimeoutError' in str(e):
+            pass
+        elif _auto_start_grid():
             logging.error(f"grid.call caught a connection error, triggering Auto-Starter: {e}")
     except requests.exceptions.Timeout:
         # the daemon is alive but busy (e.g. syncing to the cloud) -- stay
