@@ -236,7 +236,8 @@ class View(object):
                 import logging
                 # Flatten multi-line strings so the Web UI log parser doesn't eat the first words!
                 safe_log = value.strip().replace('\n', ' | ')
-                logging.info(f"[STATUS] {safe_log}")
+                face = self._state.get('face') or ''
+                logging.info(f"[STATUS] {face} {safe_log}")
                 self._last_logged_status = value
         self._state.set(key, value)
 
