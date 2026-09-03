@@ -25,69 +25,11 @@ This build keeps that same reinforcement-learning core but rebuilds the platform
   A2C implementation — faster epoch processing and better training stability.
 * **Kali Linux base** instead of the legacy 32-bit image, for native Nexmon firmware support —
   reliable monitor mode and packet injection without extra driver work.
-* **Epoch/personality logic reworked for walking-speed use** rather than sitting stationary on a
-  desk (see [Fork-Only AI Behavior](#fork-only-ai-behavior) below for the specifics).
 
 > **Hardware Support:** specifically optimized for the **Raspberry Pi Zero 2 W** with **waveshare
-> eink 2.13 v4** and **pisugar 3**.
+> eink 2.13 v4**
 >
-> The **Raspberry Pi 3B+** is also supported.
->
-> *Note: while this 64-bit image may run on other ARM64 devices, these two boards are the only
-> platforms I actively test against.*
-
----
-
-## Fork-Only AI Behavior
-
-Two behaviors specific to this fork, both about *when the AI is allowed to train*, not just how it
-runs bettercap:
-
-### Pauses training at home
-
-If you tell it about your home network(s) (`main.home_networks` in `config.toml`), the AI drops to
-plain AUTO mode and stops training the moment one of them is visible, resuming once you leave.
-
-**Why this matters:** home is a fixed, recurring environment — if a disproportionate share of all
-training data comes from sitting in the one place you spend the most time, the model can't tell
-"genuinely common" apart from "I've just been sitting here a lot." A concrete example: if your home
-APs happen to sit on channels 3/7/9, an AI that trains on home a lot could learn to favor those
-channels as if they were broadly common, when that's really just local sampling bias from one
-location dominating the training data. Excluding home time from training entirely removes that bias
-at the source, rather than trying to correct for it after the fact.
-
-### Pauses training when bored
-
-If nothing's happening — a genuinely dead area, or every visible AP already exhausted and given up
-on — the AI finishes whatever training batch is already in progress, then drops to AUTO instead of
-continuing to grind through the dead stretch. It only resumes once real activity has come back *and*
-stayed for a few epochs *and* the surrounding APs have genuinely changed since it went idle — not
-just the first random blip AUTO's own background scanning happens to see.
-
-**Why this matters:** by the time it's gone bored, that stretch's outcome is already locked in —
-nothing available right now can add more interactions to an already-exhausted target or conjure a
-new AP out of nowhere. Continuing to train through the idle stretch doesn't teach it anything new;
-it just adds negative-reward noise on top of signal that's already been collected, and Pwnagotchi's
-boredom penalty gets *worse* the longer the dead stretch continues — so letting it keep training
-through that window actively drags the learned policy in the wrong direction instead of just wasting
-time.
-
----
-
-## Purpose-Built Plugins
-
-* **Portrait Mode:** A custom UI plugin that rotates the display for a fresh, vertical aesthetic.
-* **HashVault:** An automated utility that monitors for captured handshakes, automatically validates
-  them, and converts them into ready-to-crack hashcat files, eliminating the need for manual cleanup.
-
----
-
-## Automatic External WiFi Adapter Switching
-
-Plug in a compatible external USB WiFi adapter and it's used automatically within a few seconds — no
-config needed. Unplug it and it falls back to the built-in chip just as fast, and the correct one is
-also picked at boot. Requires a driver with monitor mode and packet injection support (not just
-station mode) — this image includes one for the common RTL8812AU/8814AU/8821AU chipsets.
+> *Note: this image may run on other ARM64 devices with different setups.
 
 ---
 
@@ -109,7 +51,6 @@ This project uses Docker to create a clean, reproducible build environment. This
 
 **Requirements:**
 * Docker installed and configured.
-* Sufficient disk space (at least 16GB+ for the build process).
 
 **Instructions:**
 1. Clone the repository.
@@ -119,9 +60,9 @@ make
 ```
 
 The build process will automatically:
-* Package the local source code.
+* Package the source code.
 * Launch an isolated Debian container.
-* Download the official Kali base image and apply all security patches and custom UI plugins.
+* Download the official Kali base image and apply all security patches.
 * Output the final, ready-to-flash image to the `pwnagotchi64/dist/` folder called pwnagotchi64-0.0.0.0.img
 
 ---
