@@ -1,0 +1,337 @@
+# Pwnagotchi 64-Bit AI Edition — User Guide
+
+An in-depth guide to how this fork works, what's different from the original
+[evilsocket/pwnagotchi](https://github.com/evilsocket/pwnagotchi), and how to actually use it.
+For a quick overview and build instructions, see [`README.md`](README.md).
+
+## Contents
+
+- [Architecture](#architecture)
+- [How Pwnagotchi Works](#how-pwnagotchi-works)
+- [What This Fork Changes](#what-this-fork-changes)
+- [First Boot & Setup](#first-boot--setup)
+- [Day-to-Day Use](#day-to-day-use)
+- [Personality Parameters](#personality-parameters)
+- [Configuration Reference](#configuration-reference)
+- [External WiFi Adapters](#external-wifi-adapters)
+- [Auto-Updates](#auto-updates)
+- [System-Level Recovery](#system-level-recovery)
+- [Troubleshooting](#troubleshooting)
+
+---
+
+## Architecture
+
+Four separate processes cooperate on the device:
+
+- **`bettercap`** (Go) — does the actual WiFi work: channel hopping, association, deauth, handshake
+  capture, all driven through its own REST/websocket API on `localhost:8081`. Runs as its own systemd
+  service, independent of pwnagotchi.
+- **`pwnagotchi`** (Python) — the agent. Drives bettercap through that API, runs the epoch loop, hosts
+  the reinforcement-learning model, and owns the display/web UI. Depends on bettercap already being up
+  to do anything useful, but tolerates it not being ready yet (retries the connection rather than
+  crashing).
+- **`pwngrid-peer`** — handles the mesh side: each unit has an RSA keypair-based identity
+  (`/etc/pwnagotchi/id_rsa`), and this process advertises/discovers other units and exchanges
+  encounters (bonding, `opwngrid` reporting) independently of the main recon loop.
+- **`pwnagotchi-syswatchdog`** — a bash script run every 3 minutes by a systemd timer, entirely outside
+  the Python process, watching for failures nothing inside Python could ever notice or recover from
+  (see [System-Level Recovery](#system-level-recovery)).
+
+Configuration is two files merged at runtime: `pwnagotchi/defaults.toml` (shipped with the image,
+overwritten on every update — never edit it directly) provides every default value, and
+`/etc/pwnagotchi/config.toml` (created by `sudo pwnagotchi --setup`, yours to edit) overrides only the
+keys you actually set. Anything you don't set in `config.toml` just falls through to the default.
+
+---
+
+## How Pwnagotchi Works
+
+Pwnagotchi doesn't attack WiFi itself — bettercap does, via its `wifi.recon` module. Pwnagotchi is a
+supervisor that decides *how* to run bettercap, and learns to do that better over time.
+
+**The epoch loop** (one cycle, repeated forever): run recon, react to whatever bettercap found
+(associate to APs, deauth clients to provoke a handshake), hold on a channel for a bit, then close out
+the epoch and check in with the AI. The AI sees what that epoch produced — handshakes captured, time
+spent blind, targets missed — as a reward signal, and adjusts its next set of personality parameters
+(see [below](#personality-parameters)) accordingly. Over enough epochs it learns which behavior
+actually works in the environment it's really in, rather than running forever on one fixed
+configuration that might suit a desk and nothing else.
+
+**Moods** are a separate, simple state machine (`automata.py`) that turns epoch outcomes into
+faces/status text — bored after enough inactive epochs, sad if that continues, angry if it gets worse,
+excited after a run of active epochs, lonely/grateful depending on how many other units it's bonded
+with. Purely cosmetic — it doesn't feed back into training.
+
+**Modes**: `AUTO` runs recon on a fixed personality, no learning. `AI` actively trains. `MANUAL` is for
+interactive, hand-driven use. This fork adds automatic switching between `AI` and `AUTO` on top of
+this — see below.
+
+---
+
+## What This Fork Changes
+
+Everything in this section is specific to this fork — none of it exists in upstream
+`evilsocket/pwnagotchi`.
+
+### Platform
+
+- **64-bit, PyTorch/stable-baselines3** instead of the original 32-bit TensorFlow/A2C stack — faster
+  epoch processing, better training stability.
+- **Kali Linux base** instead of the legacy 32-bit image, giving native Nexmon firmware support for the
+  Raspberry Pi's built-in chip (reliable monitor mode + injection without extra driver work).
+- Actively tested against the **Raspberry Pi Zero 2 W** with a waveshare eink 2.13 v4 display. May run
+  on other ARM64 boards but isn't tested against them.
+
+### AI-auto-toggle (training only when it matters)
+
+Two behaviors, both about *when* the AI is allowed to train, not how it runs bettercap:
+
+**Pauses at home.** Once `main.home_networks` lists a home network and it's currently visible, drops to
+plain `AUTO` and stops training until you leave, resuming automatically once you do.
+
+*Why this matters*: home is a fixed, recurring environment — if a disproportionate share of all
+training data comes from sitting in the one place you spend the most time, the model can't tell
+"genuinely common" apart from "I've just been sitting here a lot." If your home APs happen to sit on
+channels 3/7/9, heavy home-time training could teach the model to favor those channels as if they were
+broadly common, when it's really just local sampling bias from one location dominating the data.
+Excluding home time from training removes that bias at the source.
+
+**Pauses when bored.** If nothing's happening — a dead area, or every visible AP already exhausted —
+the AI finishes whatever training batch is already in progress, then drops to `AUTO` instead of
+grinding through the dead stretch. Resumes only once real activity returns *and* stays for a few
+epochs *and* the surrounding APs have genuinely changed since it went idle, not just the first random
+blip AUTO's own background scanning happens to see.
+
+*Why this matters*: by the time it's gone bored, that stretch's outcome is already locked in — nothing
+available right now can add more interactions to an already-exhausted target or conjure a new AP.
+Continuing to train through the idle stretch teaches nothing new; it just adds negative-reward noise on
+top of already-collected signal, and the boredom penalty gets worse the longer the dead stretch
+continues — training through that window actively drags the learned policy in the wrong direction.
+
+Both directions (bored **or** sad) trigger the drop to `AUTO` — `bored_num_epochs` and `sad_num_epochs`
+are independent AI-learned thresholds with no fixed ordering between them, so checking only one could
+get stuck waiting on a threshold the AI's current policy has made temporarily unreachable.
+
+### Automatic external WiFi adapter switching
+
+Plug in a compatible external USB WiFi adapter (one with a monitor-mode + injection-capable driver —
+see [External WiFi Adapters](#external-wifi-adapters)) and it's used automatically within a few
+seconds, no config needed. Unplug it and it falls back to the built-in chip just as fast. The correct
+one is also picked at boot, regardless of whether the adapter was already plugged in when it powered
+on.
+
+Mechanically: a udev rule watches for the adapter's network interface appearing or disappearing, and
+restarts **both** `bettercap` and `pwnagotchi` together — not bettercap alone, which would leave the
+already-running pwnagotchi process out of sync with a bettercap instance that came back with every
+module off and every setting reverted to bare defaults. A debounce window and a same-state no-op check
+keep a single plug/unplug event from causing more than one restart.
+
+### Rebuilt/new plugins
+
+- **`portrait-mode`** — switches to a portrait display driver and repositions every UI element to
+  match, for a vertical layout instead of the original landscape one.
+- **`hashvault`** — watches for captured handshakes, validates them, and converts them into
+  ready-to-crack hashcat files automatically, eliminating manual cleanup.
+- **`channel_control`** — live on/off switch (Web UI → Plugins) for whether the AI may pick 5GHz
+  channels, without invalidating a trained `brain.nn` (the model's action space is still sized from
+  real hardware capability at startup; this just filters the channel list it's offered).
+- **`watchdog`** — two-stage in-process safety net (see [System-Level Recovery](#system-level-recovery)
+  for how it differs from `pwnagotchi-syswatchdog`).
+- **`automatic-updates`** — self-updates in place; see [Auto-Updates](#auto-updates).
+- **`dev-ai-trained`** — shows lifetime completed training epochs read from `brain.json`.
+- **`tweak_view`** — mobile-friendly UI layout editor: drag-to-position elements, live preview,
+  export/import/reset.
+- **`whitelist`** — harvests seen MACs/SSIDs, syncs with HashVault, supports case-sensitive SSIDs.
+  Disabled by default.
+- **`IPDisplay`** — shows the device's current IP address(es) on screen.
+
+### Bluetooth removed entirely
+
+Disabled at the hardware level (`dtoverlay=disable-bt`) and every related service/package — not just
+turned off in software. If you need Bluetooth, this isn't the build for it.
+
+### Other changes
+
+- `ui.status-log` (default on) mirrors whatever's currently on the physical screen into
+  `pwnagotchi.log` as `[STATUS]` lines, so you can follow along over SSH without a screen attached.
+- `main.iface` is no longer a config option — every part of the system already assumed `mon0`
+  unconditionally, so it's hardwired now rather than being a setting that looked configurable but
+  would actually break things if changed.
+
+---
+
+## First Boot & Setup
+
+1. Flash the built image with Raspberry Pi Imager. **Don't** use its pre-configured WiFi/SSH options —
+   just flash the plain image, or it will break.
+2. Boot it and connect — default SSH is `pwn` / `raspberry`, and over USB gadget mode the device is at
+   `10.42.0.2`.
+3. Run the interactive setup wizard to create your config:
+   ```
+   sudo pwnagotchi --setup
+   ```
+   This creates `/etc/pwnagotchi/config.toml` with only the keys you actually answered.
+4. Reboot to apply.
+
+---
+
+## Day-to-Day Use
+
+**The screen** shows a face, a status line (what it's currently doing, in plain language), the current
+channel, uptime, handshake count, and whichever plugin elements are enabled. That status text is also
+mirrored into `pwnagotchi.log` (`ui.status-log`), so `tail -f /var/log/pwnagotchi.log` gives you the
+same picture over SSH without a display attached.
+
+**The web UI** (`http://<device-ip>:8080` by default) shows the same information plus a Plugins page —
+enable/disable any plugin live without editing config files or restarting.
+
+**Modes**: boots in `AUTO` by default. A one-shot manual-mode override (`sudo pwnagotchi --manual`, or
+the web UI's restart-in-manual-mode action) drops it into `MANUAL` for that boot only. If
+`ai.enabled = true` (the default), it actively trains whenever it isn't paused by one of the
+AI-auto-toggle conditions above; set `ai.enabled = false` to keep it in plain `AUTO` permanently.
+
+---
+
+## Personality Parameters
+
+Everything under `[personality]` in `config.toml`/`defaults.toml` is also an AI-tunable parameter —
+whatever you set is only the *starting* value if `ai.enabled = true`, since training adjusts these
+over time. Setting them yourself is mainly useful for `AUTO`-only use (`ai.enabled = false`), or to
+give training a reasonable starting point.
+
+| Key | Meaning |
+|---|---|
+| `advertise` | Broadcast this unit's identity via WiFi beacon frames so other pwnagotchi units can discover and bond with it (`opwngrid`/mesh). Off by default in this fork. |
+| `deauth` | Whether to send deauth frames at found clients to provoke a handshake. |
+| `associate` | Whether to send association frames at found APs. |
+| `channels` | Restrict recon to specific channels; empty means all supported channels. |
+| `min_rssi` | Signal strength floor — APs weaker than this are ignored. |
+| `ap_ttl` / `sta_ttl` | Epochs without seeing an AP/station before it's forgotten. |
+| `recon_time` | Base seconds spent scanning per channel/epoch. |
+| `max_inactive_scale` / `recon_inactive_multiplier` | How much to extend `recon_time` during an inactive stretch. |
+| `hop_recon_time` | How long to hold on a channel when there's nothing to attack. |
+| `min_recon_time` | Floor for `recon_time` when scaled down. |
+| `max_interactions` | Cap on deauth/association attempts per target per epoch. |
+| `max_misses_for_recon` | Missed interactions before forcing a fresh recon pass. |
+| `excited_num_epochs` / `bored_num_epochs` / `sad_num_epochs` | Thresholds for those mood states. |
+| `bond_encounters_factor` | Scales how many peer encounters count as a "strong bond" for grateful/lonely mood checks. |
+| `home_absent_epochs` | Epochs away from a home network before the AI-wake cooldown clears. |
+| `ai_wake_epochs` | Minimum consecutive active epochs before the AI resumes from a bored-triggered pause. |
+| `environment_change_threshold` | How much the visible AP set must change before the AI resumes from a bored-triggered pause. |
+| `wifi_hop_period_ms` | bettercap's own channel-hop timing. |
+| `action_throttle` | Minimum delay between individual bettercap actions. |
+
+---
+
+## Configuration Reference
+
+The full set of defaults lives in `pwnagotchi/defaults.toml` — read it directly for anything not
+covered here. A few commonly touched keys, in `config.toml`:
+
+```toml
+[main]
+name = "your-device-name"
+home_networks = ["your-home-ssid"]
+
+[main.plugins.whitelist]
+enabled = true
+
+[main.plugins.channel_control]
+enable_5ghz = false
+
+[ai]
+enabled = false   # stay in AUTO permanently, never train
+
+[personality]
+channels = [1, 6, 11]   # restrict recon to specific channels
+max_interactions = 999  # effectively unlimited deauth/assoc attempts per target
+```
+
+---
+
+## External WiFi Adapters
+
+Any adapter using a driver with monitor mode + packet injection support works — this image already
+includes a driver for the common RTL8812AU/8814AU/8821AU chipsets found in most external monitor-mode
+adapters, so those work without installing anything.
+
+For a different chipset, install the matching driver yourself. Detection and switching (see above)
+work automatically for any adapter once its driver is present and it enters monitor mode correctly —
+nothing else needs configuring.
+
+---
+
+## Auto-Updates
+
+The `automatic-updates` plugin checks GitHub Releases on `main` by default, downloading and installing
+a new tagged release automatically (`install = true`) at whatever `interval` (hours) you set.
+
+**Dev-branch tracking**: if `/root/dev` exists on the device, it *also* polls the `dev` branch's latest
+commit, not just tagged releases — useful for testing changes before they're released, but means every
+push to `dev` becomes a live deployment to that device within one `interval`. Enable it with:
+```
+sudo touch /root/dev
+```
+The very first check after enabling just records the current `dev` HEAD — it does **not** retroactively
+install whatever's already on `dev` at that point, only commits pushed after.
+
+A retroactive safety net (`AUTO_UPDATE_BLOCKLIST` at the repo root) can block a specific bad release or
+commit from auto-installing even after the fact, fetched fresh from `main` on every check.
+
+Check what commit/version is actually running:
+```
+sudo cat /root/.automatic-updates-sha   # dev-mode: last successfully installed commit
+```
+or look for the version tag in any on-screen status line / the corresponding `pwnagotchi.log` line.
+
+---
+
+## System-Level Recovery
+
+Two independent safety nets, at different layers:
+
+**`watchdog` plugin** (in-process, Python) — runs every epoch. Gives bettercap up to 60 seconds to
+self-recover from a crash via systemd's own restart policy before escalating to a full reboot;
+separately tracks blind epochs to detect a missing monitor interface (reboots if it's still gone after
+one warning epoch) or a bettercap that's present but unresponsive. Also has a last-resort check for
+`wifi.recon` silently not running even when everything else looks healthy — a bettercap crash+restart
+starts fresh with every module off, and the crash-recovery check alone only confirms the REST API
+responds again, not that scanning actually resumed.
+
+**`pwnagotchi-syswatchdog`** (system-level, bash, systemd timer every 3 minutes) — runs entirely
+outside the Python process, so it keeps working even if pwnagotchi itself is completely wedged:
+
+- Detects and recovers from internal WiFi chip firmware flakiness (reloads the driver, no reboot;
+  escalates to a full reboot only if the same flakiness returns after that).
+- Thermal protection — pauses `bettercap`/`pwnagotchi` at 70°C, resumes at 50°C, hard-reboots as a last
+  resort at 85°C.
+- Reboots if `bettercap` is crash-looping, or if `pwnagotchi.log` goes stale while the service should
+  be active.
+- A hardware watchdog (`RuntimeWatchdogSec=60s`) recovers from a genuine full kernel lockup that
+  nothing in userspace could otherwise detect at all.
+
+---
+
+## Troubleshooting
+
+**Check the logs first**: `/var/log/pwnagotchi.log` (the agent itself),
+`/var/log/pwnagotchi-syswatchdog.log` (system-level recovery actions), and
+`sudo journalctl -u bettercap` / `-u pwnagotchi` for anything at the systemd level.
+
+**No internet / updates not checking in**: confirm actual connectivity with `curl`, not `ping` — some
+networks/CDNs don't respond to ICMP even when HTTP/HTTPS works fine, so a failed ping alone doesn't
+mean anything's wrong. If `apt` specifically hangs or fails while other traffic works, it's often an
+IPv6-advertised-but-not-actually-routed network; this image already forces IPv4 for its own apt calls,
+but a manual `apt update` may still need `-o Acquire::ForceIPv4=true` on a network like that.
+
+**Device rebooted unexpectedly**: check `/var/log/pwnagotchi-syswatchdog.log` first — it logs the exact
+reason before every reboot it triggers. If nothing's there, check `/var/log/pwnagotchi_crashes.log`,
+written by the in-process `watchdog` plugin's own lockdown-reboot path.
+
+**WiFi seems stuck/blind**: both watchdogs above already try to self-heal this (driver reload, bettercap
+restart, interface rebuild) — give it a couple of minutes before assuming it needs manual intervention.
+`iw dev` shows current interface state directly if you want to check by hand.
+
+**Plugin acting up**: toggle it off/on from the web UI's Plugins page first — cheaper than SSHing in,
+and confirms whether it's plugin-specific before digging further.

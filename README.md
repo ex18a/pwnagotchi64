@@ -1,5 +1,8 @@
 # Pwnagotchi 64-Bit AI Edition
 
+> For an in-depth guide — how it works, everything this fork changes versus upstream, and how to use
+> it — see [`USER_GUIDE.md`](USER_GUIDE.md).
+
 ## What is Pwnagotchi?
 
 Pwnagotchi is a WiFi-auditing tool that carries a face and a personality, running on a small piece
