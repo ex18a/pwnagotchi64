@@ -67,6 +67,11 @@ with. Purely cosmetic — it doesn't feed back into training.
 interactive, hand-driven use. This fork adds automatic switching between `AI` and `AUTO` on top of
 this — see below.
 
+The on-screen mode indicator adds one more distinction on top of these: while in `AI` mode, it shows
+`TRAIN` specifically during an active training batch, dropping back to a plain `AI` label the rest of
+the time (inference only, no batch currently running). It's a display-only distinction, not a separate
+underlying mode.
+
 ---
 
 ## What This Fork Changes
