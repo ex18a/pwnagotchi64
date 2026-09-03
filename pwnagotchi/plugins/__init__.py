@@ -130,6 +130,10 @@ def one(plugin_name, event_name, *args, **kwargs):
                 lock_name = "%s::%s" % (plugin_name, cb_name)
                 locked_cb_args = (lock_name, callback, *args, *kwargs)
                 _get_executor().submit(locked_cb, *locked_cb_args)
+            except RuntimeError as e:
+                if 'interpreter shutdown' not in str(e):
+                    logging.error("error while running %s.%s : %s" % (plugin_name, cb_name, e))
+                    logging.error(e, exc_info=True)
             except Exception as e:
                 logging.error("error while running %s.%s : %s" % (plugin_name, cb_name, e))
                 logging.error(e, exc_info=True)
