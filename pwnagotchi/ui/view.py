@@ -227,6 +227,15 @@ class View(object):
                 logging.warning("non fatal error while updating view: %s" % e)
             time.sleep(delay)
 
+    def _write_status_file(self, name, content):
+        path = '/run/pwnagotchi-%s' % name
+        try:
+            with open(path + '.tmp', 'w') as f:
+                f.write(content)
+            os.replace(path + '.tmp', path)
+        except OSError:
+            pass
+
     def set(self, key, value, force=False):
         if not force and key in self._pinned_keys:
             # something (e.g. a long-running plugin flow) has pinned this key
@@ -241,12 +250,11 @@ class View(object):
                     import logging
                     logging.info(f"{face} {safe_log}")
                     self._last_logged_status = value
-            try:
-                with open('/run/pwnagotchi-status.tmp', 'w') as f:
-                    f.write(f"{face} {safe_log}")
-                os.replace('/run/pwnagotchi-status.tmp', '/run/pwnagotchi-status')
-            except OSError:
-                pass
+            self._write_status_file('status', f"{face} {safe_log}")
+        elif key == 'mode':
+            self._write_status_file('mode', value.strip())
+        elif key == 'shakes':
+            self._write_status_file('shakes', value.strip())
         self._state.set(key, value)
 
     def get(self, key):
