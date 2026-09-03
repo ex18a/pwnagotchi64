@@ -84,15 +84,10 @@ time.
 
 ## Automatic External WiFi Adapter Switching
 
-Plug in an external USB WiFi adapter (e.g. an Alfa-style dongle) and it's picked up automatically —
-no config changes needed. It's detected within a few seconds of plugging in, and the same happens in
-reverse when you unplug it: falls straight back to the built-in chip. Whichever one is actually
-plugged in at the time wins, checked automatically on every boot too, so it works correctly however
-you actually power the device on.
-
-An external adapter needs a driver that supports monitor mode and packet injection to be usable here,
-not just station mode — this image already includes one for the common RTL8812AU/8814AU/8821AU chips
-found in most Alfa-style adapters.
+Plug in a compatible external USB WiFi adapter and it's used automatically within a few seconds — no
+config needed. Unplug it and it falls back to the built-in chip just as fast, and the correct one is
+also picked at boot. Requires a driver with monitor mode and packet injection support (not just
+station mode) — this image includes one for the common RTL8812AU/8814AU/8821AU chipsets.
 
 ---
 
