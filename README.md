@@ -101,8 +101,9 @@ ssh login is **user:** `pwn` , **password:** `raspberry`
 
 default ip for gadgetmode is `10.42.0.2`
 
-User configuration file is at `/etc/pwnagotchi/config.toml`, created/edited by running
-`sudo pwnagotchi --setup`.
+User configuration file is at `/etc/pwnagotchi/config.toml`.
+
+Created/edited by running `sudo pwnagotchi --setup`.
 
 Do not edit `/etc/pwnagotchi/default.toml` — it is overwritten on every restart.
 
