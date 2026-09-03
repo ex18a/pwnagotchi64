@@ -170,8 +170,14 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
                 if iface['name'] == mon_iface:
                     logging.info("found monitor interface: %s", iface['name'])
                     try:
-                        driver = os.path.basename(os.path.realpath('/sys/class/net/%s/device/driver' % iface['name']))
-                        kind = 'built-in WiFi' if driver == 'brcmfmac' else 'external WiFi adapter'
+                        driver_path = '/sys/class/net/%s/device/driver' % iface['name']
+                        driver = os.path.basename(os.path.realpath(driver_path)) if os.path.exists(driver_path) else ''
+                        if driver == 'brcmfmac':
+                            kind = 'built-in WiFi'
+                        elif not driver:
+                            kind = 'unknown, %s unavailable' % iface['name']
+                        else:
+                            kind = 'external WiFi adapter'
                         logging.info("%s is using %s (driver: %s)", iface['name'], kind, driver)
                         if kind == 'external WiFi adapter':
                             self._view.pin(keys=('status',))

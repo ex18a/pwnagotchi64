@@ -45,6 +45,9 @@ check_brcm() {
   if [[ "$(journalctl -k --since -10m 2>/dev/null | grep -c 'brcmf_psm_watchdog_notify')" -ge 3 ]]; then
     return 1
   fi
+  if [[ "$(journalctl -k --since -2m 2>/dev/null | grep -c 'brcmf_fw_crashed')" -ge 1 ]]; then
+    return 1
+  fi
   return 0
 }
 
@@ -84,6 +87,8 @@ start_monitor_interface() {
   driver="$(basename "$(readlink -f "/sys/class/net/$iface/device/driver" 2>/dev/null)")"
   if [ "$driver" = "brcmfmac" ]; then
     kind="built-in WiFi"
+  elif [ -z "$driver" ] || [ "$driver" = "." ]; then
+    kind="unknown, $iface unavailable"
   else
     kind="external WiFi adapter"
   fi
