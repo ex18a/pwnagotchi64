@@ -185,14 +185,11 @@ class Watchdog(plugins.Plugin):
         except Exception:
             pass
 
-        # E-ink Settle Time
         time.sleep(3)
 
-        # Reboot OS
-        logging.critical("[Watchdog] Natively rebooting...")
+        logging.critical("[Watchdog] Rebooting...")
         pwnagotchi.reboot()
 
-        # Trap the Python thread
         while True:
             time.sleep(1)
 
