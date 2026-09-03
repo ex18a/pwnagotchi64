@@ -37,7 +37,8 @@ def install_file(source_filename, dest_filename):
     # systemd requires files under system-shutdown/ to be executable to be
     # picked up at all (systemd-shutdown(8)) -- silently ignored otherwise,
     # no error, so this is easy to miss
-    if dest_filename.startswith("/usr/bin/") or dest_filename.startswith("/lib/systemd/system-shutdown/"):
+    if dest_filename.startswith("/usr/bin/") or dest_filename.startswith("/lib/systemd/system-shutdown/") \
+            or dest_filename.startswith("/etc/NetworkManager/dispatcher.d/"):
         os.chmod(dest_filename, 0o755)
 
 def _sha256_of(path):
