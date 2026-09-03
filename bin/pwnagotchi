@@ -201,6 +201,15 @@ if __name__ == '__main__':
 
     signal.signal(signal.SIGUSR1, usr1_handler)
 
+    def sigterm_handler(*unused):
+        try:
+            agent._save_recovery_data()
+        except Exception as e:
+            logging.warning("couldn't save recovery data on SIGTERM: %s", e)
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, sigterm_handler)
+
     if args.do_manual:
         do_manual_mode(agent)
     else:
