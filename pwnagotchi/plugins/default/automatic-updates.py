@@ -135,9 +135,6 @@ class AutomaticUpdates(plugins.Plugin):
                     self._stop_animation()
 
                 if installed:
-                    if info['kind'] == 'commit':
-                        with open(self._sha_file, 'w') as f:
-                            f.write(info['sha'])
                     logging.info(f"[automatic-updates] Installed {info['label']}, restarting service ...")
                     agent.view().on_update_installed(info['label'])
                     time.sleep(2)
@@ -428,8 +425,12 @@ class AutomaticUpdates(plugins.Plugin):
                 return False
 
             self._run_post_install_steps(source_dir)
+
+            if info['kind'] == 'commit':
+                with open(self._sha_file, 'w') as f:
+                    f.write(info['sha'])
         except subprocess.TimeoutExpired:
-            logging.error("[automatic-updates] pip install timed out after 5 minutes")
+            logging.error("[automatic-updates] pip install timed out after 15 minutes")
             return False
         finally:
             if not was_ai_paused:
