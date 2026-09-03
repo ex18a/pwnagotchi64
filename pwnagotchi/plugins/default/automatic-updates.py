@@ -144,7 +144,7 @@ class AutomaticUpdates(plugins.Plugin):
                     logging.info("[automatic-updates] Restarting to apply update ...")
                     agent.view().on_update_restarting()
                     agent.view().unpin()
-                    self._apply()
+                    self._apply(agent)
                     return
                 else:
                     agent.view().on_update_failed(pwnagotchi.display_version())
@@ -573,5 +573,9 @@ class AutomaticUpdates(plugins.Plugin):
         finally:
             os.chdir(original_cwd)
 
-    def _apply(self):
+    def _apply(self, agent):
+        try:
+            agent._save_recovery_data()
+        except Exception as e:
+            logging.warning(f"[automatic-updates] couldn't save recovery data before restart: {e}")
         os.system('systemctl restart pwnagotchi')
