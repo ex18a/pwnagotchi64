@@ -302,23 +302,12 @@ nothing else needs configuring.
 The `automatic-updates` plugin checks GitHub Releases on `main` by default, downloading and installing
 a new tagged release automatically (`install = true`) at whatever `interval` (hours) you set.
 
-**Dev-branch tracking**: if `/root/dev` exists on the device, it *also* polls the `dev` branch's latest
-commit, not just tagged releases — useful for testing changes before they're released, but means every
-push to `dev` becomes a live deployment to that device within one `interval`. Enable it with:
-```
-sudo touch /root/dev
-```
-The very first check after enabling installs whatever's currently on `dev`'s HEAD immediately, not just
-commits pushed afterward.
+A retroactive safety net (`AUTO_UPDATE_BLOCKLIST` at the repo root) can block a specific bad release
+from auto-installing even after the fact, fetched fresh from `main` on every check — this is checked
+*before* anything is downloaded, so a blocked release never reaches the device at all.
 
-A retroactive safety net (`AUTO_UPDATE_BLOCKLIST` at the repo root) can block a specific bad release or
-commit from auto-installing even after the fact, fetched fresh from `main` on every check.
-
-Check what commit/version is actually running:
-```
-sudo cat /root/.automatic-updates-sha   # dev-mode: last successfully installed commit
-```
-or look for the version tag in any on-screen status line / the corresponding `pwnagotchi.log` line.
+Check what version is actually running from the on-screen status line at boot, or the corresponding
+line in `pwnagotchi.log`.
 
 ---
 
