@@ -117,7 +117,7 @@ action_throttle = 0.5
 fps = 0.0
 cursor = true
 cursor_interval = 3
-status-log = true
+status-log = false
 
 [ui.font]
 name = "DejaVuSansMono"
