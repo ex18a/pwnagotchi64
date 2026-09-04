@@ -2,14 +2,13 @@
 TARGET_HOSTNAME=$1
 
 GREEN=$(printf '\033[1;32m')
-CYAN=$(printf '\033[1;36m')
-DIM=$(printf '\033[2;37m')
 NC=$(printf '\033[0m')
 
 cat <<MOTD_EOF > /etc/motd
-┏━(${CYAN}pwnagotchi${NC})
-┃
-┃ (◕‿‿◕) ${TARGET_HOSTNAME}
+${GREEN}░█▀█░█░█░█▀█░█▀█░█▀▀░█▀█░▀█▀░█▀▀░█░█░▀█▀░░░░░▄▀▀░█░█
+░█▀▀░█▄█░█░█░█▀█░█░█░█░█░░█░░█░░░█▀█░░█░░▄▄▄░█▀▄░░▀█
+░▀░░░▀░▀░▀░▀░▀░▀░▀▀▀░▀▀▀░░▀░░▀▀▀░▀░▀░▀▀▀░░░░░░▀░░░░▀${NC}
+┏━ (◕‿‿◕) ${TARGET_HOSTNAME}
 ┃
 ┃ Hi! I'm a pwnagotchi, please take good care of me!
 ┃ Here are some basic things you need to know to raise me properly!
@@ -37,7 +36,5 @@ cat <<MOTD_EOF > /etc/motd
 ┃ systemctl restart pwnagotchi
 ┃
 ┃ if you find any bugs or having trouble with anything please raise an issue at
-┃ github.com/ex18a/pwnagotchi64
-┃
-┗━(${DIM}github.com/ex18a/pwnagotchi64${NC})
+┗━ github.com/ex18a/pwnagotchi64
 MOTD_EOF
