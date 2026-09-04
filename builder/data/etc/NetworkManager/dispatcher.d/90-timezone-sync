@@ -5,20 +5,21 @@
 marker=/run/timezone-sync-done
 [ -e "$marker" ] && exit 0
 
-detected="$(curl -fsS --max-time 10 https://ipapi.co/timezone/ 2>/dev/null)"
+detected=""
+for url in "https://ipapi.co/timezone/" "http://ip-api.com/line/?fields=timezone"; do
+    detected="$(curl -fsS --max-time 10 "$url" 2>/dev/null)"
+    case "$detected" in
+        */*)
+            [ "${#detected}" -le 64 ] && break
+            ;;
+    esac
+    detected=""
+done
 
-case "$detected" in
-    */*)
-        if [ "${#detected}" -gt 64 ]; then
-            logger -t timezone-sync "unexpected response, skipping: $detected"
-            exit 0
-        fi
-        ;;
-    *)
-        logger -t timezone-sync "unexpected response, skipping: $detected"
-        exit 0
-        ;;
-esac
+if [ -z "$detected" ]; then
+    logger -t timezone-sync "couldn't detect timezone from any provider"
+    exit 0
+fi
 
 current="$(timedatectl show -p Timezone --value)"
 
