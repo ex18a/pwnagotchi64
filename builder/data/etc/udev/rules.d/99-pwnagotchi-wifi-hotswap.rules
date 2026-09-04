@@ -1,0 +1,2 @@
+ACTION=="add", SUBSYSTEM=="net", KERNEL!="wlan0", KERNEL!="mon0", RUN+="/usr/bin/systemctl --no-block start pwnagotchi-wifi-hotswap.service"
+ACTION=="remove", SUBSYSTEM=="net", KERNEL=="mon0", RUN+="/usr/bin/systemctl --no-block start pwnagotchi-wifi-hotswap.service"

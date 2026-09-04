@@ -105,7 +105,6 @@ if [ "$BUILD_BASE" = "1" ]; then
     echo " [*] Step 3.5a: Injecting base-stage assets..."
     cp apt-requirements.txt /mnt/tmp/
     cp -r builder/assets/networkmanager /mnt/tmp/networkmanager
-    cp -r builder/assets/bluetooth /mnt/tmp/bluetooth
 
     chroot /mnt /bin/bash <<'EOF'
 set -e
@@ -113,6 +112,9 @@ export DEBIAN_FRONTEND=noninteractive
 
 echo "  -> [Chroot] Enabling QEMU high-speed I/O..."
 echo "force-unsafe-io" > /etc/dpkg/dpkg.cfg.d/force-unsafe-io
+
+echo "  -> [Chroot] Forcing apt to IPv4 (avoids hangs on IPv6-without-a-route networks)..."
+echo 'Acquire::ForceIPv4 "true";' > /etc/apt/apt.conf.d/99force-ipv4
 
 echo "  -> [Chroot] PHASE 4.1: Aggressive Base System Purge..."
 apt-get purge -y --allow-remove-essential \
@@ -131,6 +133,9 @@ apt-get update -y
 echo "  -> [Chroot] PHASE 4.4: Installing core packages from apt-requirements.txt..."
 grep -vE '^\s*#|^\s*$' /tmp/apt-requirements.txt | xargs apt-get install -y
 
+echo "  -> [Chroot] PHASE 4.4b: Installing realtek-rtl88xxau-dkms (image-build only, see pwnagotchi.sh.md)..."
+apt-get install -y realtek-rtl88xxau-dkms
+
 echo "  -> [Chroot] Downloading and installing 64-bit Pwngrid engine..."
 wget -q "https://github.com/jayofelony/pwngrid/releases/download/v1.11.1/pwngrid-1.11.1-aarch64.zip" -O /tmp/pwngrid_engine.zip
 unzip -q /tmp/pwngrid_engine.zip -d /tmp/engine_extract
@@ -139,7 +144,7 @@ chmod +x /usr/bin/pwngrid
 rm -rf /tmp/pwngrid_engine.zip /tmp/engine_extract
 
 echo "  -> [Chroot] Enabling I2C hardware modules..."
-echo -e "i2c-dev\nbnep" >> /etc/modules
+echo "i2c-dev" >> /etc/modules
 
 echo "  -> [Chroot] Forcing Kernel Wi-Fi Regulatory Domain to BO (Max TX Power)..."
 echo "options cfg80211 ieee80211_regdom=BO" > /etc/modprobe.d/cfg80211_regdomain.conf
@@ -151,9 +156,7 @@ sed -i \
   /etc/systemd/system.conf
 
 echo "  -> [Chroot] Injecting NetworkManager scripts..."
-cp /tmp/networkmanager/98-bt-gateway /etc/NetworkManager/dispatcher.d/98-bt-gateway
 cp /tmp/networkmanager/99-rtc-sync /etc/NetworkManager/dispatcher.d/99-rtc-sync
-chmod +x /etc/NetworkManager/dispatcher.d/98-bt-gateway
 chmod +x /etc/NetworkManager/dispatcher.d/99-rtc-sync
 
 echo "  -> [Chroot] Locking NetworkManager to ignore WiFi interfaces..."
@@ -163,23 +166,8 @@ cat << 'NM_EOF' > /etc/NetworkManager/conf.d/99-unmanaged.conf
 unmanaged-devices=type:wifi;interface-name:wlan*;interface-name:mon*;interface-name:usb*
 NM_EOF
 
-echo "  -> [Chroot] Installing Bluetooth Tethering Wizard..."
-cp /tmp/bluetooth/bt-wizard /usr/local/bin/bt-wizard
-chmod +x /usr/local/bin/bt-wizard
-
-echo "  -> [Chroot] Patching SAP plugin crash in bluetoothd..."
-sed -i 's|^ExecStart=.*bluetoothd.*|ExecStart=/usr/libexec/bluetooth/bluetoothd --noplugin=sap|' /lib/systemd/system/bluetooth.service
-
-echo "  -> [Chroot] Disabling hciuart.service (superseded by dtparam=krnbt=on)..."
-# krnbt=on (see boot/config.txt) makes the kernel attach the BT UART chip
-# directly at boot. hciuart.service (userspace btuart/hciattach) does the
-# same job the traditional way and ships enabled by default on the base
-# image -- left enabled, both fight over the same UART connection to the
-# combo WiFi+BT chip, which is suspected to be contributing to nexmon
-# instability whenever bluetooth is actually in use (same physical chip
-# handles WiFi monitor mode). Only one attach mechanism should ever be
-# active; krnbt is the one actually in use here.
-systemctl disable hciuart.service 2>/dev/null || true
+echo "  -> [Chroot] Disabling Bluetooth (dtoverlay=disable-bt, see boot/config.txt) and its services..."
+systemctl disable hciuart.service bluetooth.service bt-agent.service 2>/dev/null || true
 
 echo "  -> [Chroot] Base-stage cleanup..."
 rm -f /etc/dpkg/dpkg.cfg.d/force-unsafe-io

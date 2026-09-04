@@ -45,6 +45,12 @@ check_brcm() {
   if [[ "$(journalctl -k --since -10m 2>/dev/null | grep -c 'brcmf_psm_watchdog_notify')" -ge 3 ]]; then
     return 1
   fi
+  if [[ "$(journalctl -k --since -2m 2>/dev/null | grep -c 'brcmf_fw_crashed')" -ge 1 ]]; then
+    return 1
+  fi
+  if [[ "$(journalctl -k --since -2m 2>/dev/null | grep -c 'failed backplane access')" -ge 1 ]]; then
+    return 1
+  fi
   return 0
 }
 
@@ -58,51 +64,94 @@ reload_brcm() {
   return 0
 }
 
-check_bt() {
-  if [[ "$(journalctl -k --since -5m 2>/dev/null | grep -c 'hci0: hardware error')" -ge 1 ]]; then
-    return 1
-  fi
-  if ! hciconfig hci0 2>/dev/null | grep -q 'UP RUNNING'; then
-    return 1
-  fi
-  return 0
-}
-
-reload_bt() {
-  systemctl stop bt-agent bluetooth 2>/dev/null
-  timeout 5 hciconfig hci0 down 2>/dev/null
-  if ! modprobe -r hci_uart; then
-    return 1
-  fi
-  if ! modprobe hci_uart; then
-    return 1
-  fi
-  sleep 4
-  systemctl start bluetooth bt-agent
-  hciconfig hci0 2>/dev/null | grep -q 'UP RUNNING'
+phy_iface() {
+  local iface driver
+  for path in /sys/class/net/*/wireless; do
+    [ -e "$path" ] || continue
+    iface="$(basename "$(dirname "$path")")"
+    if [ "$iface" = "wlan0" ] || [ "$iface" = "mon0" ]; then
+      continue
+    fi
+    driver="$(basename "$(readlink -f "/sys/class/net/$iface/device/driver" 2>/dev/null)")"
+    if [ "$driver" = "brcmfmac" ]; then
+      continue
+    fi
+    echo "$iface"
+    return 0
+  done
+  echo "wlan0"
 }
 
 start_monitor_interface() {
-  rfkill unblock all
-  iw dev wlan0 set power_save off
+  local iface
+  iface="$(phy_iface)"
 
-  ifconfig wlan0 up
-
-  if ip link show mon0 &>/dev/null && iw dev mon0 info &>/dev/null; then
-    ifconfig mon0 up
+  local driver kind
+  driver="$(basename "$(readlink -f "/sys/class/net/$iface/device/driver" 2>/dev/null)")"
+  if [ "$driver" = "brcmfmac" ]; then
+    kind="built-in WiFi"
+  elif [ -z "$driver" ] || [ "$driver" = "." ]; then
+    kind="unknown, $iface unavailable"
   else
-    iw dev mon0 del &>/dev/null
-    iw phy "$(iw phy | head -1 | cut -d" " -f2)" interface add mon0 type monitor && ifconfig mon0 up
+    kind="external WiFi adapter"
+  fi
+  logger -t pwnlib "mon0 will use $kind ($iface, driver: $driver)"
+
+  rfkill unblock all
+  iw dev "$iface" set power_save off
+
+  ifconfig "$iface" up
+
+  local target_phy
+  target_phy="$(iw dev "$iface" info | awk '/wiphy/{print "phy"$2}')"
+
+  local mon_phy=""
+  if ip link show mon0 &>/dev/null && iw dev mon0 info &>/dev/null; then
+    mon_phy="$(iw dev mon0 info | awk '/wiphy/{print "phy"$2}')"
   fi
 
-  ifconfig wlan0 down
+  if [[ -z "$mon_phy" || "$mon_phy" != "$target_phy" ]]; then
+    if ip link show mon0 &>/dev/null; then
+      ip link set mon0 down &>/dev/null
+      if [[ -f /run/pwnagotchi-mon0-src-iface ]]; then
+        iw dev mon0 set type managed
+        ip link set mon0 name "$(cat /run/pwnagotchi-mon0-src-iface)"
+      else
+        iw dev mon0 del &>/dev/null
+      fi
+    fi
+    rm -f /run/pwnagotchi-mon0-src-iface
+
+    if [[ "$iface" == "wlan0" ]]; then
+      iw phy "$target_phy" interface add mon0 type monitor
+    else
+      ip link set "$iface" down
+      iw dev "$iface" set type monitor
+      ip link set "$iface" name mon0
+      echo "$iface" > /run/pwnagotchi-mon0-src-iface
+    fi
+  fi
+
+  ifconfig mon0 up
+  [[ "$iface" != "mon0" ]] && ip link show "$iface" &>/dev/null && ifconfig "$iface" down
 
   ip link show mon0 up &>/dev/null
 }
 
 stop_monitor_interface() {
-  ifconfig mon0 down && iw dev mon0 del
-  ifconfig wlan0 up
+  if [[ -f /run/pwnagotchi-mon0-src-iface ]]; then
+    local src_iface
+    src_iface="$(cat /run/pwnagotchi-mon0-src-iface)"
+    ip link set mon0 down
+    iw dev mon0 set type managed
+    ip link set mon0 name "$src_iface"
+    ifconfig "$src_iface" up
+  else
+    ifconfig mon0 down && iw dev mon0 del
+    ifconfig wlan0 up
+  fi
+
+  rm -f /run/pwnagotchi-mon0-src-iface
 }
 
 is_interface_up() {

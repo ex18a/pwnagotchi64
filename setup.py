@@ -37,7 +37,8 @@ def install_file(source_filename, dest_filename):
     # systemd requires files under system-shutdown/ to be executable to be
     # picked up at all (systemd-shutdown(8)) -- silently ignored otherwise,
     # no error, so this is easy to miss
-    if dest_filename.startswith("/usr/bin/") or dest_filename.startswith("/lib/systemd/system-shutdown/"):
+    if dest_filename.startswith("/usr/bin/") or dest_filename.startswith("/lib/systemd/system-shutdown/") \
+            or dest_filename.startswith("/etc/NetworkManager/dispatcher.d/"):
         os.chmod(dest_filename, 0o755)
 
 def _sha256_of(path):
@@ -126,10 +127,14 @@ def restart_services():
 
     log.info("Reloading systemd daemon...")
     os.system("systemctl daemon-reload")
+    os.system("udevadm control --reload-rules && udevadm trigger")
     os.system("systemctl enable fstrim.timer")
     os.system("systemctl enable --now pwnagotchi-syswatchdog.timer")
 
     os.system("systemctl disable --now hciuart.service 2>/dev/null")
+    os.system("systemctl disable --now bluetooth.service bt-agent.service 2>/dev/null")
+    if os.path.exists('/usr/local/bin/bt-wizard'):
+        os.remove('/usr/local/bin/bt-wizard')
 
     if os.path.exists('/root/.soaktest'):
         os.system("systemctl enable --now pwnagotchi-soaktest.timer")
@@ -150,14 +155,6 @@ def restart_services():
         with open('/etc/systemd/system.conf', 'w') as f:
             f.write(new_system_conf)
         os.system("systemctl daemon-reexec")
-
-def install_bt_wizard():
-    setup_path = os.path.dirname(__file__)
-    src = os.path.join(setup_path, 'builder', 'assets', 'bluetooth', 'bt-wizard')
-    dest = '/usr/local/bin/bt-wizard'
-    if os.path.exists(src):
-        shutil.copyfile(src, dest)
-        os.chmod(dest, 0o755)
 
 def regenerate_motd():
     setup_path = os.path.dirname(__file__)
@@ -193,7 +190,6 @@ class CustomInstall(install):
             )
             return
         install_system_files()
-        install_bt_wizard()
         # deliberately not gated behind restart_services()'s chroot/Docker
         # guard -- downloading and swapping a binary needs no running
         # systemd, so this must also apply during a fresh image build

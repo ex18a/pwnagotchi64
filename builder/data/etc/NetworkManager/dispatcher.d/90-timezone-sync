@@ -1,0 +1,37 @@
+#!/bin/bash
+
+[ "$2" = "up" ] || exit 0
+
+marker=/run/timezone-sync-done
+[ -e "$marker" ] && exit 0
+
+detected=""
+for url in "https://ipapi.co/timezone/" "http://ip-api.com/line/?fields=timezone"; do
+    detected="$(curl -fsS --max-time 10 "$url" 2>/dev/null)"
+    case "$detected" in
+        */*)
+            [ "${#detected}" -le 64 ] && break
+            ;;
+    esac
+    detected=""
+done
+
+if [ -z "$detected" ]; then
+    logger -t timezone-sync "couldn't detect timezone from any provider"
+    exit 0
+fi
+
+current="$(timedatectl show -p Timezone --value)"
+
+if [ "$detected" = "$current" ]; then
+    logger -t timezone-sync "already on $detected"
+    touch "$marker"
+    exit 0
+fi
+
+if timedatectl set-timezone "$detected"; then
+    logger -t timezone-sync "set timezone to $detected (was $current)"
+    touch "$marker"
+else
+    logger -t timezone-sync "failed to set timezone to $detected"
+fi

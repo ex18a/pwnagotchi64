@@ -8,11 +8,11 @@ import pwnagotchi
 
 class Watchdog(plugins.Plugin):
     __author__ = 'ex18a'
-    __version__ = '1.7.3'
+    __version__ = '1.7.4'
     __description__ = 'wifi hardware check with crash logging'
 
     def __init__(self):
-        self.interface = pwnagotchi.config['main']['iface']
+        self.interface = 'mon0'
         self.lockdown_triggered = False
         self.crash_log_path = '/var/log/pwnagotchi_crashes.log'
 
@@ -91,14 +91,6 @@ class Watchdog(plugins.Plugin):
                 self._save_crash_log("BETTERCAP_UNRESPONSIVE")
                 self._lockdown_reboot(agent, "bettercap unresponsive")
             else:
-                # bettercap is up and responsive, mon0 is present, yet
-                # blind_for keeps climbing -- last-resort safety net for
-                # any reason wifi.recon might silently not be running
-                # (confirmed cause on this device: a bettercap process
-                # crash+restart -- see the grace-period recovery path
-                # above -- but this catches it even if that path is
-                # somehow skipped, e.g. a crash+restart cycle that
-                # completes between epoch checks)
                 self._ensure_wifi_recon_running(agent)
 
     def _is_bettercap_service_down(self):
@@ -114,15 +106,6 @@ class Watchdog(plugins.Plugin):
             return False  # don't false-trigger a reboot if systemctl itself is the thing failing
 
     def _is_bettercap_still_down_after_grace_period(self, agent, grace_seconds=180, poll_interval=5):
-        # Blocks on_epoch for up to grace_seconds -- only while bettercap is
-        # already known to be down, in which case the agent's own REST calls
-        # are failing anyway, so this isn't costing anything beyond what's
-        # already lost. Polls every poll_interval seconds so it returns as
-        # soon as systemd's restart succeeds, rather than always waiting
-        # the full window. 60s was confirmed on-device to be too tight --
-        # see agent.py's BETTERCAP_WAIT_TIMEOUT, same underlying cause
-        # (mon0 needing 2-3 attempts to recreate after a rapid restart,
-        # legitimately taking 90-120s+) and same fix, kept in sync here.
         waited = 0
         while waited < grace_seconds:
             time.sleep(poll_interval)
@@ -165,18 +148,6 @@ class Watchdog(plugins.Plugin):
             return True
 
     def _ensure_wifi_recon_running(self, agent):
-        # A bettercap process crash+restart (confirmed on-device: an
-        # internal Go panic in bettercap's own JSON marshaling code,
-        # completely unrelated to nexmon/hardware) starts fresh -- every
-        # module off, every wifi.* setting reverted to bettercap's own
-        # bare defaults. Watchdog's crash-recovery check only confirms
-        # the REST API responds again; that says nothing about whether
-        # the wifi.recon module (the thing actually doing the scanning)
-        # survived. Confirmed on-device: a device can sit indefinitely
-        # "healthy" by every other check here -- mon0 present, API
-        # responding -- while genuinely blind for 90+ minutes because
-        # nothing is actually listening, fixed instantly the moment
-        # wifi.recon is manually turned back on.
         try:
             session = agent.session()
             wifi_module = next((m for m in session.get('modules', []) if m.get('name') == 'wifi'), None)
@@ -214,14 +185,11 @@ class Watchdog(plugins.Plugin):
         except Exception:
             pass
 
-        # E-ink Settle Time
         time.sleep(3)
 
-        # Reboot OS
-        logging.critical("[Watchdog] Natively rebooting...")
+        logging.critical("[Watchdog] Rebooting...")
         pwnagotchi.reboot()
 
-        # Trap the Python thread
         while True:
             time.sleep(1)
 

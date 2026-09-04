@@ -46,7 +46,7 @@ class LastSession(object):
         self.max_reward = -1000
         self.avg_reward = 0
         self._peer_parser = re.compile(
-            'detected unit (.+)@(.+) \(v.+\) on channel \d+ \(([\d\-]+) dBm\) \[sid:(.+) pwnd_tot:(\d+) uptime:(\d+)\]')
+            r'detected unit (.+)@(.+) \(v.+\) on channel \d+ \(([\d\-]+) dBm\) \[sid:(.+) pwnd_tot:(\d+) uptime:(\d+)\]')
         self.parsed = False
 
     def _get_last_saved_session_id(self):

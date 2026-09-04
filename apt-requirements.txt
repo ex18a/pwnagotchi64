@@ -3,7 +3,6 @@ tcpdump
 bettercap
 bettercap-ui
 libusb-1.0-0
-bluez-tools
 jq
 dphys-swapfile
 hcxtools
@@ -24,3 +23,4 @@ python3-numpy
 python3-pandas
 util-linux-extra
 htop
+tmux

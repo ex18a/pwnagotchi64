@@ -18,7 +18,7 @@ from pwnagotchi.utils import StatusFile, parse_version as version_to_tuple
 
 class AutomaticUpdates(plugins.Plugin):
     __author__ = 'ex18a'
-    __version__ = '1.0.3'
+    __version__ = '1.0.4'
     __name__ = 'automatic-updates'
     __license__ = 'GPL3'
     __description__ = ('Checks GitHub Releases on a configured fork and self-updates the '
@@ -60,22 +60,6 @@ class AutomaticUpdates(plugins.Plugin):
 
     def _dev_mode(self):
         return os.path.exists(self.DEV_FLAG_PATH)
-
-    def _bluetooth_only_connectivity(self):
-        try:
-            out = subprocess.check_output(['ip', '-o', 'route', 'show', 'default'],
-                                           text=True, timeout=5)
-        except Exception as e:
-            logging.debug(f"[automatic-updates] couldn't check default routes, assuming ok: {e}")
-            return False
-
-        ifaces = set()
-        for line in out.splitlines():
-            parts = line.split()
-            if 'dev' in parts:
-                ifaces.add(parts[parts.index('dev') + 1])
-
-        return bool(ifaces) and all(iface.startswith('bnep') for iface in ifaces)
 
     def _start_progress(self, agent):
         agent.view().pin()
@@ -137,13 +121,6 @@ class AutomaticUpdates(plugins.Plugin):
 
                 self._clear_blocked_marker()
 
-                if self._bluetooth_only_connectivity():
-                    logging.warning(f"[automatic-updates] {info['label']} available but only "
-                                     "bluetooth tether connectivity present -- notify only, "
-                                     "not auto-installing")
-                    agent.view().on_update_available(info['label'])
-                    return
-
                 if not self.options['install']:
                     agent.view().on_update_available(info['label'])
                     return
@@ -158,19 +135,16 @@ class AutomaticUpdates(plugins.Plugin):
                     self._stop_animation()
 
                 if installed:
-                    if info['kind'] == 'commit':
-                        with open(self._sha_file, 'w') as f:
-                            f.write(info['sha'])
                     logging.info(f"[automatic-updates] Installed {info['label']}, restarting service ...")
                     agent.view().on_update_installed(info['label'])
                     time.sleep(2)
                     logging.info("[automatic-updates] Restarting to apply update ...")
                     agent.view().on_update_restarting()
                     agent.view().unpin()
-                    self._apply()
+                    self._apply(agent)
                     return
                 else:
-                    agent.view().on_update_failed(info['label'])
+                    agent.view().on_update_failed(pwnagotchi.display_version())
                     logging.error(f"[automatic-updates] install of {info['label']} failed")
                     time.sleep(10)
                     agent.view().unpin()
@@ -326,12 +300,6 @@ class AutomaticUpdates(plugins.Plugin):
             with open(self._sha_file, 'r') as f:
                 last_sha = f.read().strip()
 
-        if last_sha is None:
-            with open(self._sha_file, 'w') as f:
-                f.write(sha)
-            logging.info(f"[automatic-updates] seeded current dev SHA: {sha[:7]} - {message}")
-            return None
-
         if sha == last_sha:
             logging.debug(f"[automatic-updates] no new commits since {sha[:7]}")
             return None
@@ -390,12 +358,6 @@ class AutomaticUpdates(plugins.Plugin):
                         missing.append(pkg)
 
                 if missing:
-                    if self._bluetooth_only_connectivity():
-                        logging.error(f"[automatic-updates] {', '.join(missing)} need installing but "
-                                       "only bluetooth tether connectivity is available -- unable to "
-                                       "update over bluetooth, aborting")
-                        return False
-
                     self._anim_paused = False
                     agent.view().on_update_installing_deps()
                     logging.info(f"[automatic-updates] missing packages, installing: {', '.join(missing)}")
@@ -403,16 +365,16 @@ class AutomaticUpdates(plugins.Plugin):
                     env = os.environ.copy()
                     env['DEBIAN_FRONTEND'] = 'noninteractive'
 
+                    self._dpkg_configure_a()
+                    self._ensure_apt_force_ipv4()
+
                     update_result = subprocess.run(['apt-get', 'update'], capture_output=True, text=True, env=env, timeout=120)
                     if update_result.returncode != 0:
                         logging.error(f"[automatic-updates] apt-get update failed: {update_result.stderr.strip()}")
                         return False
 
                     apt_cmd = ['apt-get', 'install', '-y'] + missing
-                    apt_result = subprocess.run(apt_cmd, capture_output=True, text=True, env=env, timeout=300)
-
-                    if apt_result.returncode != 0:
-                        logging.error(f"[automatic-updates] apt install failed: {apt_result.stderr.strip()}")
+                    if not self._apt_install_with_recovery(apt_cmd, env):
                         return False
 
                     self._anim_paused = True
@@ -463,8 +425,12 @@ class AutomaticUpdates(plugins.Plugin):
                 return False
 
             self._run_post_install_steps(source_dir)
+
+            if info['kind'] == 'commit':
+                with open(self._sha_file, 'w') as f:
+                    f.write(info['sha'])
         except subprocess.TimeoutExpired:
-            logging.error("[automatic-updates] pip install timed out after 5 minutes")
+            logging.error("[automatic-updates] pip install timed out after 15 minutes")
             return False
         finally:
             if not was_ai_paused:
@@ -483,6 +449,68 @@ class AutomaticUpdates(plugins.Plugin):
 
         logging.info("[automatic-updates] pip install completed successfully")
         return True
+
+    APT_INSTALL_HARD_TIMEOUT = 1800
+    APT_PROGRESS_LOG_INTERVAL = 60
+    DPKG_CONFIGURE_TIMEOUT = 120
+    APT_FORCE_IPV4_PATH = '/etc/apt/apt.conf.d/99force-ipv4'
+
+    def _ensure_apt_force_ipv4(self):
+        if os.path.exists(self.APT_FORCE_IPV4_PATH):
+            return
+        try:
+            with open(self.APT_FORCE_IPV4_PATH, 'w') as f:
+                f.write('Acquire::ForceIPv4 "true";\n')
+        except Exception as e:
+            logging.warning(f"[automatic-updates] couldn't write {self.APT_FORCE_IPV4_PATH}: {e}")
+
+    def _dpkg_configure_a(self):
+        try:
+            result = subprocess.run(['dpkg', '--configure', '-a'],
+                                     capture_output=True, text=True, timeout=self.DPKG_CONFIGURE_TIMEOUT)
+            if result.returncode != 0:
+                logging.warning(f"[automatic-updates] dpkg --configure -a: {result.stderr.strip()}")
+        except Exception as e:
+            logging.warning(f"[automatic-updates] dpkg --configure -a failed to run: {e}")
+
+    def _run_apt_install(self, apt_cmd, env):
+        proc = subprocess.Popen(apt_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                 env=env, text=True)
+        start = time.time()
+        last_log = start
+        try:
+            while proc.poll() is None:
+                elapsed = time.time() - start
+                if elapsed >= self.APT_INSTALL_HARD_TIMEOUT:
+                    proc.kill()
+                    proc.wait()
+                    logging.error(f"[automatic-updates] apt install exceeded hard timeout of {self.APT_INSTALL_HARD_TIMEOUT}s, killed")
+                    return False
+                if time.time() - last_log >= self.APT_PROGRESS_LOG_INTERVAL:
+                    logging.info(f"[automatic-updates] apt install still running ({int(elapsed)}s elapsed) ...")
+                    last_log = time.time()
+                time.sleep(2)
+        finally:
+            output = proc.stdout.read() if proc.stdout else ''
+
+        if proc.returncode != 0:
+            logging.error(f"[automatic-updates] apt install failed: {output.strip()[-2000:]}")
+            return False
+        return True
+
+    def _apt_install_with_recovery(self, apt_cmd, env):
+        if self._run_apt_install(apt_cmd, env):
+            return True
+
+        logging.warning("[automatic-updates] apt install failed -- attempting dpkg recovery and one retry ...")
+        self._dpkg_configure_a()
+
+        if self._run_apt_install(apt_cmd, env):
+            logging.info("[automatic-updates] apt install succeeded after dpkg recovery")
+            return True
+
+        logging.error("[automatic-updates] apt install still failing after dpkg recovery, giving up for this cycle")
+        return False
 
     def _install_missing_pip_requirements(self, req_file):
         try:
@@ -537,7 +565,6 @@ class AutomaticUpdates(plugins.Plugin):
             setup_module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(setup_module)
             setup_module.install_system_files()
-            setup_module.install_bt_wizard()
             setup_module.install_patched_bettercap()
             setup_module.remove_stale_eth0_interfaces_file()
             setup_module.regenerate_motd()
@@ -547,5 +574,9 @@ class AutomaticUpdates(plugins.Plugin):
         finally:
             os.chdir(original_cwd)
 
-    def _apply(self):
+    def _apply(self, agent):
+        try:
+            agent._save_recovery_data()
+        except Exception as e:
+            logging.warning(f"[automatic-updates] couldn't save recovery data before restart: {e}")
         os.system('systemctl restart pwnagotchi')

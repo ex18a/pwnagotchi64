@@ -1,5 +1,6 @@
 import _thread
 import logging
+import os
 import random
 import time
 from threading import Lock
@@ -110,6 +111,10 @@ class View(object):
         if state:
             for key, value in state.items():
                 self._state.set(key, value)
+
+        self._write_status_file('mode', mode_widget.value.strip())
+        self._write_status_file('shakes', '0 (00)')
+        self._write_status_file('last-pwnd', '')
 
         plugins.on('ui_setup', self)
 
@@ -226,18 +231,36 @@ class View(object):
                 logging.warning("non fatal error while updating view: %s" % e)
             time.sleep(delay)
 
+    def _write_status_file(self, name, content):
+        path = '/run/pwnagotchi-%s' % name
+        try:
+            with open(path + '.tmp', 'w') as f:
+                f.write(content)
+            os.replace(path + '.tmp', path)
+        except OSError:
+            pass
+
     def set(self, key, value, force=False):
         if not force and key in self._pinned_keys:
             # something (e.g. a long-running plugin flow) has pinned this key
             # against ordinary writers -- only a force=True write gets through
             return
         if key == 'status':
-            if not hasattr(self, '_last_logged_status') or self._last_logged_status != value:
-                import logging
-                # Flatten multi-line strings so the Web UI log parser doesn't eat the first words!
-                safe_log = value.strip().replace('\n', ' | ')
-                logging.info(f"[STATUS] {safe_log}")
-                self._last_logged_status = value
+            # Flatten multi-line strings so the Web UI log parser doesn't eat the first words!
+            safe_log = value.strip().replace('\n', ' | ')
+            face = self._state.get('face') or ''
+            if self._config['ui'].get('status-log', True):
+                if not hasattr(self, '_last_logged_status') or self._last_logged_status != value:
+                    import logging
+                    logging.info(f"{face} {safe_log}")
+                    self._last_logged_status = value
+            self._write_status_file('status', f"{face} {safe_log}")
+        elif key == 'mode':
+            self._write_status_file('mode', value.strip())
+        elif key == 'shakes':
+            self._write_status_file('shakes', value.strip())
+        elif key == 'last_pwnd_name':
+            self._write_status_file('last-pwnd', (value or '').strip())
         self._state.set(key, value)
 
     def get(self, key):
@@ -317,13 +340,7 @@ class View(object):
 
             name = '▌' * num_bars
             name += '│' * (4 - num_bars)
-            name += ' %s %d (%d)' % (peer.name(), peer.pwnd_run(), peer.pwnd_total())
-
-            if num_total > 1:
-                if num_total > 9000:
-                    name += ' of over 9000'
-                else:
-                    name += ' of %d' % num_total
+            name += ' %s %d' % (peer.name(), peer.pwnd_total())
 
             self.set('friend_face', peer.face())
             self.set('friend_name', name)

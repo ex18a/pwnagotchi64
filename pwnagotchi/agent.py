@@ -47,7 +47,7 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
                         config['bettercap']['port'],
                         config['bettercap']['username'],
                         config['bettercap']['password'])
-        self._supported_channels = utils.iface_channels(config['main']['iface'])
+        self._supported_channels = utils.iface_channels('mon0')
         Automata.__init__(self, config, view, self._supported_channels)
         AsyncAdvertiser.__init__(self, config, view, keypair)
         AsyncTrainer.__init__(self, config)
@@ -106,7 +106,7 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         # the next lucky race. Retry here instead of trusting the one-shot
         # value from construction time.
         if not self._supported_channels:
-            self._supported_channels = utils.iface_channels(self._config['main']['iface'])
+            self._supported_channels = utils.iface_channels('mon0')
         return self._supported_channels
 
     def setup_events(self):
@@ -134,8 +134,7 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         self.run('set wifi.hop.period %d' % hop_period)
 
     def _reset_wifi_settings(self):
-        mon_iface = self._config['main']['iface']
-        self.run('set wifi.interface %s' % mon_iface)
+        self.run('set wifi.interface mon0')
         self.run('set wifi.ap.ttl %d' % self._config['personality']['ap_ttl'])
         self.run('set wifi.sta.ttl %d' % self._config['personality']['sta_ttl'])
         self.run('set wifi.rssi.min %d' % self._config['personality']['min_rssi'])
@@ -159,7 +158,7 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
     MAX_MON_START_ATTEMPTS = 5
 
     def start_monitor_mode(self):
-        mon_iface = self._config['main']['iface']
+        mon_iface = 'mon0'
         mon_start_cmd = self._config['main']['mon_start_cmd']
         restart = not self._config['main']['no_restart']
         has_mon = False
@@ -170,6 +169,26 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             for iface in s['interfaces']:
                 if iface['name'] == mon_iface:
                     logging.info("found monitor interface: %s", iface['name'])
+                    try:
+                        driver_path = '/sys/class/net/%s/device/driver' % iface['name']
+                        driver = os.path.basename(os.path.realpath(driver_path)) if os.path.exists(driver_path) else ''
+                        if driver == 'brcmfmac':
+                            kind = 'built-in WiFi'
+                        elif not driver:
+                            kind = 'unknown, %s unavailable' % iface['name']
+                        else:
+                            kind = 'external WiFi adapter'
+                        logging.info("%s is using %s (driver: %s)", iface['name'], kind, driver)
+                        if kind == 'external WiFi adapter':
+                            self._view.pin(keys=('status',))
+                            try:
+                                self._view.set('status', 'Using external WiFi adapter\n(driver: %s)' % driver, force=True)
+                                self._view.update(force=True)
+                                time.sleep(5)
+                            finally:
+                                self._view.unpin()
+                    except Exception:
+                        pass
                     has_mon = True
                     break
 
@@ -532,7 +551,10 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         pwnagotchi.reboot()
 
     def _save_recovery_data(self):
-        logging.warning("writing recovery data to %s ...", RECOVERY_DATA_FILE)
+        try:
+            logging.warning("writing recovery data to %s ...", RECOVERY_DATA_FILE)
+        except RuntimeError:
+            pass
         with open(RECOVERY_DATA_FILE, 'w') as fp:
             data = {
                 'started_at': self._started_at,
@@ -707,6 +729,7 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             self._update_handshakes(1 if found_handshake else 0)
 
     def _event_poller(self, loop):
+        asyncio.set_event_loop(loop)
         self._load_recovery_data()
         self.run('events.clear')
 
@@ -719,7 +742,7 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
                 logging.debug("Error while polling via websocket (%s)", ex)
 
     def start_event_polling(self):
-        _thread.start_new_thread(self._event_poller, (asyncio.get_event_loop(),))
+        _thread.start_new_thread(self._event_poller, (asyncio.new_event_loop(),))
 
     def is_module_running(self, module):
         s = self.session()
