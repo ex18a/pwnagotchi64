@@ -83,7 +83,7 @@ class Client(object):
 
         # restarted every time the connection fails
         while True:
-            logging.info("creating new websocket...")
+            _log_retry("creating new websocket...")
             try: 
                 async with websockets.connect(s, ping_interval=ping_interval, ping_timeout=ping_timeout, max_queue=max_queue) as ws:
                     # listener loop
