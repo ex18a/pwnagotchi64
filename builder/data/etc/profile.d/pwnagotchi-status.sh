@@ -33,7 +33,7 @@ if [ "$(id -un)" = "pwn" ] && [ -n "$SSH_CONNECTION" ] && [ -z "$PWNAGOTCHI_STAT
             spacer=$(printf '%*s' "$pad" '')
             line="${left}${spacer}${right}"
         fi
-        printf '\0337\033[%d;1H\033[?7l\033[0m%-*s\033[?7h\0338' "$sb_lines" "$sb_cols" "$line"
+        printf '\0337\033[%d;1H\033[?7l\033[30;42m%-*s\033[0m\033[?7h\0338' "$sb_lines" "$sb_cols" "$line"
     }
 
     _pwnagotchi_statusbar_cleanup() {
