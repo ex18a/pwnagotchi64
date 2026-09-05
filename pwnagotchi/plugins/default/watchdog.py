@@ -8,7 +8,7 @@ import pwnagotchi
 
 class Watchdog(plugins.Plugin):
     __author__ = 'ex18a'
-    __version__ = '1.7.4'
+    __version__ = '1.7.5'
     __description__ = 'wifi hardware check with crash logging'
 
     def __init__(self):
@@ -164,7 +164,41 @@ class Watchdog(plugins.Plugin):
         except Exception as e:
             logging.error(f"[Watchdog] Failed to restart wifi.recon: {e}")
 
+    BRCM_REBOOT_STATE_FILE = '/root/.pwnagotchi-brcm-reboot-state'
+    BRCM_REBOOT_WINDOW_SECS = 1800
+    BRCM_REBOOT_MAX_IN_WINDOW = 3
+
+    def _should_reboot_for_brcm_wedge(self):
+        now = int(time.time())
+        count = 0
+        last = 0
+        try:
+            with open(self.BRCM_REBOOT_STATE_FILE) as f:
+                count_str, last_str = f.read().split()
+                count = int(count_str)
+                last = int(last_str)
+        except (FileNotFoundError, ValueError):
+            pass
+
+        if now - last > self.BRCM_REBOOT_WINDOW_SECS:
+            count = 0
+
+        count += 1
+        try:
+            with open(self.BRCM_REBOOT_STATE_FILE, 'w') as f:
+                f.write(f"{count} {now}")
+        except OSError:
+            pass
+
+        return count <= self.BRCM_REBOOT_MAX_IN_WINDOW
+
     def _lockdown_reboot(self, agent, reason_text):
+        if not self._should_reboot_for_brcm_wedge():
+            logging.error(f"[Watchdog] reboot budget exhausted ({self.BRCM_REBOOT_MAX_IN_WINDOW}+ in "
+                          f"{self.BRCM_REBOOT_WINDOW_SECS}s) -- not rebooting for '{reason_text}', "
+                          "wifi will stay degraded until manual intervention")
+            return
+
         self.lockdown_triggered = True
 
         # Trigger native reboot face

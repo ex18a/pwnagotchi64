@@ -76,16 +76,17 @@ class Epoch(object):
 
         for ap in aps:
             ch_idx = ap['channel'] - 1
-            try:
+            if 0 <= ch_idx < self._histogram_size:
                 aps_per_chan[ch_idx] += 1.0
                 sta_per_chan[ch_idx] += len(ap['clients'])
-            except IndexError:
+            else:
                 logging.error("got data on channel %d, we can store %d channels" % (ap['channel'], self._histogram_size))
 
         for peer in peers:
-            try:
-                peers_per_chan[peer.last_channel - 1] += 1.0
-            except IndexError:
+            ch_idx = peer.last_channel - 1
+            if 0 <= ch_idx < self._histogram_size:
+                peers_per_chan[ch_idx] += 1.0
+            else:
                 logging.error(
                     "got peer data on channel %d, we can store %d channels" % (peer.last_channel, self._histogram_size))
 
