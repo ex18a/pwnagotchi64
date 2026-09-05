@@ -18,7 +18,7 @@ from pwnagotchi.utils import StatusFile, parse_version as version_to_tuple
 
 class AutomaticUpdates(plugins.Plugin):
     __author__ = 'ex18a'
-    __version__ = '1.0.4'
+    __version__ = '1.0.5'
     __name__ = 'automatic-updates'
     __license__ = 'GPL3'
     __description__ = ('Checks GitHub Releases on a configured fork and self-updates the '
@@ -399,7 +399,10 @@ class AutomaticUpdates(plugins.Plugin):
 
         logging.info("[automatic-updates] stopping bettercap for the duration of the install ...")
         bettercap.EXPECTED_DOWNTIME = True
-        os.system('systemctl stop bettercap')
+        try:
+            subprocess.run(['systemctl', 'stop', 'bettercap'], timeout=30)
+        except subprocess.TimeoutExpired:
+            logging.error("[automatic-updates] systemctl stop bettercap timed out after 30s")
 
         pip_log_path = '/tmp/pip-install.log'
         try:
@@ -436,7 +439,10 @@ class AutomaticUpdates(plugins.Plugin):
             if not was_ai_paused:
                 agent.resume_ai()
             logging.info("[automatic-updates] restarting bettercap ...")
-            os.system('systemctl start bettercap')
+            try:
+                subprocess.run(['systemctl', 'start', 'bettercap'], timeout=30)
+            except subprocess.TimeoutExpired:
+                logging.error("[automatic-updates] systemctl start bettercap timed out after 30s")
             waited = 0
             while waited < 180:
                 try:
@@ -579,4 +585,7 @@ class AutomaticUpdates(plugins.Plugin):
             agent._save_recovery_data()
         except Exception as e:
             logging.warning(f"[automatic-updates] couldn't save recovery data before restart: {e}")
-        os.system('systemctl restart pwnagotchi')
+        try:
+            subprocess.run(['systemctl', 'restart', 'pwnagotchi'], timeout=30)
+        except subprocess.TimeoutExpired:
+            logging.error("[automatic-updates] systemctl restart pwnagotchi timed out after 30s")

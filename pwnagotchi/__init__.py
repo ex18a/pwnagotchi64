@@ -1,5 +1,6 @@
 import os
 import logging
+import subprocess
 import time
 import re
 
@@ -150,9 +151,17 @@ def restart(mode):
     else:
         os.system("touch /root/.pwnagotchi-manual")
 
-    os.system("service bettercap restart")
+    try:
+        subprocess.run(["service", "bettercap", "restart"], timeout=30)
+    except subprocess.TimeoutExpired:
+        logging.error("service bettercap restart timed out after 30s")
+
     time.sleep(2)
-    os.system("service pwnagotchi restart")
+
+    try:
+        subprocess.run(["service", "pwnagotchi", "restart"], timeout=30)
+    except subprocess.TimeoutExpired:
+        logging.error("service pwnagotchi restart timed out after 30s")
 
 
 def reboot(mode=None):
