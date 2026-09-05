@@ -20,8 +20,20 @@ if [ "$(id -un)" = "pwn" ] && [ -n "$SSH_CONNECTION" ] && [ -z "$PWNAGOTCHI_STAT
         mode=$(cat /run/pwnagotchi-mode 2>/dev/null)
         shakes=$(cat /run/pwnagotchi-shakes 2>/dev/null)
         lastpwnd=$(cat /run/pwnagotchi-last-pwnd 2>/dev/null)
-        line="${status}  PWND ${shakes} ${lastpwnd}  ${mode}"
-        printf '\0337\033[%d;1H\033[?7l\033[0m%-*.*s\033[?7h\0338' "$sb_lines" "$sb_cols" "$sb_cols" "$line"
+        left="$status"
+        right="PWND ${shakes} ${lastpwnd}  ${mode}"
+        if [ "${#right}" -ge "$sb_cols" ]; then
+            line="${right:0:$sb_cols}"
+        else
+            pad=$((sb_cols - ${#left} - ${#right}))
+            if [ "$pad" -lt 0 ]; then
+                left="${left:0:$((sb_cols - ${#right}))}"
+                pad=0
+            fi
+            spacer=$(printf '%*s' "$pad" '')
+            line="${left}${spacer}${right}"
+        fi
+        printf '\0337\033[%d;1H\033[?7l\033[0m%-*s\033[?7h\0338' "$sb_lines" "$sb_cols" "$line"
     }
 
     _pwnagotchi_statusbar_cleanup() {
