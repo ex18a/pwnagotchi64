@@ -60,7 +60,7 @@ class Client(object):
     # session takes optional argument to pull a sub-dictionary
     #  ex.: "session/wifi", "session/ble"
     def session(self, sess="session"):
-        r = requests.get("%s/%s" % (self.url, sess), auth=self.auth)
+        r = requests.get("%s/%s" % (self.url, sess), auth=self.auth, timeout=30)
         return decode(r)
 
     async def start_websocket(self, consumer):
