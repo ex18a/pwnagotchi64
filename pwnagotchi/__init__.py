@@ -143,7 +143,7 @@ def shutdown():
     os.system("halt")
 
 
-def restart(mode):
+def restart(mode, restart_bettercap=True):
     logging.warning("restarting in %s mode ...", mode)
 
     if mode == 'AUTO':
@@ -151,12 +151,13 @@ def restart(mode):
     else:
         os.system("touch /root/.pwnagotchi-manual")
 
-    try:
-        subprocess.run(["service", "bettercap", "restart"], timeout=30)
-    except subprocess.TimeoutExpired:
-        logging.error("service bettercap restart timed out after 30s")
+    if restart_bettercap:
+        try:
+            subprocess.run(["service", "bettercap", "restart"], timeout=30)
+        except subprocess.TimeoutExpired:
+            logging.error("service bettercap restart timed out after 30s")
 
-    time.sleep(2)
+        time.sleep(2)
 
     try:
         subprocess.run(["service", "pwnagotchi", "restart"], timeout=30)

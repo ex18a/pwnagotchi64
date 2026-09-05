@@ -57,18 +57,27 @@ def toggle_plugin(name, enable=True):
         # leaving everything else in config.toml (comments, formatting,
         # unrelated settings) exactly as it was -- instead of re-serializing
         # the entire in-memory config over the file.
+        #
+        # Confirmed live that creating a nested tomlkit.table() for a
+        # plugin that doesn't already have a config.toml entry corrupts
+        # any flat dotted-key lines (e.g. "personality.max_interactions =
+        # 9999") that come after it in the file -- they silently get
+        # nested under the newly-created table and vanish on the next
+        # parse. This device's config.toml is entirely flat dotted-key
+        # style (no [section] headers at all), so a brand-new key must be
+        # appended the same way instead: as its own flat dotted-key line
+        # (tomlkit.key([...]) + doc.append(...)), never via
+        # tomlkit.table(). Only update in place (which is safe) when the
+        # full key path already exists.
         config_path = '/etc/pwnagotchi/config.toml'
         with open(config_path, 'r') as fp:
             doc = tomlkit.parse(fp.read())
 
-        if 'main' not in doc:
-            doc['main'] = tomlkit.table()
-        if 'plugins' not in doc['main']:
-            doc['main']['plugins'] = tomlkit.table()
-        if name not in doc['main']['plugins']:
-            doc['main']['plugins'][name] = tomlkit.table()
-
-        doc['main']['plugins'][name]['enabled'] = enable
+        if 'main' in doc and 'plugins' in doc['main'] and name in doc['main']['plugins'] \
+                and 'enabled' in doc['main']['plugins'][name]:
+            doc['main']['plugins'][name]['enabled'] = enable
+        else:
+            doc.append(tomlkit.key(['main', 'plugins', name, 'enabled']), tomlkit.item(enable))
 
         with open(config_path, 'w') as fp:
             fp.write(tomlkit.dumps(doc))
