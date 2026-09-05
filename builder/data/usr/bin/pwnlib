@@ -54,6 +54,39 @@ check_brcm() {
   return 0
 }
 
+BRCM_REBOOT_STATE_FILE="/root/.pwnagotchi-brcm-reboot-state"
+BRCM_REBOOT_WINDOW_SECS=1800
+BRCM_REBOOT_MAX_IN_WINDOW=3
+
+# Caps brcm-wedge-triggered reboots at 3 per 30 minutes, persisted across
+# reboots (unlike syswatchdog's own /run-based recovery marker, which is
+# wiped every boot). Without this, a wedge caused by a genuinely bad power
+# supply -- rather than a one-off firmware hiccup -- reboots forever: reload
+# attempt, still wedged, reboot, marker gone, reload attempt, still wedged,
+# reboot, ... Past the cap this returns false so the caller gives up and
+# leaves wifi degraded instead, which is the only sane outcome when a reboot
+# demonstrably isn't fixing anything.
+should_reboot_for_brcm_wedge() {
+  local now count last
+  now="$(date +%s)"
+  count=0
+  last=0
+  if [ -f "$BRCM_REBOOT_STATE_FILE" ]; then
+    read -r count last < "$BRCM_REBOOT_STATE_FILE" 2>/dev/null
+    count="${count:-0}"
+    last="${last:-0}"
+  fi
+
+  if [ $((now - last)) -gt "$BRCM_REBOOT_WINDOW_SECS" ]; then
+    count=0
+  fi
+
+  count=$((count + 1))
+  echo "$count $now" > "$BRCM_REBOOT_STATE_FILE"
+
+  [ "$count" -le "$BRCM_REBOOT_MAX_IN_WINDOW" ]
+}
+
 reload_brcm() {
   if ! modprobe -r brcmfmac; then
     return 1

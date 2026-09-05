@@ -66,7 +66,11 @@ fi
 
 if ! check_brcm; then
     if [ -f "$BRCM_RECOVERY_MARKER" ]; then
-        reboot_with_reason "brcmfmac still flaky after an earlier reload_brcm attempt this boot -- reload didn't hold"
+        if should_reboot_for_brcm_wedge; then
+            reboot_with_reason "brcmfmac still flaky after an earlier reload_brcm attempt this boot -- reload didn't hold"
+        else
+            log "brcmfmac still flaky, but reboot budget exhausted (${BRCM_REBOOT_MAX_IN_WINDOW}+ in ${BRCM_REBOOT_WINDOW_SECS}s) -- giving up, wifi will stay degraded until manual intervention"
+        fi
         exit 0
     fi
     log "brcmfmac flakiness detected -- attempting reload_brcm (no reboot) ..."
@@ -76,7 +80,11 @@ if ! check_brcm; then
         systemctl restart bettercap
         log "reload_brcm succeeded, bettercap restarted"
     else
-        reboot_with_reason "reload_brcm failed outright"
+        if should_reboot_for_brcm_wedge; then
+            reboot_with_reason "reload_brcm failed outright"
+        else
+            log "reload_brcm failed outright, but reboot budget exhausted (${BRCM_REBOOT_MAX_IN_WINDOW}+ in ${BRCM_REBOOT_WINDOW_SECS}s) -- giving up, wifi will stay degraded until manual intervention"
+        fi
         exit 0
     fi
 fi
