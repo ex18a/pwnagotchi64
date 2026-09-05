@@ -26,7 +26,7 @@ if [ "$(id -un)" = "pwn" ] && [ -n "$SSH_CONNECTION" ] && [ -z "$PWNAGOTCHI_STAT
     _pwnagotchi_statusbar_setup
     trap '_pwnagotchi_statusbar_setup; _pwnagotchi_statusbar_draw' WINCH
 
-    ( while :; do _pwnagotchi_statusbar_draw 2>/dev/null; sleep 2; done ) &
+    ( while :; do _pwnagotchi_statusbar_setup 2>/dev/null; _pwnagotchi_statusbar_draw 2>/dev/null; sleep 2; done ) &
     _pwnagotchi_statusbar_pid=$!
     disown
 
