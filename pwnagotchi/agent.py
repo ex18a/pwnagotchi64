@@ -78,13 +78,6 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         self._handshakes = {}
         self._handshakes_lock = threading.Lock()
         self.last_session = LastSession(self._config)
-        # the AI worker always starts unpaused (train.py's _ai_paused Event
-        # defaults unset), so mode must match that from boot -- hardcoding
-        # 'auto' here left mode stuck out of sync with the real running-AI
-        # state whenever a restart happened while AI-SLEEP had it paused,
-        # permanently blocking the mode=='ai' guard on the next AI-SLEEP
-        # transition until a lucky AI-WAKE resync (needs real activity,
-        # which doesn't happen if the device stays bored/idle after restart)
         self.mode = 'ai' if config.get('ai', {}).get('enabled', False) else 'auto'
         # true if any whitelisted AP was visible as of the last get_access_points() call
         self._whitelist_ap_visible = False
