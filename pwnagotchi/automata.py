@@ -224,11 +224,13 @@ class Automata(object):
             if home_visible and not self.is_ai_paused():
                 logging.info("[AI SLEEP] Home network detected. Suspending AI and dropping to AUTO.")
                 self.mode = 'auto'
+                self._view.set('mode', 'AUTO')
                 self.pause_ai()
 
             elif self.mode == 'ai' and (self._epoch.bored_for >= 1 or self._epoch.sad_for >= 1) and not self.is_training():
                 logging.info("[AI SLEEP] Pwnagotchi is Bored/Sad. Suspending AI and dropping to AUTO.")
                 self.mode = 'auto'
+                self._view.set('mode', 'AUTO')
                 self._env_snapshot_at_bored = self._snapshot_environment()
                 self.pause_ai()
 
