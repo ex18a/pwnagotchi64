@@ -1,26 +1,34 @@
 if [ "$(id -un)" = "pwn" ] && [ -n "$SSH_CONNECTION" ] && [ -z "$PWNAGOTCHI_STATUSBAR" ] && [ -t 0 ] && [ -t 1 ]; then
     export PWNAGOTCHI_STATUSBAR=1
 
+    _pwnagotchi_statusbar_size() {
+        set -- $(stty size < /dev/tty 2>/dev/null)
+        sb_lines=$1
+        sb_cols=$2
+    }
+
     _pwnagotchi_statusbar_setup() {
-        lines=$(tput lines)
-        printf '\0337\033[r\0338\033D\033M\0337\033[1;%dr\0338' "$((lines - 1))"
+        _pwnagotchi_statusbar_size
+        [ "${sb_lines:-0}" -gt 1 ] 2>/dev/null && [ "${sb_cols:-0}" -gt 1 ] 2>/dev/null || return
+        printf '\0337\033[r\0338\033D\033M\0337\033[1;%dr\0338' "$((sb_lines - 1))"
     }
 
     _pwnagotchi_statusbar_draw() {
-        lines=$(tput lines)
-        cols=$(tput cols)
+        _pwnagotchi_statusbar_size
+        [ "${sb_lines:-0}" -gt 1 ] 2>/dev/null && [ "${sb_cols:-0}" -gt 1 ] 2>/dev/null || return
         status=$(cat /run/pwnagotchi-status 2>/dev/null)
         mode=$(cat /run/pwnagotchi-mode 2>/dev/null)
         shakes=$(cat /run/pwnagotchi-shakes 2>/dev/null)
         lastpwnd=$(cat /run/pwnagotchi-last-pwnd 2>/dev/null)
         line="${status}  PWND ${shakes} ${lastpwnd}  ${mode}"
-        printf '\0337\033[%d;1H\033[?7l\033[0m%-*.*s\033[?7h\0338' "$lines" "$cols" "$cols" "$line"
+        printf '\0337\033[%d;1H\033[?7l\033[0m%-*.*s\033[?7h\0338' "$sb_lines" "$sb_cols" "$sb_cols" "$line"
     }
 
     _pwnagotchi_statusbar_cleanup() {
         kill "$_pwnagotchi_statusbar_pid" 2>/dev/null
-        lines=$(tput lines)
-        printf '\0337\033[%d;1H\033[K\033[r\0338' "$lines"
+        _pwnagotchi_statusbar_size
+        [ "${sb_lines:-0}" -gt 1 ] 2>/dev/null || return
+        printf '\0337\033[%d;1H\033[K\033[r\0338' "$sb_lines"
     }
 
     _pwnagotchi_statusbar_setup
