@@ -758,8 +758,24 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
                 return m['running']
         return False
 
+    START_MODULE_MAX_ATTEMPTS = 5
+    START_MODULE_RETRY_DELAY = 2
+
     def start_module(self, module):
-        self.run('%s on' % module)
+        last_err = None
+        for attempt in range(self.START_MODULE_MAX_ATTEMPTS):
+            try:
+                self.run('%s on' % module)
+                return
+            except Exception as err:
+                last_err = err
+                if 'Interface Not Up' in str(err):
+                    logging.warning("[start_module] %s not up yet, retrying (%d/%d) ...",
+                                     module, attempt + 1, self.START_MODULE_MAX_ATTEMPTS)
+                    time.sleep(self.START_MODULE_RETRY_DELAY)
+                    continue
+                raise
+        raise last_err
 
     def restart_module(self, module):
         self.run('%s off; %s on' % (module, module))
