@@ -112,6 +112,35 @@ reload_brcm() {
   if ! modprobe brcmfmac; then
     return 1
   fi
+
+  # modprobe returning 0 only proves the module loaded -- it does not prove
+  # the chip actually reattached over SDIO. Observed directly during the
+  # nexmon RE investigation: modprobe succeeded while the driver's SDIO
+  # probe subsequently failed asynchronously ("brcmf_attach: dongle is not
+  # responding" / "failed backplane access"), well after modprobe had
+  # already returned. Without this check the caller declares success and
+  # just restarts bettercap onto a dead interface, leaving wifi silently
+  # broken until the next watchdog cycle (up to several minutes) rediscovers
+  # it via check_brcm(). Give the async probe a few seconds, then verify
+  # both a fresh failure signature is absent and a brcmfmac-bound interface
+  # actually exists before declaring success.
+  sleep 5
+  if journalctl -k --since -15s 2>/dev/null | grep -qE 'dongle is not responding|brcmf_attach failed|failed backplane access'; then
+    return 1
+  fi
+  local iface driver reattached=0
+  for path in /sys/class/net/*/wireless; do
+    [ -e "$path" ] || continue
+    iface="$(basename "$(dirname "$path")")"
+    driver="$(basename "$(readlink -f "/sys/class/net/$iface/device/driver" 2>/dev/null)")"
+    if [ "$driver" = "brcmfmac" ]; then
+      reattached=1
+      break
+    fi
+  done
+  if [ "$reattached" -ne 1 ]; then
+    return 1
+  fi
   return 0
 }
 
