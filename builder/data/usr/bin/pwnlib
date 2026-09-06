@@ -171,6 +171,10 @@ start_monitor_interface() {
   ifconfig mon0 up
   [[ "$iface" != "mon0" ]] && ip link show "$iface" &>/dev/null && ifconfig "$iface" down
 
+  # mon0 vif creation resets firmware PM back on even after the power_save off
+  # above, on this chip/driver -- reapply once mon0 exists so it actually sticks.
+  iw dev "$iface" set power_save off 2>/dev/null
+
   ip link show mon0 up &>/dev/null
 }
 
