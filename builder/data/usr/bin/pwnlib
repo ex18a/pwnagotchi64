@@ -51,6 +51,9 @@ check_brcm() {
   if [[ "$(journalctl -k --since -2m 2>/dev/null | grep -c 'failed backplane access')" -ge 1 ]]; then
     return 1
   fi
+  if [[ "$(journalctl -k --since -5m 2>/dev/null | grep -cE 'error -22 whilst initialising SDIO card|Failed to initialize a non-removable card')" -ge 1 ]]; then
+    return 1
+  fi
   return 0
 }
 
