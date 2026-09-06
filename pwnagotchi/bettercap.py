@@ -117,6 +117,11 @@ class Client(object):
                 _log_retry('retrying connection in {} sec'.format(sleep_time))
                 await asyncio.sleep(sleep_time)
                 continue
+            except RuntimeError as e:
+                if 'shutdown' not in str(e):
+                    raise
+                logging.debug('websocket reconnect aborted, process is shutting down (%s)', e)
+                return
 
 
     def run(self, command, verbose_errors=True):
