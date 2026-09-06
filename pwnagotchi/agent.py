@@ -203,11 +203,27 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
                         logging.warning("failed to start monitor interface (attempt %d/%d): %s",
                                          failed_attempts, self.MAX_MON_START_ATTEMPTS, e)
                         if failed_attempts >= self.MAX_MON_START_ATTEMPTS:
-                            logging.critical(
-                                "monitor interface failed to start %d times in a row -- "
-                                "rebooting to clear driver state", failed_attempts)
-                            pwnagotchi.reboot(mode='AUTO')
-                            return
+                            if pwnagotchi.should_reboot_for_brcm_wedge():
+                                logging.critical(
+                                    "monitor interface failed to start %d times in a row -- "
+                                    "rebooting to clear driver state", failed_attempts)
+                                pwnagotchi.reboot(mode='AUTO')
+                                return
+                            else:
+                                # This shares its budget with watchdog.py's lockdown
+                                # reboot and pwnlib's syswatchdog reboot -- discovered
+                                # live that this call site rebooted with zero rate
+                                # limit of its own moments after the shared budget had
+                                # already denied a reboot elsewhere for the exact same
+                                # persistent wedge, which is exactly the tight-loop
+                                # scenario the budget exists to prevent. Give up and
+                                # keep retrying at the slower pace below instead of
+                                # rebooting again.
+                                logging.error(
+                                    "monitor interface failed to start %d times in a row, but "
+                                    "reboot budget exhausted -- will keep retrying without "
+                                    "rebooting", failed_attempts)
+                                failed_attempts = 0
                         time.sleep(3)
                 else:
                     logging.info("waiting for monitor interface %s ...", mon_iface)

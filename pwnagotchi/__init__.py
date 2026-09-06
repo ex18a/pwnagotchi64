@@ -16,6 +16,61 @@ config = None
 _DEV_FLAG_PATH = '/root/dev'
 _DEV_SHA_FILE = '/root/.automatic-updates-sha'
 
+# Shared brcm-wedge reboot budget, used by every Python-side reboot decision
+# that can be triggered by a persistent brcmfmac/SDIO wedge (watchdog.py's
+# lockdown reboot, agent.py's monitor-interface-start-failure reboot,
+# automata.py's blind-epochs reboot) plus pwnlib's own bash copy for the
+# syswatchdog service -- all sharing this one state file so a mixed sequence
+# of triggers across languages and call sites counts against a single cap.
+# Originally only watchdog.py had this check; agent.py's and automata.py's
+# reboot calls were found to bypass it entirely (discovered live: a
+# persistent brcmfmac wedge under sustained deauth load caused agent.py's
+# "monitor interface failed to start 5 times" path to reboot immediately
+# with no rate limit at all, only seconds after watchdog.py's OWN check had
+# just correctly denied a reboot for exhausting the very same budget).
+# Consolidated here as the single implementation so it can't drift out of
+# sync between call sites again -- this already happened once (pwnlib's bash
+# copy had a permanent-lockout bug, fixed, then watchdog.py's Python copy
+# turned out to have the identical bug, also fixed) before this widened to
+# "two more call sites don't call it at all."
+BRCM_REBOOT_STATE_FILE = '/root/.pwnagotchi-brcm-reboot-state'
+BRCM_REBOOT_WINDOW_SECS = 1800
+BRCM_REBOOT_MAX_IN_WINDOW = 3
+
+
+def should_reboot_for_brcm_wedge():
+    now = int(time.time())
+    count = 0
+    last = 0
+    try:
+        with open(BRCM_REBOOT_STATE_FILE) as f:
+            count_str, last_str = f.read().split()
+            count = int(count_str)
+            last = int(last_str)
+    except (FileNotFoundError, ValueError):
+        pass
+
+    if now - last > BRCM_REBOOT_WINDOW_SECS:
+        count = 0
+
+    # Only write state on an ALLOWED call, never a denied one -- writing on
+    # every call (including denied ones) means a persistently failing wedge
+    # keeps sliding "last" forward forever, so the window never naturally
+    # elapses and the budget locks out permanently after the first burst
+    # (observed in production from the bash copy of this same bug: count
+    # reached 75 instead of capping at 3).
+    if count >= BRCM_REBOOT_MAX_IN_WINDOW:
+        return False
+
+    count += 1
+    try:
+        with open(BRCM_REBOOT_STATE_FILE, 'w') as f:
+            f.write("%d %d" % (count, now))
+    except OSError:
+        pass
+
+    return True
+
 
 def display_version():
     # short commit sha while tracking the dev branch, else the release version
