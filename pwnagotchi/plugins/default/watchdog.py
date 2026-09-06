@@ -169,6 +169,17 @@ class Watchdog(plugins.Plugin):
     BRCM_REBOOT_MAX_IN_WINDOW = 3
 
     def _should_reboot_for_brcm_wedge(self):
+        # State is only written on an ALLOWED call, never a denied one --
+        # this is the Python-side twin of pwnlib's should_reboot_for_brcm_wedge
+        # (dev commit 6f49ae3), which had the same bug: writing the refreshed
+        # timestamp on every call including denied ones means a persistently
+        # failing wedge keeps sliding "last" forward forever, so the 30-minute
+        # window never naturally elapses and the reboot budget locks out
+        # permanently after the first 3 attempts (observed in production:
+        # count reached 75 instead of capping at 3). Only bumping the
+        # timestamp on allowed calls anchors the window to the last real
+        # reboot attempt, so a persistent wedge gets retried every 30 minutes
+        # indefinitely instead of being abandoned forever.
         now = int(time.time())
         count = 0
         last = 0
@@ -183,6 +194,9 @@ class Watchdog(plugins.Plugin):
         if now - last > self.BRCM_REBOOT_WINDOW_SECS:
             count = 0
 
+        if count >= self.BRCM_REBOOT_MAX_IN_WINDOW:
+            return False
+
         count += 1
         try:
             with open(self.BRCM_REBOOT_STATE_FILE, 'w') as f:
@@ -190,7 +204,7 @@ class Watchdog(plugins.Plugin):
         except OSError:
             pass
 
-        return count <= self.BRCM_REBOOT_MAX_IN_WINDOW
+        return True
 
     def _lockdown_reboot(self, agent, reason_text):
         if not self._should_reboot_for_brcm_wedge():
