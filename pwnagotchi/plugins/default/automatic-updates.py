@@ -10,7 +10,6 @@ from datetime import datetime
 from threading import Lock, Thread
 
 import pwnagotchi
-import pwnagotchi.bettercap as bettercap
 import pwnagotchi.plugins as plugins
 import pwnagotchi.ui.faces as faces
 from pwnagotchi.utils import StatusFile, parse_version as version_to_tuple
@@ -397,13 +396,6 @@ class AutomaticUpdates(plugins.Plugin):
         if not was_ai_paused:
             agent.pause_ai()
 
-        logging.info("[automatic-updates] stopping bettercap for the duration of the install ...")
-        bettercap.EXPECTED_DOWNTIME = True
-        try:
-            subprocess.run(['systemctl', 'stop', 'bettercap'], timeout=30)
-        except subprocess.TimeoutExpired:
-            logging.error("[automatic-updates] systemctl stop bettercap timed out after 30s")
-
         pip_log_path = '/tmp/pip-install.log'
         try:
             pip_req_file = os.path.join(source_dir, 'requirements.txt')
@@ -438,20 +430,6 @@ class AutomaticUpdates(plugins.Plugin):
         finally:
             if not was_ai_paused:
                 agent.resume_ai()
-            logging.info("[automatic-updates] restarting bettercap ...")
-            try:
-                subprocess.run(['systemctl', 'start', 'bettercap'], timeout=30)
-            except subprocess.TimeoutExpired:
-                logging.error("[automatic-updates] systemctl start bettercap timed out after 30s")
-            waited = 0
-            while waited < 180:
-                try:
-                    agent.session()
-                    break
-                except Exception:
-                    time.sleep(5)
-                    waited += 5
-            bettercap.EXPECTED_DOWNTIME = False
 
         logging.info("[automatic-updates] pip install completed successfully")
         return True
