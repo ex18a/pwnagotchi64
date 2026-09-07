@@ -165,12 +165,6 @@ class Watchdog(plugins.Plugin):
             logging.error(f"[Watchdog] Failed to restart wifi.recon: {e}")
 
     def _lockdown_reboot(self, agent, reason_text):
-        if not pwnagotchi.should_reboot_for_brcm_wedge():
-            logging.error(f"[Watchdog] reboot budget exhausted ({pwnagotchi.BRCM_REBOOT_MAX_IN_WINDOW}+ in "
-                          f"{pwnagotchi.BRCM_REBOOT_WINDOW_SECS}s) -- not rebooting for '{reason_text}', "
-                          "wifi will stay degraded until manual intervention")
-            return
-
         self.lockdown_triggered = True
 
         # Trigger native reboot face

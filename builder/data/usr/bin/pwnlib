@@ -45,63 +45,9 @@ check_brcm() {
   if [[ "$(journalctl -k --since -10m 2>/dev/null | grep -c 'brcmf_psm_watchdog_notify')" -ge 3 ]]; then
     return 1
   fi
-  if [[ "$(journalctl -k --since -10m 2>/dev/null | grep -c 'brcmf_fw_crashed')" -ge 1 ]]; then
+  if [[ "$(journalctl -k --since -2m 2>/dev/null | grep -c 'brcmf_fw_crashed')" -ge 1 ]]; then
     return 1
   fi
-  if [[ "$(journalctl -k --since -10m 2>/dev/null | grep -c 'failed backplane access')" -ge 1 ]]; then
-    return 1
-  fi
-  if [[ "$(journalctl -k --since -5m 2>/dev/null | grep -cE 'error -22 whilst initialising SDIO card|Failed to initialize a non-removable card')" -ge 1 ]]; then
-    return 1
-  fi
-  return 0
-}
-
-BRCM_REBOOT_STATE_FILE="/root/.pwnagotchi-brcm-reboot-state"
-BRCM_REBOOT_WINDOW_SECS=1800
-BRCM_REBOOT_MAX_IN_WINDOW=3
-
-# Caps brcm-wedge-triggered reboots at 3 per 30 minutes, persisted across
-# reboots (unlike syswatchdog's own /run-based recovery marker, which is
-# wiped every boot). Without this, a wedge caused by a genuinely bad power
-# supply -- rather than a one-off firmware hiccup -- reboots forever: reload
-# attempt, still wedged, reboot, marker gone, reload attempt, still wedged,
-# reboot, ... Past the cap this returns false so the caller gives up and
-# leaves wifi degraded instead, which is the only sane outcome when a reboot
-# demonstrably isn't fixing anything.
-#
-# The state file is only touched on an ALLOWED call (one that's actually
-# about to trigger a reboot), never on a denied one. syswatchdog calls this
-# every ~3 minutes for as long as a wedge persists -- if a denied call also
-# refreshed the timestamp, "last" would keep sliding forward forever on a
-# wedge that never clears, the 30-minute window would never elapse, and
-# "giving up" would become permanent (wifi stays degraded until someone
-# manually reboots it -- this actually happened: a wedge sat unrecovered for
-# over an hour before manual intervention). Only bumping the timestamp on
-# allowed calls means the window is anchored to the last real reboot attempt,
-# so a persistent wedge gets retried every 30 minutes indefinitely instead of
-# being abandoned after the first burst of 3.
-should_reboot_for_brcm_wedge() {
-  local now count last
-  now="$(date +%s)"
-  count=0
-  last=0
-  if [ -f "$BRCM_REBOOT_STATE_FILE" ]; then
-    read -r count last < "$BRCM_REBOOT_STATE_FILE" 2>/dev/null
-    count="${count:-0}"
-    last="${last:-0}"
-  fi
-
-  if [ $((now - last)) -gt "$BRCM_REBOOT_WINDOW_SECS" ]; then
-    count=0
-  fi
-
-  if [ "$count" -ge "$BRCM_REBOOT_MAX_IN_WINDOW" ]; then
-    return 1
-  fi
-
-  count=$((count + 1))
-  echo "$count $now" > "$BRCM_REBOOT_STATE_FILE"
   return 0
 }
 
