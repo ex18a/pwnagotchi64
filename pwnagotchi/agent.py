@@ -459,7 +459,7 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         return None
 
     def _update_uptime(self, s):
-        secs = pwnagotchi.uptime()
+        secs = int(time.time() - self._started_at)
         self._view.set('uptime', utils.secs_to_hhmmss(secs))
 
     def _update_counters(self):
