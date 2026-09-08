@@ -15,7 +15,6 @@ CPU_TEMP_RESUME_C=50
 CPU_TEMP_HARD_REBOOT_C=85
 CPU_HOT_PAUSE_MARKER="/run/pwnagotchi-syswatchdog-hot-pause"
 BRCM_RECOVERY_MARKER="/run/pwnagotchi-syswatchdog-brcm-recovery"
-BRCM_HOST_RESET_MARKER="/run/pwnagotchi-syswatchdog-brcm-host-reset"
 PIP_INSTALL_MAX_SECONDS=240
 USB0_GATEWAY="10.42.0.1"
 UPDATE_MAINTENANCE_MARKER="/run/pwnagotchi-automatic-updates-maintenance"
@@ -68,20 +67,7 @@ fi
 
 if ! check_brcm; then
     if [ -f "$BRCM_RECOVERY_MARKER" ]; then
-        if [ -f "$BRCM_HOST_RESET_MARKER" ]; then
-            reboot_with_reason "brcmfmac still flaky after reload_brcm and a host-controller reset this boot -- neither held"
-            exit 0
-        fi
-        log "brcmfmac still flaky after an earlier reload_brcm attempt this boot -- trying a deeper host-controller reset (no reboot) ..."
-        touch "$BRCM_HOST_RESET_MARKER"
-        if reset_brcm_host_controller; then
-            sleep 10
-            systemctl restart bettercap
-            log "reset_brcm_host_controller succeeded, bettercap restarted"
-        else
-            reboot_with_reason "reset_brcm_host_controller failed outright"
-            exit 0
-        fi
+        reboot_with_reason "brcmfmac still flaky after an earlier reload_brcm attempt this boot -- reload didn't hold"
         exit 0
     fi
     log "brcmfmac flakiness detected -- attempting reload_brcm (no reboot) ..."
@@ -91,7 +77,8 @@ if ! check_brcm; then
         systemctl restart bettercap
         log "reload_brcm succeeded, bettercap restarted"
     else
-        log "reload_brcm failed outright -- will try a deeper host-controller reset next cycle instead of rebooting immediately"
+        reboot_with_reason "reload_brcm failed outright"
+        exit 0
     fi
 fi
 
