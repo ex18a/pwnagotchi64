@@ -51,6 +51,34 @@ check_brcm() {
   return 0
 }
 
+_brcm_verify_reattached() {
+  if journalctl -k --since -15s 2>/dev/null | grep -qE 'dongle is not responding|brcmf_attach failed|failed backplane access|error -22 whilst initialising'; then
+    return 1
+  fi
+  local iface driver
+  for path in /sys/class/net/*/wireless; do
+    [ -e "$path" ] || continue
+    iface="$(basename "$(dirname "$path")")"
+    driver="$(basename "$(readlink -f "/sys/class/net/$iface/device/driver" 2>/dev/null)")"
+    if [ "$driver" = "brcmfmac" ]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+reset_brcm_host_controller() {
+  local dev="3f300000.mmcnr"
+  local driver_dir="/sys/bus/platform/drivers/mmc-bcm2835"
+  [ -e "$driver_dir/$dev" ] || return 1
+
+  echo "$dev" > "$driver_dir/unbind" 2>/dev/null
+  sleep 2
+  echo "$dev" > "$driver_dir/bind" 2>/dev/null
+  sleep 5
+  _brcm_verify_reattached
+}
+
 reload_brcm() {
   if ! modprobe -r brcmfmac; then
     return 1
@@ -71,23 +99,7 @@ reload_brcm() {
   # both a fresh failure signature is absent and a brcmfmac-bound interface
   # actually exists before declaring success.
   sleep 5
-  if journalctl -k --since -15s 2>/dev/null | grep -qE 'dongle is not responding|brcmf_attach failed|failed backplane access'; then
-    return 1
-  fi
-  local iface driver reattached=0
-  for path in /sys/class/net/*/wireless; do
-    [ -e "$path" ] || continue
-    iface="$(basename "$(dirname "$path")")"
-    driver="$(basename "$(readlink -f "/sys/class/net/$iface/device/driver" 2>/dev/null)")"
-    if [ "$driver" = "brcmfmac" ]; then
-      reattached=1
-      break
-    fi
-  done
-  if [ "$reattached" -ne 1 ]; then
-    return 1
-  fi
-  return 0
+  _brcm_verify_reattached
 }
 
 phy_iface() {
