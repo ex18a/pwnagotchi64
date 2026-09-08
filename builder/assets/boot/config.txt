@@ -11,6 +11,7 @@ dtoverlay=dwc2
 [all]
 dtparam=spi=on
 dtparam=i2c_arm=on
+dtparam=sdio_overclock=25
 dtoverlay=i2c-rtc,ds3231
 dtoverlay=disable-bt
 enable_uart=1
