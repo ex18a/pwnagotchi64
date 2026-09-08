@@ -14,12 +14,12 @@ import warnings
 
 log = logging.getLogger(__name__)
 
-BETTERCAP_PATCH_VERSION = "v2.41.5-pwnagotchi6"
+BETTERCAP_PATCH_VERSION = "v2.41.5-pwnagotchi7"
 BETTERCAP_PATCH_URL = (
     "https://github.com/ex18a/bettercap/releases/download/"
-    f"{BETTERCAP_PATCH_VERSION}/bettercap-arm64-pwnagotchi6"
+    f"{BETTERCAP_PATCH_VERSION}/bettercap-arm64-pwnagotchi7"
 )
-BETTERCAP_PATCH_SHA256 = "5d9fb9e8da88a89c7d962be99595ce401a86f81229e751eda06304a75ef922bd"
+BETTERCAP_PATCH_SHA256 = "c9988b01bed66cbf21a6d7473dd5d1516cf1268261354b7140b85fb1d2434bbc"
 
 def install_file(source_filename, dest_filename):
     # do not overwrite network configuration if it exists already
