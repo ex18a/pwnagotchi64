@@ -25,6 +25,7 @@ class AutomaticUpdates(plugins.Plugin):
 
     DEV_BRANCH = 'dev'
     DEV_FLAG_PATH = '/root/dev'
+    MAINTENANCE_MARKER = '/run/pwnagotchi-automatic-updates-maintenance'
 
     PROGRESS_FACES = (faces.UPLOAD, faces.UPLOAD1, faces.UPLOAD2)
     PROGRESS_FRAME_INTERVAL = 0.5
@@ -398,25 +399,13 @@ class AutomaticUpdates(plugins.Plugin):
 
         pip_log_path = '/tmp/pip-install.log'
         try:
+            self._enter_maintenance_mode()
             pip_req_file = os.path.join(source_dir, 'requirements.txt')
             if os.path.exists(pip_req_file) and not self._install_missing_pip_requirements(pip_req_file):
                 return False
 
             logging.info("[automatic-updates] running pip install -- output goes to /tmp/pip-install.log")
-            with open(pip_log_path, 'w') as pip_log:
-                result = subprocess.run(
-                    ['pip3', 'install', '--break-system-packages', '--no-deps',
-                     '--no-build-isolation', '.'],
-                    cwd=source_dir,
-                    stdout=pip_log,
-                    stderr=pip_log,
-                    timeout=900
-                )
-            if result.returncode != 0:
-                with open(pip_log_path, 'r') as f:
-                    lines = f.readlines()
-                tail = ''.join(lines[-10:]).strip()
-                logging.error(f"[automatic-updates] pip install failed:\n{tail}")
+            if not self._run_pip_install(source_dir, pip_log_path):
                 return False
 
             self._run_post_install_steps(source_dir)
@@ -424,10 +413,8 @@ class AutomaticUpdates(plugins.Plugin):
             if info['kind'] == 'commit':
                 with open(self._sha_file, 'w') as f:
                     f.write(info['sha'])
-        except subprocess.TimeoutExpired:
-            logging.error("[automatic-updates] pip install timed out after 15 minutes")
-            return False
         finally:
+            self._exit_maintenance_mode()
             if not was_ai_paused:
                 agent.resume_ai()
 
@@ -438,6 +425,59 @@ class AutomaticUpdates(plugins.Plugin):
     APT_PROGRESS_LOG_INTERVAL = 60
     DPKG_CONFIGURE_TIMEOUT = 120
     APT_FORCE_IPV4_PATH = '/etc/apt/apt.conf.d/99force-ipv4'
+    PIP_INSTALL_HARD_TIMEOUT = 900
+    PIP_INSTALL_PROGRESS_LOG_INTERVAL = 60
+
+    def _enter_maintenance_mode(self):
+        logging.info("[automatic-updates] stopping bettercap for the duration of the pip install to free RAM")
+        try:
+            with open(self.MAINTENANCE_MARKER, 'w') as f:
+                f.write(str(int(time.time())))
+        except Exception as e:
+            logging.warning(f"[automatic-updates] couldn't write maintenance marker: {e}")
+        subprocess.run(['systemctl', 'stop', 'bettercap'], timeout=30)
+
+    def _exit_maintenance_mode(self):
+        try:
+            subprocess.run(['systemctl', 'start', 'bettercap'], timeout=30)
+        except Exception as e:
+            logging.error(f"[automatic-updates] couldn't restart bettercap after pip install: {e}")
+        try:
+            os.remove(self.MAINTENANCE_MARKER)
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            logging.warning(f"[automatic-updates] couldn't remove maintenance marker: {e}")
+        logging.info("[automatic-updates] bettercap restarted after pip install")
+
+    def _run_pip_install(self, source_dir, pip_log_path):
+        with open(pip_log_path, 'w') as pip_log:
+            proc = subprocess.Popen(
+                ['pip3', 'install', '--break-system-packages', '--no-deps',
+                 '--no-build-isolation', '.'],
+                cwd=source_dir, stdout=pip_log, stderr=pip_log
+            )
+            start = time.time()
+            last_log = start
+            while proc.poll() is None:
+                elapsed = time.time() - start
+                if elapsed >= self.PIP_INSTALL_HARD_TIMEOUT:
+                    proc.kill()
+                    proc.wait()
+                    logging.error(f"[automatic-updates] pip install exceeded hard timeout of {self.PIP_INSTALL_HARD_TIMEOUT}s, killed")
+                    return False
+                if time.time() - last_log >= self.PIP_INSTALL_PROGRESS_LOG_INTERVAL:
+                    logging.info(f"[automatic-updates] pip install still running ({int(elapsed)}s elapsed) ...")
+                    last_log = time.time()
+                time.sleep(2)
+
+        if proc.returncode != 0:
+            with open(pip_log_path, 'r') as f:
+                lines = f.readlines()
+            tail = ''.join(lines[-10:]).strip()
+            logging.error(f"[automatic-updates] pip install failed:\n{tail}")
+            return False
+        return True
 
     def _ensure_apt_force_ipv4(self):
         if os.path.exists(self.APT_FORCE_IPV4_PATH):

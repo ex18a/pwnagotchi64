@@ -17,6 +17,7 @@ CPU_HOT_PAUSE_MARKER="/run/pwnagotchi-syswatchdog-hot-pause"
 BRCM_RECOVERY_MARKER="/run/pwnagotchi-syswatchdog-brcm-recovery"
 PIP_INSTALL_MAX_SECONDS=240
 USB0_GATEWAY="10.42.0.1"
+UPDATE_MAINTENANCE_MARKER="/run/pwnagotchi-automatic-updates-maintenance"
 
 log() {
     logger -t pwnagotchi-syswatchdog "$1"
@@ -108,7 +109,7 @@ if [ "$temp_c" -ge "$CPU_TEMP_PAUSE_C" ]; then
     exit 0
 fi
 
-if [ "$(systemctl is-active bettercap)" != "active" ]; then
+if [ ! -f "$UPDATE_MAINTENANCE_MARKER" ] && [ "$(systemctl is-active bettercap)" != "active" ]; then
     restarts=$(systemctl show bettercap -p NRestarts --value 2>/dev/null || echo 0)
     if [ "${restarts:-0}" -ge "$BETTERCAP_MAX_RESTARTS" ]; then
         reboot_with_reason "bettercap crash-looping (NRestarts=$restarts, currently inactive)"
@@ -116,7 +117,7 @@ if [ "$(systemctl is-active bettercap)" != "active" ]; then
     fi
 fi
 
-if [ "$(systemctl is-active pwnagotchi)" = "active" ] && [ -f "$LOG_FILE" ]; then
+if [ ! -f "$UPDATE_MAINTENANCE_MARKER" ] && [ "$(systemctl is-active pwnagotchi)" = "active" ] && [ -f "$LOG_FILE" ]; then
     last_write=$(stat -c %Y "$LOG_FILE" 2>/dev/null || echo 0)
     now=$(date +%s)
     age=$(( now - last_write ))
