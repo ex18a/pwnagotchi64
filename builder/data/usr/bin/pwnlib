@@ -45,7 +45,7 @@ check_brcm() {
   if [[ "$(journalctl -k --since -10m 2>/dev/null | grep -c 'brcmf_psm_watchdog_notify')" -ge 3 ]]; then
     return 1
   fi
-  if [[ "$(journalctl -k --since -2m 2>/dev/null | grep -c 'brcmf_fw_crashed')" -ge 1 ]]; then
+  if [[ "$(journalctl -k --since -6m 2>/dev/null | grep -c 'brcmf_fw_crashed')" -ge 1 ]]; then
     return 1
   fi
   return 0
