@@ -72,9 +72,13 @@ reset_brcm_host_controller() {
   local driver_dir="/sys/bus/platform/drivers/mmc-bcm2835"
   [ -e "$driver_dir/$dev" ] || return 1
 
-  echo "$dev" > "$driver_dir/unbind" 2>/dev/null
+  if ! timeout 15 bash -c "echo '$dev' > '$driver_dir/unbind'" 2>/dev/null; then
+    return 1
+  fi
   sleep 2
-  echo "$dev" > "$driver_dir/bind" 2>/dev/null
+  if ! timeout 15 bash -c "echo '$dev' > '$driver_dir/bind'" 2>/dev/null; then
+    return 1
+  fi
   sleep 5
   _brcm_verify_reattached
 }
