@@ -10,6 +10,7 @@ from datetime import datetime
 from threading import Lock, Thread
 
 import pwnagotchi
+import pwnagotchi.bettercap as bettercap
 import pwnagotchi.plugins as plugins
 import pwnagotchi.ui.faces as faces
 from pwnagotchi.utils import StatusFile, parse_version as version_to_tuple
@@ -430,6 +431,7 @@ class AutomaticUpdates(plugins.Plugin):
 
     def _enter_maintenance_mode(self):
         logging.info("[automatic-updates] stopping bettercap for the duration of the pip install to free RAM")
+        bettercap.EXPECTED_DOWNTIME = True
         try:
             with open(self.MAINTENANCE_MARKER, 'w') as f:
                 f.write(str(int(time.time())))
@@ -442,6 +444,12 @@ class AutomaticUpdates(plugins.Plugin):
             subprocess.run(['systemctl', 'start', 'bettercap'], timeout=30)
         except Exception as e:
             logging.error(f"[automatic-updates] couldn't restart bettercap after pip install: {e}")
+        # give bettercap's API/websocket a few seconds to actually come up
+        # before letting agent.py/bettercap.py log reconnect attempts as
+        # real WARNINGs again -- systemctl start returning just means the
+        # process launched, not that it's ready yet.
+        time.sleep(5)
+        bettercap.EXPECTED_DOWNTIME = False
         try:
             os.remove(self.MAINTENANCE_MARKER)
         except FileNotFoundError:
