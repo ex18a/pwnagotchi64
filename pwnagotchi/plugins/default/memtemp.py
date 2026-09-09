@@ -168,9 +168,9 @@ class MemTemp(plugins.Plugin):
                 'memtemp_header',
                 Text(
                     color=view.BLACK,
-                    value=" ".join([self.pad_text(x) for x in self.fields]),
+                    value=" ".join([self.pad_text(x.upper()) for x in self.fields]),
                     position=(h_pos_x, h_pos_y),
-                    font=fonts.Small,
+                    font=fonts.Bold,
                 )
             )
             ui.add_element(
@@ -179,7 +179,7 @@ class MemTemp(plugins.Plugin):
                     color=view.BLACK,
                     value=" ".join([self.pad_text("-") for x in self.fields]),
                     position=(h_pos_x, h_pos_y + line_spacing),
-                    font=fonts.Small,
+                    font=fonts.Medium,
                 )
             )
 
