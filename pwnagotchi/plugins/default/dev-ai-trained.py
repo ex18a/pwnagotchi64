@@ -39,7 +39,7 @@ class DevAiTrained(plugins.Plugin):
         self.trained_count = self.get_completed_epochs()
 
         # 2. Setup the element and push the initial value immediately
-        ui.add_element('lifetime_trained', LabeledValue(color=view.BLACK, label='AGE', value=str(self.trained_count),
+        ui.add_element('lifetime_trained', LabeledValue(color=view.BLACK, label='AI AGE', value=str(self.trained_count),
                                                        position=ui._layout.get('lifetime_trained', (125, 96)),
                                                        label_font=fonts.Bold, text_font=fonts.Medium))
 
