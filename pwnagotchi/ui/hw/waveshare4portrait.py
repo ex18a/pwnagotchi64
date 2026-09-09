@@ -60,8 +60,8 @@ class WaveshareV4Portrait(DisplayImpl):
         from pwnagotchi.ui.hw.libs.waveshare.v4.epd2in13_V4 import EPD
         self._display = EPD()
         if self.bg_color == 0x00:
-            self._display.border_full = 0x40
-            self._display.border_partial = 0x40
+            self._display.border_full = 0x04
+            self._display.border_partial = 0x04
         self._display.init()
         self._display.Clear(self.bg_color)
         logging.info("initializing waveshare v4 portrait driver done")
