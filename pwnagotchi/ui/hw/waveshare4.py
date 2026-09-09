@@ -45,7 +45,7 @@ class WaveshareV4(DisplayImpl):
         # breathing room.
         self._layout['last_pwnd_max_x'] = self._layout['mode_right_edge'][0] - fonts.Bold.getlength('TRAIN') - 6
         self._layout['ip1'] = (0, 94)
-        self._layout['lifetime_trained'] = (125, 94)
+        self._layout['lifetime_trained'] = (113, 94)
         self._layout['memtemp_header'] = (155, 72)
         self._layout['memtemp_horizontal_header'] = (155, 83)
         self._layout['memtemp_data'] = (155, 86)
