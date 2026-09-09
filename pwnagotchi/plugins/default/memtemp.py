@@ -94,7 +94,7 @@ class MemTemp(plugins.Plugin):
             # its own 'memtemp_header' layout key instead, checked first.
             layout_header = ui._layout.get('memtemp_header')
             if layout_header:
-                h_pos = layout_header
+                h_pos = ui._layout.get('memtemp_horizontal_header', layout_header)
                 v_pos = layout_header
             elif ui.is_waveshare_v2():
                 h_pos = (178, 84)
