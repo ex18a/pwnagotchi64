@@ -1,0 +1,9 @@
+[Unit]
+Description=Run the kernel trial watchdog check shortly after every boot
+
+[Timer]
+OnBootSec=30s
+Unit=pwnagotchi-kernel-trial-watchdog.service
+
+[Install]
+WantedBy=timers.target

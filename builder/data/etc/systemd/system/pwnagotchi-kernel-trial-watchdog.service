@@ -1,0 +1,7 @@
+[Unit]
+Description=Confirm or revert an active kernel trial boot
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/pwnagotchi-kernel-trial-watchdog
+TimeoutStartSec=210
