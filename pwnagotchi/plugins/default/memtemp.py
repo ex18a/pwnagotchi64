@@ -118,18 +118,32 @@ class MemTemp(plugins.Plugin):
         self._right_edge = ui._layout.get('memtemp_right_edge')
 
         if self.options['orientation'] == "vertical":
+            if self._right_edge is not None:
+                label_width = max(fonts.Bold.getlength(f.upper()) for f in self.fields)
+                self._value_right_edge = self._right_edge - label_width - self.LABEL_SPACING
+
             for idx, field in enumerate(self.fields):
                 v_pos_x = v_pos[0]
                 v_pos_y = v_pos[1] + ((len(self.fields) - 3) * -1 * line_spacing)
                 position = (v_pos_x, v_pos_y + (idx * line_spacing))
                 if self._right_edge is not None:
                     ui.add_element(
+                        f"memtemp_{field}_label",
+                        Text(
+                            color=view.BLACK,
+                            value=field.upper(),
+                            position=position,
+                            right_edge=self._right_edge,
+                            font=fonts.Bold,
+                        )
+                    )
+                    ui.add_element(
                         f"memtemp_{field}",
                         Text(
                             color=view.BLACK,
-                            value=f"- {field.upper()}",
+                            value="-",
                             position=position,
-                            right_edge=self._right_edge,
+                            right_edge=self._value_right_edge,
                             font=fonts.Medium,
                         )
                     )
@@ -174,6 +188,8 @@ class MemTemp(plugins.Plugin):
             if self.options['orientation'] == "vertical":
                 for idx, field in enumerate(self.fields):
                     ui.remove_element(f"memtemp_{field}")
+                    if self._right_edge is not None:
+                        ui.remove_element(f"memtemp_{field}_label")
             else:
                 # default to horizontal
                 ui.remove_element('memtemp_header')
@@ -192,10 +208,7 @@ class MemTemp(plugins.Plugin):
         if self.options['orientation'] == "vertical":
             for idx, field in enumerate(self.fields):
                 reading = getattr(self, self.ALLOWED_FIELDS[field])()
-                if self._right_edge is not None:
-                    ui.set(f"memtemp_{field}", f"{reading} {field.upper()}")
-                else:
-                    ui.set(f"memtemp_{field}", reading)
+                ui.set(f"memtemp_{field}", reading)
         else:
             # default to horizontal
             data = " ".join([self.pad_text(getattr(self, self.ALLOWED_FIELDS[x])()) for x in self.fields])
