@@ -25,7 +25,7 @@ class MemTemp(plugins.Plugin):
         'freq': 'cpu_freq'
     }
     DEFAULT_FIELDS = ['mem', 'cpu', 'temp']
-    LINE_SPACING = 10
+    LINE_SPACING = 11
     LABEL_SPACING = 5
     FIELD_WIDTH = 4
     REFRESH_INTERVAL = 15  # seconds
