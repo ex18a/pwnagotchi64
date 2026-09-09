@@ -163,21 +163,16 @@ class View(object):
             self._render_cbs.append(cb)
 
     def _name_cursor_frame(self, base_name, cursor_on):
-        # Portrait: name is dead-centered on the full screen width, and the
-        # cursor is pinned to the true right edge -- both computed as exact
-        # pixel positions rather than character padding, so neither depends
-        # on the other. The cursor is its own draw call (Text.suffix), not
-        # appended to the name string, which is what stops the name from
-        # jittering as the cursor blinks: the name's own draw call is now
-        # identical between blink states no matter where the cursor sits.
+        # The cursor is always its own draw call (Text.suffix), never
+        # appended to the name string -- that's what stops the name from
+        # jittering as the cursor blinks (the block glyph's font metrics
+        # differ from regular characters, so baking it into the string
+        # shifts the whole line's vertical anchor between blink states).
+        # Portrait centers the name on the full screen width and pins the
+        # cursor to the true right edge; landscape leaves the name at its
+        # own fixed position and just places the cursor immediately after it.
         name_elem = self._state._state.get('name')
-        # Was "self._width == 122" -- true for both portrait panels today
-        # (waveshare3portrait/waveshare4portrait are both exactly 122 wide),
-        # but a hardcoded exact-width check would silently stop matching
-        # the moment either one's canvas ever changes size. Comparing width
-        # to height instead is resolution-independent and still portrait-
-        # specific, so it keeps working regardless.
-        if self._width < self._height and name_elem is not None:
+        if name_elem is not None:
             try:
                 # measure the *actual* font currently on the element, not an
                 # assumed pixel-per-char constant -- portrait-mode.py swaps
@@ -188,24 +183,34 @@ class View(object):
                 if name_px <= 0:
                     raise ValueError("non-positive name width")
 
-                centered_x = max(0, (self._width - name_px) / 2)
-                name_elem.xy = (centered_x, name_elem.xy[1])
+                # Was "self._width == 122" -- true for both portrait panels
+                # today (waveshare3portrait/waveshare4portrait are both
+                # exactly 122 wide), but a hardcoded exact-width check would
+                # silently stop matching the moment either one's canvas ever
+                # changes size. Comparing width to height instead is
+                # resolution-independent and still portrait-specific.
+                if self._width < self._height:
+                    centered_x = max(0, (self._width - name_px) / 2)
+                    name_elem.xy = (centered_x, name_elem.xy[1])
+                    # bbox right edge, not the advance width -- the block
+                    # glyph's ink bleeds past its own advance, so using the
+                    # advance would still leave a sliver of unused space at
+                    # the true edge
+                    cursor_bbox = main_font.getbbox('█')
+                    cursor_right = cursor_bbox[2] if cursor_bbox else main_font.getlength('█')
+                    cursor_x = max(0, self._width - cursor_right)
+                else:
+                    cursor_x = name_elem.xy[0] + name_px
 
-                # bbox right edge, not the advance width -- the block glyph's
-                # ink bleeds past its own advance, so using the advance would
-                # still leave a sliver of unused space at the true edge
-                cursor_bbox = main_font.getbbox('█')
-                cursor_right = cursor_bbox[2] if cursor_bbox else main_font.getlength('█')
-                cursor_x = max(0, self._width - cursor_right)
                 name_elem.suffix_xy = (cursor_x, name_elem.xy[1])
                 name_elem.suffix_font = main_font
                 name_elem.suffix = '█' if cursor_on else ''
                 return base_name
             except Exception:
-                pass  # fall through to the simple landscape-style framing below
+                pass  # fall through to the old jittery in-string framing below
 
-        # landscape (or portrait if measuring the fonts above failed): cursor
-        # baked directly into the string, same font as the name, as before
+        # only reached if measuring the font above failed: cursor baked
+        # directly into the string, same font as the name, as before
         if name_elem is not None:
             name_elem.suffix = ''
             name_elem.suffix_xy = None
