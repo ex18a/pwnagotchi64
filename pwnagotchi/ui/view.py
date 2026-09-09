@@ -533,12 +533,12 @@ class View(object):
         self.update(force=True)
 
     def on_update_failed(self, version):
-        self.set('face', faces.BROKEN, force=True)
+        self.set('face', faces.SAD, force=True)
         self.set('status', self._voice.on_update_failed(version), force=True)
         self.update(force=True)
 
     def on_rebooting(self):
-        self.set('face', faces.BROKEN)
+        self.set('face', faces.SAD)
         self.set('status', self._voice.on_rebooting())
         self.update()
 
