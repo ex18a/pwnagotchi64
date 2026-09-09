@@ -115,23 +115,37 @@ class MemTemp(plugins.Plugin):
                 h_pos = (155, 76)
                 v_pos = (175, 61)
 
+        self._right_edge = ui._layout.get('memtemp_right_edge')
+
         if self.options['orientation'] == "vertical":
-            # Dynamically create the required LabeledValue objects
             for idx, field in enumerate(self.fields):
                 v_pos_x = v_pos[0]
                 v_pos_y = v_pos[1] + ((len(self.fields) - 3) * -1 * line_spacing)
-                ui.add_element(
-                    f"memtemp_{field}",
-                    LabeledValue(
-                        color=view.BLACK,
-                        label=f"{self.pad_text(field.upper())}",
-                        value="-",
-                        position=(v_pos_x, v_pos_y + (idx * line_spacing)),
-                        label_font=fonts.Bold,
-                        text_font=fonts.Medium,
-                        label_spacing=self.LABEL_SPACING,
+                position = (v_pos_x, v_pos_y + (idx * line_spacing))
+                if self._right_edge is not None:
+                    ui.add_element(
+                        f"memtemp_{field}",
+                        Text(
+                            color=view.BLACK,
+                            value=f"- {field.upper()}",
+                            position=position,
+                            right_edge=self._right_edge,
+                            font=fonts.Medium,
+                        )
                     )
-                )
+                else:
+                    ui.add_element(
+                        f"memtemp_{field}",
+                        LabeledValue(
+                            color=view.BLACK,
+                            label=f"{self.pad_text(field.upper())}",
+                            value="-",
+                            position=position,
+                            label_font=fonts.Bold,
+                            text_font=fonts.Medium,
+                            label_spacing=self.LABEL_SPACING,
+                        )
+                    )
         else:
             # default to horizontal
             h_pos_x = h_pos[0] + ((len(self.fields) - 3) * -1 * 25)
@@ -177,7 +191,11 @@ class MemTemp(plugins.Plugin):
 
         if self.options['orientation'] == "vertical":
             for idx, field in enumerate(self.fields):
-                ui.set(f"memtemp_{field}", getattr(self, self.ALLOWED_FIELDS[field])())
+                reading = getattr(self, self.ALLOWED_FIELDS[field])()
+                if self._right_edge is not None:
+                    ui.set(f"memtemp_{field}", f"{reading} {field.upper()}")
+                else:
+                    ui.set(f"memtemp_{field}", reading)
         else:
             # default to horizontal
             data = " ".join([self.pad_text(getattr(self, self.ALLOWED_FIELDS[x])()) for x in self.fields])
