@@ -124,7 +124,7 @@ class MemTemp(plugins.Plugin):
                     f"memtemp_{field}",
                     LabeledValue(
                         color=view.BLACK,
-                        label=f"{self.pad_text(field)}:",
+                        label=f"{self.pad_text(field.upper())}:",
                         value="-",
                         position=(v_pos_x, v_pos_y + (idx * line_spacing)),
                         label_font=fonts.Bold,
