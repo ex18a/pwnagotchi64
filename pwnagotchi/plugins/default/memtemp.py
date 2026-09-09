@@ -164,11 +164,14 @@ class MemTemp(plugins.Plugin):
             # default to horizontal
             h_pos_x = h_pos[0] + ((len(self.fields) - 3) * -1 * 25)
             h_pos_y = h_pos[1]
+            header_text = " ".join([self.pad_text(x.upper()) for x in self.fields])
+            if self._right_edge is not None:
+                h_pos_x = self._right_edge - fonts.Bold.getlength(header_text)
             ui.add_element(
                 'memtemp_header',
                 Text(
                     color=view.BLACK,
-                    value=" ".join([self.pad_text(x.upper()) for x in self.fields]),
+                    value=header_text,
                     position=(h_pos_x, h_pos_y),
                     font=fonts.Bold,
                 )
