@@ -200,7 +200,7 @@ class View(object):
                     cursor_right = cursor_bbox[2] if cursor_bbox else main_font.getlength('█')
                     cursor_x = max(0, self._width - cursor_right)
                 else:
-                    cursor_x = name_elem.xy[0] + name_px
+                    cursor_x = name_elem.xy[0] + name_px + 4
 
                 name_elem.suffix_xy = (cursor_x, name_elem.xy[1])
                 name_elem.suffix_font = main_font
