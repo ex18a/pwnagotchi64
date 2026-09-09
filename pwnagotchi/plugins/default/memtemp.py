@@ -93,7 +93,7 @@ class MemTemp(plugins.Plugin):
             # regardless of portrait/landscape here. Each driver now sets
             # its own 'memtemp_header' layout key instead, checked first.
             layout_header = ui._layout.get('memtemp_header')
-            if layout_header and self.options['orientation'] != 'vertical':
+            if layout_header:
                 h_pos = layout_header
                 v_pos = layout_header
             elif ui.is_waveshare_v2():
@@ -127,8 +127,8 @@ class MemTemp(plugins.Plugin):
                         label=f"{self.pad_text(field)}:",
                         value="-",
                         position=(v_pos_x, v_pos_y + (idx * line_spacing)),
-                        label_font=fonts.Small,
-                        text_font=fonts.Small,
+                        label_font=fonts.Bold,
+                        text_font=fonts.Medium,
                         label_spacing=self.LABEL_SPACING,
                     )
                 )
