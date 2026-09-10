@@ -162,8 +162,8 @@ if [ -f /boot/firmware/kernel8-sdiofix.img ]; then
 else
     echo "deb-src http://http.kali.org/kali kali-rolling main contrib non-free non-free-firmware" >> /etc/apt/sources.list
     apt-get update -y
-    apt-get install -y build-essential bc bison flex libssl-dev libelf-dev dwarves cpio xz-utils \
-        kernel-wedge kmod debhelper python3-dacite python3-jinja2 dh-python rsync gcc-12
+    apt-get install -y build-essential dpkg-dev gcc-12
+    apt-get build-dep -y linux-rpi
 
     kpkg_name="$(dpkg-query -W -f='${Package}\n' 'linux-image-*-rpi-v8' | head -1)"
     kpkg_version="$(dpkg-query -W -f='${Version}\n' "$kpkg_name")"
