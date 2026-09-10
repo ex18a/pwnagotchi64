@@ -1,4 +1,5 @@
 *.img
+!builder/assets/boot/kernel8-sdiofix.img
 *.img.bmap
 *.pcap
 *.po~
