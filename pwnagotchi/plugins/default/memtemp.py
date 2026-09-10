@@ -12,22 +12,6 @@ import logging
 import time
 
 
-class BoldText(Text):
-    def draw(self, canvas, drawer):
-        super().draw(canvas, drawer)
-        x, y = self.xy
-        self.xy = (x + 1, y)
-        super().draw(canvas, drawer)
-        self.xy = (x, y)
-
-
-class BoldLabeledValue(LabeledValue):
-    def draw(self, canvas, drawer):
-        super().draw(canvas, drawer)
-        if self.label is not None:
-            drawer.text((self.xy[0] + 1, self.xy[1]), self.label, font=self.label_font, fill=self.color)
-
-
 class MemTemp(plugins.Plugin):
     __author__ = 'https://github.com/xenDE'
     __version__ = '1.0.4'
@@ -145,7 +129,7 @@ class MemTemp(plugins.Plugin):
                 if self._right_edge is not None:
                     ui.add_element(
                         f"memtemp_{field}_label",
-                        BoldText(
+                        Text(
                             color=view.BLACK,
                             value=field.upper(),
                             position=position,
@@ -166,7 +150,7 @@ class MemTemp(plugins.Plugin):
                 else:
                     ui.add_element(
                         f"memtemp_{field}",
-                        BoldLabeledValue(
+                        LabeledValue(
                             color=view.BLACK,
                             label=f"{self.pad_text(field.upper())}",
                             value="-",
@@ -185,7 +169,7 @@ class MemTemp(plugins.Plugin):
                 h_pos_x = self._right_edge - fonts.Bold.getlength(header_text)
             ui.add_element(
                 'memtemp_header',
-                BoldText(
+                Text(
                     color=view.BLACK,
                     value=header_text,
                     position=(h_pos_x, h_pos_y),
