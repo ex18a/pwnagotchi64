@@ -106,6 +106,7 @@ if [ "$BUILD_BASE" = "1" ]; then
     cp apt-requirements.txt /mnt/tmp/
     cp -r builder/assets/networkmanager /mnt/tmp/networkmanager
     cp builder/patches/brcmfmac-nexmon-checkdied-deadlock.patch /mnt/tmp/
+    cp builder/patches/mmc-sdio_irq_work-teardown-race.patch /mnt/tmp/
 
     chroot /mnt /bin/bash <<'EOF'
 set -e
@@ -154,6 +155,34 @@ for src_dir in /usr/src/brcmfmac-nexmon-*; do
         dkms install "brcmfmac-nexmon/$pkg_version" -k "$kernelver" --force
     done
 done
+
+echo "  -> [Chroot] PHASE 4.4d: Building custom kernel (sdio_irq_work teardown-race fix, see pwnagotchi.sh.md)..."
+if [ -f /boot/firmware/kernel8-sdiofix.img ]; then
+    echo "     (already built, skipping)"
+else
+    echo "deb-src http://http.kali.org/kali kali-rolling main contrib non-free non-free-firmware" >> /etc/apt/sources.list
+    apt-get update -y
+    apt-get install -y build-essential bc bison flex libssl-dev libelf-dev dwarves cpio xz-utils \
+        kernel-wedge kmod debhelper python3-dacite python3-jinja2 dh-python rsync gcc-12
+
+    kpkg_name="$(dpkg-query -W -f='${Package}\n' 'linux-image-*-rpi-v8' | head -1)"
+    kpkg_version="$(dpkg-query -W -f='${Version}\n' "$kpkg_name")"
+
+    mkdir -p /root/kbuild
+    cd /root/kbuild
+    apt-get source "linux-rpi=$kpkg_version"
+    src_dir="$(find . -maxdepth 1 -type d -iname 'linux-rpi-*')"
+    cd "$src_dir"
+    patch -p1 < /tmp/mmc-sdio_irq_work-teardown-race.patch
+
+    export DEB_BUILD_OPTIONS="parallel=$(nproc)"
+    make -f debian/rules.gen build-arch_arm64_rpi_v8_headers build-arch_arm64_rpi_v8_image
+
+    cp debian/build/build_arm64_rpi_v8/arch/arm64/boot/Image /boot/firmware/kernel8-sdiofix.img
+    rm -f /boot/firmware/kernel8.img
+    cd /
+    rm -rf /root/kbuild
+fi
 
 echo "  -> [Chroot] Downloading and installing 64-bit Pwngrid engine..."
 wget -q "https://github.com/jayofelony/pwngrid/releases/download/v1.11.1/pwngrid-1.11.1-aarch64.zip" -O /tmp/pwngrid_engine.zip
@@ -230,8 +259,6 @@ cp -r builder/assets/bettercap /mnt/tmp/bettercap_assets
 cp -r builder/assets/system/ /mnt/tmp/system/
 
 cp builder/assets/boot/config.txt /mnt/boot/firmware/config.txt
-rm -f /mnt/boot/firmware/kernel8.img
-cp builder/assets/boot/kernel8-sdiofix.img /mnt/boot/firmware/kernel8-sdiofix.img
 
 chroot /mnt /bin/bash <<EOF
 set -e
