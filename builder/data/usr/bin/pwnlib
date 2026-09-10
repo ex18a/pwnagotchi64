@@ -83,6 +83,35 @@ reset_brcm_host_controller() {
   _brcm_verify_reattached
 }
 
+BRCM_REBOOT_STATE_FILE="/root/.pwnagotchi-brcm-reboot-state"
+BRCM_REBOOT_WINDOW_SECS=1800
+BRCM_REBOOT_MAX_IN_WINDOW=3
+
+brcm_reboot_allowed() {
+  local now count last
+  now="$(date +%s)"
+  count=0
+  last=0
+  if [ -r "$BRCM_REBOOT_STATE_FILE" ]; then
+    read -r count last < "$BRCM_REBOOT_STATE_FILE" || true
+    case "$count" in ''|*[!0-9]*) count=0 ;; esac
+    case "$last"  in ''|*[!0-9]*) last=0 ;; esac
+  fi
+
+  if [ $((now - last)) -gt "$BRCM_REBOOT_WINDOW_SECS" ]; then
+    count=0
+  fi
+
+  if [ "$count" -ge "$BRCM_REBOOT_MAX_IN_WINDOW" ]; then
+    return 1
+  fi
+
+  count=$((count + 1))
+  printf '%d %d' "$count" "$now" > "$BRCM_REBOOT_STATE_FILE" 2>/dev/null
+  sync
+  return 0
+}
+
 RELOAD_BRCM_MARKER="/run/pwnagotchi-reload-brcm-last"
 RELOAD_BRCM_COOLDOWN_SECONDS=90
 RELOAD_BRCM_SKIPPED=75
