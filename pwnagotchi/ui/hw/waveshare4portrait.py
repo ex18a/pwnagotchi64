@@ -44,7 +44,8 @@ class WaveshareV4Portrait(DisplayImpl):
         self._layout.pop('mode', None)
         self._layout['ip1'] = (0, 188)
         self._layout['lifetime_trained'] = (0, 199)
-        self._layout['memtemp_header'] = (16, 160)
+        self._layout['memtemp_header'] = (16, 155)
+        self._layout['memtemp_right_edge'] = 121
         self._layout['memtemp_data'] = (16, 170)
         self._layout['status'] = {
             'pos': (4, 42),
@@ -59,6 +60,9 @@ class WaveshareV4Portrait(DisplayImpl):
         logging.info("initializing waveshare v4 portrait driver")
         from pwnagotchi.ui.hw.libs.waveshare.v4.epd2in13_V4 import EPD
         self._display = EPD()
+        if self.bg_color == 0x00:
+            self._display.border_full = 0x04
+            self._display.border_partial = 0x04
         self._display.init()
         self._display.Clear(self.bg_color)
         logging.info("initializing waveshare v4 portrait driver done")

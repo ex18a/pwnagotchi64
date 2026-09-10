@@ -1,0 +1,23 @@
+#!/bin/bash
+MARKER=/boot/firmware/kernel-trial-pending
+[ -f "$MARKER" ] || exit 0
+
+logger -t pwnagotchi-kernel-trial "trial watchdog active, checking health for up to 150s"
+
+for i in $(seq 1 15); do
+    if systemctl is-active --quiet bettercap.service && \
+       systemctl is-active --quiet pwnagotchi.service && \
+       ip link show mon0 >/dev/null 2>&1; then
+        logger -t pwnagotchi-kernel-trial "trial CONFIRMED healthy -- keeping new kernel"
+        rm -f "$MARKER"
+        exit 0
+    fi
+    sleep 10
+done
+
+logger -t pwnagotchi-kernel-trial "trial FAILED to reach healthy state -- reverting to safe kernel and rebooting"
+BACKUP=/boot/firmware/config.txt.kernel-trial-backup
+[ -f "$BACKUP" ] && cp "$BACKUP" /boot/firmware/config.txt
+rm -f "$MARKER"
+sync
+reboot

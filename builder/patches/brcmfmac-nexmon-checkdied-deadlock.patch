@@ -1,0 +1,26 @@
+--- a/sdio.c	2026-09-08 18:08:33.576019292 +0100
++++ b/sdio.c	2026-09-08 18:13:29.980040020 +0100
+@@ -3289,13 +3289,21 @@
+ 			  rxlen, msglen);
+ 	} else if (timeleft == 0) {
+ 		brcmf_err("resumed on timeout\n");
+-		brcmf_sdio_checkdied(bus);
++		/* brcmf_sdio_checkdied(bus) removed here: it calls
++		 * brcmf_sdio_readshared() -> sdio_claim_host(), which can
++		 * block forever if another context (e.g. sdio_irq_work)
++		 * already holds the host claim while itself stuck waiting on
++		 * hardware that will never respond. Confirmed via a hung
++		 * kworker + this exact call chain both blocked in D state on
++		 * a real device. This diagnostic dump doesn't affect the
++		 * return value below, so it's not worth the deadlock risk.
++		 */
+ 	} else if (pending) {
+ 		brcmf_dbg(CTL, "cancelled\n");
+ 		return -ERESTARTSYS;
+ 	} else {
+ 		brcmf_dbg(CTL, "resumed for unknown reason?\n");
+-		brcmf_sdio_checkdied(bus);
++		/* see comment above -- same deadlock risk, same fix */
+ 	}
+ 
+ 	if (rxlen)

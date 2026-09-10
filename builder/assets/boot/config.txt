@@ -11,9 +11,11 @@ dtoverlay=dwc2
 [all]
 dtparam=spi=on
 dtparam=i2c_arm=on
+dtparam=sdio_overclock=25
 dtoverlay=i2c-rtc,ds3231
 dtoverlay=disable-bt
 enable_uart=1
+arm_freq=800
 
 # Hardware PWM (GPIO12/13) for Display Hat Mini's backlight
 dtoverlay=pwm-2chan,pin=12,func=4,pin2=13,func2=4

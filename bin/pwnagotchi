@@ -67,7 +67,6 @@ def do_manual_mode(agent):
 def do_auto_mode(agent):
     logging.info("entering auto mode ...")
 
-    agent.mode = 'auto'
     agent.start()
 
     while True:

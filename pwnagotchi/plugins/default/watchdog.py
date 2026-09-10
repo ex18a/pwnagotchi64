@@ -8,8 +8,10 @@ import pwnagotchi
 
 class Watchdog(plugins.Plugin):
     __author__ = 'ex18a'
-    __version__ = '1.7.4'
+    __version__ = '1.7.5'
     __description__ = 'wifi hardware check with crash logging'
+
+    MAINTENANCE_MARKER = '/run/pwnagotchi-automatic-updates-maintenance'
 
     def __init__(self):
         self.interface = 'mon0'
@@ -22,6 +24,13 @@ class Watchdog(plugins.Plugin):
     def on_epoch(self, agent, epoch, epoch_data):
         # Stop checking if already dying
         if self.lockdown_triggered:
+            return
+
+        # automatic-updates deliberately stops bettercap during a pip install
+        # to free RAM -- that outage is expected and can legitimately run for
+        # several minutes, far longer than the grace period below tolerates,
+        # so don't let it look like a crash.
+        if os.path.exists(self.MAINTENANCE_MARKER):
             return
 
         try:

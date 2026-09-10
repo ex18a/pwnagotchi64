@@ -1,6 +1,7 @@
 import logging
 import copy
 
+import pwnagotchi
 import pwnagotchi.plugins as plugins
 from pwnagotchi.ai.epoch import Epoch
 
@@ -224,11 +225,13 @@ class Automata(object):
             if home_visible and not self.is_ai_paused():
                 logging.info("[AI SLEEP] Home network detected. Suspending AI and dropping to AUTO.")
                 self.mode = 'auto'
+                self._view.set('mode', 'AUTO')
                 self.pause_ai()
 
             elif self.mode == 'ai' and (self._epoch.bored_for >= 1 or self._epoch.sad_for >= 1) and not self.is_training():
                 logging.info("[AI SLEEP] Pwnagotchi is Bored/Sad. Suspending AI and dropping to AUTO.")
                 self.mode = 'auto'
+                self._view.set('mode', 'AUTO')
                 self._env_snapshot_at_bored = self._snapshot_environment()
                 self.pause_ai()
 
@@ -268,6 +271,16 @@ class Automata(object):
         plugins.on('epoch', self, self._epoch.epoch - 1, self._epoch.data())
 
         if self._epoch.blind_for >= self._config['main']['mon_max_blind_epochs']:
-            logging.critical("%d epochs without visible access points -> rebooting ...", self._epoch.blind_for)
-            self._reboot()
+            # Shares its budget with watchdog.py's lockdown reboot, agent.py's
+            # monitor-start-failure reboot, and pwnlib's syswatchdog reboot --
+            # this path used to reboot with no rate limit of its own, and a
+            # persistent brcmfmac wedge (which is exactly what drives
+            # blind_for up in the first place) would otherwise let it loop
+            # tightly even while the other reboot paths correctly backed off.
+            if pwnagotchi.should_reboot_for_brcm_wedge():
+                logging.critical("%d epochs without visible access points -> rebooting ...", self._epoch.blind_for)
+                self._reboot()
+            else:
+                logging.error("%d epochs without visible access points, but reboot budget exhausted -- "
+                               "not rebooting, will keep waiting", self._epoch.blind_for)
             self._epoch.blind_for = 0

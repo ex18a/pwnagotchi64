@@ -78,13 +78,6 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         self._handshakes = {}
         self._handshakes_lock = threading.Lock()
         self.last_session = LastSession(self._config)
-        # the AI worker always starts unpaused (train.py's _ai_paused Event
-        # defaults unset), so mode must match that from boot -- hardcoding
-        # 'auto' here left mode stuck out of sync with the real running-AI
-        # state whenever a restart happened while AI-SLEEP had it paused,
-        # permanently blocking the mode=='ai' guard on the next AI-SLEEP
-        # transition until a lucky AI-WAKE resync (needs real activity,
-        # which doesn't happen if the device stays bored/idle after restart)
         self.mode = 'ai' if config.get('ai', {}).get('enabled', False) else 'auto'
         # true if any whitelisted AP was visible as of the last get_access_points() call
         self._whitelist_ap_visible = False
@@ -210,11 +203,27 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
                         logging.warning("failed to start monitor interface (attempt %d/%d): %s",
                                          failed_attempts, self.MAX_MON_START_ATTEMPTS, e)
                         if failed_attempts >= self.MAX_MON_START_ATTEMPTS:
-                            logging.critical(
-                                "monitor interface failed to start %d times in a row -- "
-                                "rebooting to clear driver state", failed_attempts)
-                            pwnagotchi.reboot(mode='AUTO')
-                            return
+                            if pwnagotchi.should_reboot_for_brcm_wedge():
+                                logging.critical(
+                                    "monitor interface failed to start %d times in a row -- "
+                                    "rebooting to clear driver state", failed_attempts)
+                                pwnagotchi.reboot(mode='AUTO')
+                                return
+                            else:
+                                # This shares its budget with watchdog.py's lockdown
+                                # reboot and pwnlib's syswatchdog reboot -- discovered
+                                # live that this call site rebooted with zero rate
+                                # limit of its own moments after the shared budget had
+                                # already denied a reboot elsewhere for the exact same
+                                # persistent wedge, which is exactly the tight-loop
+                                # scenario the budget exists to prevent. Give up and
+                                # keep retrying at the slower pace below instead of
+                                # rebooting again.
+                                logging.error(
+                                    "monitor interface failed to start %d times in a row, but "
+                                    "reboot budget exhausted -- will keep retrying without "
+                                    "rebooting", failed_attempts)
+                                failed_attempts = 0
                         time.sleep(3)
                 else:
                     logging.info("waiting for monitor interface %s ...", mon_iface)
@@ -450,7 +459,7 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         return None
 
     def _update_uptime(self, s):
-        secs = pwnagotchi.uptime()
+        secs = int(time.time() - self._started_at)
         self._view.set('uptime', utils.secs_to_hhmmss(secs))
 
     def _update_counters(self):
@@ -758,8 +767,24 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
                 return m['running']
         return False
 
+    START_MODULE_MAX_ATTEMPTS = 5
+    START_MODULE_RETRY_DELAY = 2
+
     def start_module(self, module):
-        self.run('%s on' % module)
+        last_err = None
+        for attempt in range(self.START_MODULE_MAX_ATTEMPTS):
+            try:
+                self.run('%s on' % module)
+                return
+            except Exception as err:
+                last_err = err
+                if 'Interface Not Up' in str(err):
+                    logging.warning("[start_module] %s not up yet, retrying (%d/%d) ...",
+                                     module, attempt + 1, self.START_MODULE_MAX_ATTEMPTS)
+                    time.sleep(self.START_MODULE_RETRY_DELAY)
+                    continue
+                raise
+        raise last_err
 
     def restart_module(self, module):
         self.run('%s off; %s on' % (module, module))

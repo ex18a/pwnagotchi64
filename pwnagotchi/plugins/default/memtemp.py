@@ -14,7 +14,7 @@ import time
 
 class MemTemp(plugins.Plugin):
     __author__ = 'https://github.com/xenDE'
-    __version__ = '1.0.3'
+    __version__ = '1.0.4'
     __license__ = 'GPL3'
     __description__ = 'A plugin that will display memory/cpu usage and temperature'
 
@@ -25,8 +25,8 @@ class MemTemp(plugins.Plugin):
         'freq': 'cpu_freq'
     }
     DEFAULT_FIELDS = ['mem', 'cpu', 'temp']
-    LINE_SPACING = 10
-    LABEL_SPACING = 0
+    LINE_SPACING = 11
+    LABEL_SPACING = 5
     FIELD_WIDTH = 4
     REFRESH_INTERVAL = 15  # seconds
 
@@ -93,8 +93,8 @@ class MemTemp(plugins.Plugin):
             # regardless of portrait/landscape here. Each driver now sets
             # its own 'memtemp_header' layout key instead, checked first.
             layout_header = ui._layout.get('memtemp_header')
-            if layout_header and self.options['orientation'] != 'vertical':
-                h_pos = layout_header
+            if layout_header:
+                h_pos = ui._layout.get('memtemp_horizontal_header', layout_header)
                 v_pos = layout_header
             elif ui.is_waveshare_v2():
                 h_pos = (178, 84)
@@ -115,34 +115,65 @@ class MemTemp(plugins.Plugin):
                 h_pos = (155, 76)
                 v_pos = (175, 61)
 
+        self._right_edge = ui._layout.get('memtemp_right_edge')
+
         if self.options['orientation'] == "vertical":
-            # Dynamically create the required LabeledValue objects
+            if self._right_edge is not None:
+                label_width = max(fonts.Bold.getlength(f.upper()) for f in self.fields)
+                self._value_right_edge = self._right_edge - label_width - self.LABEL_SPACING
+
             for idx, field in enumerate(self.fields):
                 v_pos_x = v_pos[0]
                 v_pos_y = v_pos[1] + ((len(self.fields) - 3) * -1 * line_spacing)
-                ui.add_element(
-                    f"memtemp_{field}",
-                    LabeledValue(
-                        color=view.BLACK,
-                        label=f"{self.pad_text(field)}:",
-                        value="-",
-                        position=(v_pos_x, v_pos_y + (idx * line_spacing)),
-                        label_font=fonts.Small,
-                        text_font=fonts.Small,
-                        label_spacing=self.LABEL_SPACING,
+                position = (v_pos_x, v_pos_y + (idx * line_spacing))
+                if self._right_edge is not None:
+                    ui.add_element(
+                        f"memtemp_{field}_label",
+                        Text(
+                            color=view.BLACK,
+                            value=field.upper(),
+                            position=position,
+                            right_edge=self._right_edge,
+                            font=fonts.Bold,
+                        )
                     )
-                )
+                    ui.add_element(
+                        f"memtemp_{field}",
+                        Text(
+                            color=view.BLACK,
+                            value="-",
+                            position=position,
+                            right_edge=self._value_right_edge,
+                            font=fonts.Medium,
+                        )
+                    )
+                else:
+                    ui.add_element(
+                        f"memtemp_{field}",
+                        LabeledValue(
+                            color=view.BLACK,
+                            label=f"{self.pad_text(field.upper())}",
+                            value="-",
+                            position=position,
+                            label_font=fonts.Bold,
+                            text_font=fonts.Medium,
+                            label_spacing=self.LABEL_SPACING,
+                        )
+                    )
         else:
             # default to horizontal
             h_pos_x = h_pos[0] + ((len(self.fields) - 3) * -1 * 25)
             h_pos_y = h_pos[1]
+            header_text = " ".join([self.pad_text(x.upper()) for x in self.fields])
+            if self._right_edge is not None:
+                h_pos_x = self._right_edge - fonts.Bold.getlength(header_text)
             ui.add_element(
                 'memtemp_header',
                 Text(
                     color=view.BLACK,
-                    value=" ".join([self.pad_text(x) for x in self.fields]),
+                    value=header_text,
                     position=(h_pos_x, h_pos_y),
-                    font=fonts.Small,
+                    font=fonts.Bold,
                 )
             )
             ui.add_element(
@@ -151,7 +182,7 @@ class MemTemp(plugins.Plugin):
                     color=view.BLACK,
                     value=" ".join([self.pad_text("-") for x in self.fields]),
                     position=(h_pos_x, h_pos_y + line_spacing),
-                    font=fonts.Small,
+                    font=fonts.Medium,
                 )
             )
 
@@ -160,6 +191,8 @@ class MemTemp(plugins.Plugin):
             if self.options['orientation'] == "vertical":
                 for idx, field in enumerate(self.fields):
                     ui.remove_element(f"memtemp_{field}")
+                    if self._right_edge is not None:
+                        ui.remove_element(f"memtemp_{field}_label")
             else:
                 # default to horizontal
                 ui.remove_element('memtemp_header')
@@ -177,7 +210,8 @@ class MemTemp(plugins.Plugin):
 
         if self.options['orientation'] == "vertical":
             for idx, field in enumerate(self.fields):
-                ui.set(f"memtemp_{field}", getattr(self, self.ALLOWED_FIELDS[field])())
+                reading = getattr(self, self.ALLOWED_FIELDS[field])()
+                ui.set(f"memtemp_{field}", reading)
         else:
             # default to horizontal
             data = " ".join([self.pad_text(getattr(self, self.ALLOWED_FIELDS[x])()) for x in self.fields])

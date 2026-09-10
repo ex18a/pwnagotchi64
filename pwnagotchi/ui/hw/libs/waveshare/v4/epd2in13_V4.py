@@ -45,7 +45,9 @@ class EPD:
         self.cs_pin = epdconfig.CS_PIN
         self.width = EPD_WIDTH
         self.height = EPD_HEIGHT
-        
+        self.border_full = 0x05
+        self.border_partial = 0x80
+
     '''
     function :Hardware reset
     parameter:
@@ -189,7 +191,7 @@ class EPD:
         self.SetCursor(0, 0)
         
         self.send_command(0x3c)
-        self.send_data(0x05)
+        self.send_data(self.border_full)
 
         self.send_command(0x21) #  Display update control
         self.send_data(0x00)
@@ -290,7 +292,7 @@ class EPD:
         epdconfig.digital_write(self.reset_pin, 1)  
 
         self.send_command(0x3C) # BorderWavefrom
-        self.send_data(0x80)
+        self.send_data(self.border_partial)
 
         self.send_command(0x01) # Driver output control      
         self.send_data(0xF9) 

@@ -1,0 +1,49 @@
+--- a/drivers/mmc/core/sdio_irq.c	2026-09-09 12:07:48.032685105 +0100
++++ b/drivers/mmc/core/sdio_irq.c	2026-09-09 12:08:18.731409696 +0100
+@@ -112,7 +112,17 @@
+ 
+ static void sdio_run_irqs(struct mmc_host *host)
+ {
+-	mmc_claim_host(host);
++	/*
++	 * Use the abort-aware claim (the same one sdio_irq_thread() already
++	 * relies on below) instead of a plain mmc_claim_host(). A concurrent
++	 * sdio_card_irq_put() tearing this card down holds the host claimed
++	 * while it cancels this work item via cancel_work_sync() -- a plain
++	 * blocking claim here would deadlock against that caller forever
++	 * (the same self-deadlock class as the removed brcmf_sdio_checkdied()
++	 * call). Bail out without processing if we're told to abort.
++	 */
++	if (__mmc_claim_host(host, NULL, &host->sdio_irq_thread_abort))
++		return;
+ 	if (host->sdio_irqs) {
+ 		process_sdio_pending_irqs(host);
+ 		if (!host->sdio_irq_pending)
+@@ -239,6 +249,7 @@
+ 				return err;
+ 			}
+ 		} else if (host->caps & MMC_CAP_SDIO_IRQ) {
++			atomic_set(&host->sdio_irq_thread_abort, 0);
+ 			host->ops->enable_sdio_irq(host, 1);
+ 		}
+ 	}
+@@ -261,6 +272,19 @@
+ 			kthread_stop(host->sdio_irq_thread);
+ 		} else if (host->caps & MMC_CAP_SDIO_IRQ) {
+ 			host->ops->enable_sdio_irq(host, 0);
++			/*
++			 * A hardware IRQ may have raced us here and already
++			 * scheduled sdio_irq_work before enable_sdio_irq()
++			 * above took effect. That work item calls
++			 * mmc_claim_host() (now the abort-aware variant, see
++			 * sdio_run_irqs()) -- signal the same abort flag the
++			 * thread path already uses so a work item blocked on
++			 * the claim gives up instead of deadlocking against
++			 * us, since we (the caller of sdio_card_irq_put, see
++			 * WARN_ON above) already hold the host claimed here.
++			 */
++			atomic_set(&host->sdio_irq_thread_abort, 1);
++			cancel_work_sync(&host->sdio_irq_work);
+ 		}
+ 	}
+ 

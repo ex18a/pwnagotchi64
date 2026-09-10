@@ -3,8 +3,8 @@ Description=Run pwnagotchi-syswatchdog periodically
 
 [Timer]
 OnBootSec=5min
-OnUnitActiveSec=3min
-AccuracySec=30s
+OnUnitActiveSec=1min
+AccuracySec=15s
 
 [Install]
 WantedBy=timers.target

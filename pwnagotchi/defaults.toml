@@ -72,6 +72,9 @@ orientation = "horizontal"
 [main.plugins.tweak_view]
 enabled = true
 
+[main.plugins.webcfg]
+enabled = false
+
 [ai]
 enabled = true
 path = "/root/brain.nn"

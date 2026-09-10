@@ -105,6 +105,7 @@ if [ "$BUILD_BASE" = "1" ]; then
     echo " [*] Step 3.5a: Injecting base-stage assets..."
     cp apt-requirements.txt /mnt/tmp/
     cp -r builder/assets/networkmanager /mnt/tmp/networkmanager
+    cp builder/patches/brcmfmac-nexmon-checkdied-deadlock.patch /mnt/tmp/
 
     chroot /mnt /bin/bash <<'EOF'
 set -e
@@ -135,6 +136,24 @@ grep -vE '^\s*#|^\s*$' /tmp/apt-requirements.txt | xargs apt-get install -y
 
 echo "  -> [Chroot] PHASE 4.4b: Installing realtek-rtl88xxau-dkms (image-build only, see pwnagotchi.sh.md)..."
 apt-get install -y realtek-rtl88xxau-dkms
+
+echo "  -> [Chroot] PHASE 4.4c: Patching brcmfmac-nexmon (SDIO checkdied deadlock fix, see pwnagotchi.sh.md)..."
+apt-get install -y patch
+for src_dir in /usr/src/brcmfmac-nexmon-*; do
+    [ -d "$src_dir" ] || continue
+    if grep -q "block forever if another context" "$src_dir/sdio.c" 2>/dev/null; then
+        echo "     (already patched, skipping)"
+        continue
+    fi
+    patch -p1 -d "$src_dir" < /tmp/brcmfmac-nexmon-checkdied-deadlock.patch
+    pkg_version="$(basename "$src_dir" | sed 's/^brcmfmac-nexmon-//')"
+    for modules_dir in /lib/modules/*; do
+        kernelver="$(basename "$modules_dir")"
+        [ -d "$modules_dir/build" ] || continue
+        dkms build "brcmfmac-nexmon/$pkg_version" -k "$kernelver" --force
+        dkms install "brcmfmac-nexmon/$pkg_version" -k "$kernelver" --force
+    done
+done
 
 echo "  -> [Chroot] Downloading and installing 64-bit Pwngrid engine..."
 wget -q "https://github.com/jayofelony/pwngrid/releases/download/v1.11.1/pwngrid-1.11.1-aarch64.zip" -O /tmp/pwngrid_engine.zip
