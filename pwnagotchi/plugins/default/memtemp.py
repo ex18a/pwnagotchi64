@@ -122,11 +122,12 @@ class MemTemp(plugins.Plugin):
             v_pos_x = v_pos[0]
             v_pos_y = v_pos[1] + ((len(self.fields) - 3) * -1 * line_spacing)
             position = self._positions.get(field, (v_pos_x, v_pos_y + (idx * line_spacing)))
+            label = field.upper() if field in self._positions else self.pad_text(field.upper())
             ui.add_element(
                 f"memtemp_{field}",
                 LabeledValue(
                     color=view.BLACK,
-                    label=f"{self.pad_text(field.upper())}",
+                    label=label,
                     value="-",
                     position=position,
                     label_font=fonts.Bold,
