@@ -83,7 +83,21 @@ reset_brcm_host_controller() {
   _brcm_verify_reattached
 }
 
+RELOAD_BRCM_MARKER="/run/pwnagotchi-reload-brcm-last"
+RELOAD_BRCM_COOLDOWN_SECONDS=90
+RELOAD_BRCM_SKIPPED=75
+
 reload_brcm() {
+  local now last
+  now="$(date +%s)"
+  if [ -f "$RELOAD_BRCM_MARKER" ]; then
+    last="$(stat -c %Y "$RELOAD_BRCM_MARKER" 2>/dev/null || echo 0)"
+    if [ $((now - last)) -lt "$RELOAD_BRCM_COOLDOWN_SECONDS" ]; then
+      return "$RELOAD_BRCM_SKIPPED"
+    fi
+  fi
+  touch "$RELOAD_BRCM_MARKER"
+
   if ! modprobe -r brcmfmac; then
     return 1
   fi
@@ -91,17 +105,6 @@ reload_brcm() {
     return 1
   fi
 
-  # modprobe returning 0 only proves the module loaded -- it does not prove
-  # the chip actually reattached over SDIO. Observed directly during the
-  # nexmon RE investigation: modprobe succeeded while the driver's SDIO
-  # probe subsequently failed asynchronously ("brcmf_attach: dongle is not
-  # responding" / "failed backplane access"), well after modprobe had
-  # already returned. Without this check the caller declares success and
-  # just restarts bettercap onto a dead interface, leaving wifi silently
-  # broken until the next watchdog cycle (up to several minutes) rediscovers
-  # it via check_brcm(). Give the async probe a few seconds, then verify
-  # both a fresh failure signature is absent and a brcmfmac-bound interface
-  # actually exists before declaring success.
   sleep 5
   _brcm_verify_reattached
 }

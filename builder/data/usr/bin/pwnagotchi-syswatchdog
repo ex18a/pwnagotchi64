@@ -15,6 +15,9 @@ CPU_TEMP_RESUME_C=50
 CPU_TEMP_HARD_REBOOT_C=85
 CPU_HOT_PAUSE_MARKER="/run/pwnagotchi-syswatchdog-hot-pause"
 BRCM_RECOVERY_MARKER="/run/pwnagotchi-syswatchdog-brcm-recovery"
+BRCM_REBOOT_HISTORY="/var/lib/pwnagotchi/brcm-reboot-history"
+BRCM_REBOOT_MAX=3
+BRCM_REBOOT_WINDOW_SECONDS=3600
 PIP_INSTALL_MAX_SECONDS=240
 USB0_GATEWAY="10.42.0.1"
 UPDATE_MAINTENANCE_MARKER="/run/pwnagotchi-automatic-updates-maintenance"
@@ -22,6 +25,48 @@ UPDATE_MAINTENANCE_MARKER="/run/pwnagotchi-automatic-updates-maintenance"
 log() {
     logger -t pwnagotchi-syswatchdog "$1"
     echo "$(date -Is) $1" >> "$WATCHDOG_LOG"
+}
+
+brcm_reboots_in_window() {
+    local now cutoff ts kept="" count=0
+    now="$(date +%s)"
+    cutoff=$((now - BRCM_REBOOT_WINDOW_SECONDS))
+    if [ -f "$BRCM_REBOOT_HISTORY" ]; then
+        while read -r ts; do
+            case "$ts" in ''|*[!0-9]*) continue ;; esac
+            if [ "$ts" -gt "$cutoff" ]; then
+                kept="${kept}${ts}"$'\n'
+                count=$((count + 1))
+            fi
+        done < "$BRCM_REBOOT_HISTORY"
+    fi
+    mkdir -p "$(dirname "$BRCM_REBOOT_HISTORY")" 2>/dev/null
+    printf '%s' "$kept" > "$BRCM_REBOOT_HISTORY" 2>/dev/null
+    printf '%s' "$count"
+}
+
+record_brcm_reboot() {
+    mkdir -p "$(dirname "$BRCM_REBOOT_HISTORY")" 2>/dev/null
+    date +%s >> "$BRCM_REBOOT_HISTORY" 2>/dev/null
+    sync
+}
+
+brcm_recover_or_reboot() {
+    local reason="$1" used
+    used="$(brcm_reboots_in_window)"
+    if [ "$used" -ge "$BRCM_REBOOT_MAX" ]; then
+        log "CRITICAL: $reason -- but ${used} brcm reboots already happened in the last $((BRCM_REBOOT_WINDOW_SECONDS / 60))min, so NOT rebooting and NOT attempting the host controller rebind. Staying up as-is so the device keeps whatever wifi it still has and stays reachable for diagnosis."
+        return 1
+    fi
+    if reset_brcm_host_controller; then
+        log "$reason -- SDIO host controller rebind recovered the chip, no reboot needed"
+        sleep 5
+        systemctl restart bettercap
+        return 0
+    fi
+    record_brcm_reboot
+    reboot_with_reason "$reason (host controller rebind also failed; brcm reboot $((used + 1)) of ${BRCM_REBOOT_MAX} in window)"
+    return 1
 }
 
 reboot_with_reason() {
@@ -67,17 +112,23 @@ fi
 
 if ! check_brcm; then
     if [ -f "$BRCM_RECOVERY_MARKER" ]; then
-        reboot_with_reason "brcmfmac still flaky after an earlier reload_brcm attempt this boot -- reload didn't hold"
+        brcm_recover_or_reboot "brcmfmac still flaky after an earlier reload_brcm attempt this boot -- reload didn't hold"
         exit 0
     fi
     log "brcmfmac flakiness detected -- attempting reload_brcm (no reboot) ..."
     touch "$BRCM_RECOVERY_MARKER"
-    if reload_brcm; then
+    reload_brcm
+    reload_rc=$?
+    if [ "$reload_rc" -eq 0 ]; then
         sleep 10
         systemctl restart bettercap
         log "reload_brcm succeeded, bettercap restarted"
+    elif [ "$reload_rc" -eq "$RELOAD_BRCM_SKIPPED" ]; then
+        log "brcmfmac flaky but reload_brcm is within its ${RELOAD_BRCM_COOLDOWN_SECONDS}s cooldown -- skipping this cycle rather than wedging the SDIO bus"
+        rm -f "$BRCM_RECOVERY_MARKER"
+        exit 0
     else
-        reboot_with_reason "reload_brcm failed outright"
+        brcm_recover_or_reboot "reload_brcm failed outright"
         exit 0
     fi
 fi
