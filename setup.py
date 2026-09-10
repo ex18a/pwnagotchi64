@@ -130,7 +130,6 @@ def restart_services():
     os.system("udevadm control --reload-rules && udevadm trigger")
     os.system("systemctl enable fstrim.timer")
     os.system("systemctl enable --now pwnagotchi-syswatchdog.timer")
-    os.system("systemctl enable --now pwnagotchi-memory-clear.timer")
 
     os.system("systemctl disable --now hciuart.service 2>/dev/null")
     os.system("systemctl disable --now bluetooth.service bt-agent.service 2>/dev/null")

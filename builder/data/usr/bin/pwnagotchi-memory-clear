@@ -1,9 +1,0 @@
-#!/usr/bin/env bash
-
-if pgrep -f 'pip3 install .*--no-build-isolation' >/dev/null 2>&1; then
-  logger -t pwnagotchi-memory-clear "automatic-updates install in progress, skipping this cycle"
-  exit 0
-fi
-
-logger -t pwnagotchi-memory-clear "restarting pwnagotchi.service to reclaim accumulated memory"
-systemctl restart pwnagotchi.service
