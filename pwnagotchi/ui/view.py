@@ -80,7 +80,7 @@ class View(object):
             'line2': Line(self._layout['line2'], color=BLACK),
 
             'face': Text(value=faces.SLEEP, position=self._layout['face'], color=BLACK, font=fonts.Huge,
-                         center_width=self._layout.get('face_width')),
+                         center_width=self._layout.get('face_width'), png=faces.PNG),
 
             'friend_name': Text(value=None, position=self._layout['friend_name'], font=fonts.BoldSmall,
                                 color=BLACK),
@@ -253,7 +253,7 @@ class View(object):
         if key == 'status':
             # Flatten multi-line strings so the Web UI log parser doesn't eat the first words!
             safe_log = value.strip().replace('\n', ' | ')
-            face = self._state.get('face') or ''
+            face = faces.as_text(self._state.get('face') or '')
             if self._config['ui'].get('status-log', True):
                 if not hasattr(self, '_last_logged_status') or self._last_logged_status != value:
                     import logging

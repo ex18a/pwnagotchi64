@@ -127,6 +127,8 @@ name = "DejaVuSansMono"
 size_offset = 0
 
 [ui.faces]
+png = false
+image_dir = "/root/faces"
 look_r = ["( ⚆_⚆)", "( ◕_◕)"]
 look_l = ["(☉_☉ )", "(◕_◕ )"]
 look_r_happy = ["( ◕‿◕)", "( ≧◡≦)"]
