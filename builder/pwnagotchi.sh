@@ -230,6 +230,8 @@ cp -r builder/assets/bettercap /mnt/tmp/bettercap_assets
 cp -r builder/assets/system/ /mnt/tmp/system/
 
 cp builder/assets/boot/config.txt /mnt/boot/firmware/config.txt
+rm -f /mnt/boot/firmware/kernel8.img
+cp builder/assets/boot/kernel8-sdiofix.img /mnt/boot/firmware/kernel8-sdiofix.img
 
 chroot /mnt /bin/bash <<EOF
 set -e

@@ -23,4 +23,3 @@ python3-numpy
 python3-pandas
 util-linux-extra
 htop
-tmux
