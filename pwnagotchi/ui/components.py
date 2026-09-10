@@ -68,15 +68,6 @@ class Widget(object):
         raise Exception("not implemented")
 
 
-class Bitmap(Widget):
-    def __init__(self, path, xy, color=0):
-        super().__init__(xy, color)
-        self.image = Image.open(path)
-
-    def draw(self, canvas, drawer):
-        canvas.paste(self.image, self.xy)
-
-
 class Line(Widget):
     def __init__(self, xy, color=0, width=1):
         super().__init__(xy, color)
@@ -84,16 +75,6 @@ class Line(Widget):
 
     def draw(self, canvas, drawer):
         drawer.line(self.xy, fill=self.color, width=self.width)
-
-
-class Rect(Widget):
-    def draw(self, canvas, drawer):
-        drawer.rectangle(self.xy, outline=self.color)
-
-
-class FilledRect(Widget):
-    def draw(self, canvas, drawer):
-        drawer.rectangle(self.xy, fill=self.color)
 
 
 class Text(Widget):

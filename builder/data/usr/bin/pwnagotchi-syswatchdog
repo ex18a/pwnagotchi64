@@ -27,16 +27,10 @@ log() {
 brcm_recover_or_reboot() {
     local reason="$1"
     if ! brcm_reboot_allowed; then
-        log "CRITICAL: $reason -- but the shared brcm reboot budget is exhausted, so NOT rebooting and NOT attempting the host controller rebind. Staying up as-is so the device keeps whatever wifi it still has and stays reachable for diagnosis."
+        log "CRITICAL: $reason -- but the shared brcm reboot budget is exhausted, so NOT rebooting. Staying up as-is so the device keeps whatever wifi it still has and stays reachable for diagnosis."
         return 1
     fi
-    if reset_brcm_host_controller; then
-        log "$reason -- SDIO host controller rebind recovered the chip, no reboot needed"
-        sleep 5
-        systemctl restart bettercap
-        return 0
-    fi
-    reboot_with_reason "$reason (host controller rebind also failed)"
+    reboot_with_reason "$reason"
     return 1
 }
 

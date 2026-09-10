@@ -67,22 +67,6 @@ _brcm_verify_reattached() {
   return 1
 }
 
-reset_brcm_host_controller() {
-  local dev="3f300000.mmcnr"
-  local driver_dir="/sys/bus/platform/drivers/mmc-bcm2835"
-  [ -e "$driver_dir/$dev" ] || return 1
-
-  if ! timeout 15 bash -c "echo '$dev' > '$driver_dir/unbind'" 2>/dev/null; then
-    return 1
-  fi
-  sleep 2
-  if ! timeout 15 bash -c "echo '$dev' > '$driver_dir/bind'" 2>/dev/null; then
-    return 1
-  fi
-  sleep 5
-  _brcm_verify_reattached
-}
-
 BRCM_REBOOT_STATE_FILE="/root/.pwnagotchi-brcm-reboot-state"
 BRCM_REBOOT_WINDOW_SECS=1800
 BRCM_REBOOT_MAX_IN_WINDOW=3
