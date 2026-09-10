@@ -1,0 +1,6 @@
+[Unit]
+Description=Periodically restart pwnagotchi.service to reclaim accumulated memory
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/pwnagotchi-memory-clear
