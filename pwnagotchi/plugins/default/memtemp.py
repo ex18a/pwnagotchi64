@@ -1,4 +1,15 @@
 from pwnagotchi.ui.components import LabeledValue, Text
+import pwnagotchi.ui.view as view
+# NOT "from pwnagotchi.ui.view import BLACK" -- that grabs a static
+# snapshot of BLACK at plugin-import time, before View.__init__'s
+# ui.display.color-based inversion has run, so it never reflects the
+# swap. view.BLACK is looked up fresh every time it's actually used
+# below, by which point the inversion has happened.
+import pwnagotchi.ui.fonts as fonts
+import pwnagotchi.plugins as plugins
+import pwnagotchi
+import logging
+import time
 
 
 class BoldText(Text):
@@ -15,17 +26,6 @@ class BoldLabeledValue(LabeledValue):
         super().draw(canvas, drawer)
         if self.label is not None:
             drawer.text((self.xy[0] + 1, self.xy[1]), self.label, font=self.label_font, fill=self.color)
-import pwnagotchi.ui.view as view
-# NOT "from pwnagotchi.ui.view import BLACK" -- that grabs a static
-# snapshot of BLACK at plugin-import time, before View.__init__'s
-# ui.display.color-based inversion has run, so it never reflects the
-# swap. view.BLACK is looked up fresh every time it's actually used
-# below, by which point the inversion has happened.
-import pwnagotchi.ui.fonts as fonts
-import pwnagotchi.plugins as plugins
-import pwnagotchi
-import logging
-import time
 
 
 class MemTemp(plugins.Plugin):
