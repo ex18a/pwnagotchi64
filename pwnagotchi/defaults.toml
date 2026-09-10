@@ -67,7 +67,7 @@ whitelist = []
 [main.plugins.memtemp]
 enabled = true
 scale = "celsius"
-orientation = "horizontal"
+fields = "cpu,temp"
 
 [main.plugins.tweak_view]
 enabled = true

@@ -47,9 +47,6 @@ class WaveshareV4(DisplayImpl):
         self._layout['ip1'] = (0, 94)
         self._layout['lifetime_trained'] = (113, 94)
         self._layout['memtemp_header'] = (155, 72)
-        self._layout['memtemp_horizontal_header'] = (155, 83)
-        self._layout['memtemp_data'] = (155, 86)
-        self._layout['memtemp_right_edge'] = 249
         self._layout['status'] = {
             'pos': (125, 20),
             'font': fonts.status_font(fonts.Medium),

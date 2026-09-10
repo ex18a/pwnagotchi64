@@ -42,11 +42,11 @@ class WaveshareV4Portrait(DisplayImpl):
         self._layout['last_pwnd_name'] = (0, 236)
         self._layout['mode_right_edge'] = (121, 226)
         self._layout.pop('mode', None)
-        self._layout['ip1'] = (0, 188)
-        self._layout['lifetime_trained'] = (0, 199)
-        self._layout['memtemp_header'] = (16, 155)
-        self._layout['memtemp_right_edge'] = 121
-        self._layout['memtemp_data'] = (16, 170)
+        self._layout['ip1'] = (0, 177)
+        self._layout['lifetime_trained'] = (0, 188)
+        self._layout['memtemp_header'] = (0, 199)
+        self._layout['memtemp_cpu'] = (0, 199)
+        self._layout['memtemp_temp'] = (62, 199)
         self._layout['status'] = {
             'pos': (4, 42),
             'font': fonts.status_font(fonts.Medium),
