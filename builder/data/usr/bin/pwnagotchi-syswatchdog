@@ -65,39 +65,12 @@ if ip link show usb0 >/dev/null 2>&1; then
     fi
 fi
 
-BRCM_WEDGE_MARKER="/run/pwnagotchi-brcm-wedge-recover-last"
-BRCM_WEDGE_ESCALATE_WINDOW=300
-
 if brcm_hard_failure; then
     if brcm_reboot_allowed; then
-        reboot_with_reason "brcmfmac hard failure (fw_crashed / backplane halt) -- chip is dead, only a reboot re-inits it"
+        reboot_with_reason "brcmfmac hard failure (fw_crashed / backplane halt) -- chip halted, only a reboot re-inits it"
     else
         log "CRITICAL: brcmfmac hard failure but the brcm reboot budget is exhausted -- staying up degraded so the device stays reachable for diagnosis."
     fi
-    exit 0
-fi
-
-if brcm_injection_wedged; then
-    now="$(date +%s)"
-    if [ -f "$BRCM_WEDGE_MARKER" ]; then
-        last="$(stat -c %Y "$BRCM_WEDGE_MARKER" 2>/dev/null || echo 0)"
-        if [ $((now - last)) -lt "$BRCM_WEDGE_ESCALATE_WINDOW" ]; then
-            since_fails="$(journalctl -k --since "@$last" 2>/dev/null | grep -c 'nexmon_set_channel.*Set Channel failed')"
-            if [ "${since_fails:-0}" -ge 3 ]; then
-                rm -f "$BRCM_WEDGE_MARKER"
-                if brcm_reboot_allowed; then
-                    reboot_with_reason "brcmfmac injection wedge persisted after a bettercap restart -- escalating to reboot"
-                else
-                    log "CRITICAL: brcmfmac wedge persisted after a bettercap restart and the reboot budget is exhausted -- staying up degraded."
-                fi
-                exit 0
-            fi
-            exit 0
-        fi
-    fi
-    touch "$BRCM_WEDGE_MARKER"
-    log "brcmfmac injection wedge (set_channel timeouts, chip still alive) -- restarting bettercap to recover the monitor interface in-place, no reboot"
-    systemctl restart bettercap
     exit 0
 fi
 
