@@ -14,7 +14,6 @@ CPU_TEMP_PAUSE_C=70
 CPU_TEMP_RESUME_C=50
 CPU_TEMP_HARD_REBOOT_C=85
 CPU_HOT_PAUSE_MARKER="/run/pwnagotchi-syswatchdog-hot-pause"
-BRCM_RECOVERY_MARKER="/run/pwnagotchi-syswatchdog-brcm-recovery"
 PIP_INSTALL_MAX_SECONDS=240
 USB0_GATEWAY="10.42.0.1"
 UPDATE_MAINTENANCE_MARKER="/run/pwnagotchi-automatic-updates-maintenance"
@@ -24,15 +23,6 @@ log() {
     echo "$(date -Is) $1" >> "$WATCHDOG_LOG"
 }
 
-brcm_recover_or_reboot() {
-    local reason="$1"
-    if ! brcm_reboot_allowed; then
-        log "CRITICAL: $reason -- but the shared brcm reboot budget is exhausted, so NOT rebooting. Staying up as-is so the device keeps whatever wifi it still has and stays reachable for diagnosis."
-        return 1
-    fi
-    reboot_with_reason "$reason"
-    return 1
-}
 
 reboot_with_reason() {
     reason="$1"
@@ -75,27 +65,40 @@ if ip link show usb0 >/dev/null 2>&1; then
     fi
 fi
 
-if ! check_brcm; then
-    if [ -f "$BRCM_RECOVERY_MARKER" ]; then
-        brcm_recover_or_reboot "brcmfmac still flaky after an earlier reload_brcm attempt this boot -- reload didn't hold"
-        exit 0
-    fi
-    log "brcmfmac flakiness detected -- attempting reload_brcm (no reboot) ..."
-    touch "$BRCM_RECOVERY_MARKER"
-    reload_brcm
-    reload_rc=$?
-    if [ "$reload_rc" -eq 0 ]; then
-        sleep 10
-        systemctl restart bettercap
-        log "reload_brcm succeeded, bettercap restarted"
-    elif [ "$reload_rc" -eq "$RELOAD_BRCM_SKIPPED" ]; then
-        log "brcmfmac flaky but reload_brcm is within its ${RELOAD_BRCM_COOLDOWN_SECONDS}s cooldown -- skipping this cycle rather than wedging the SDIO bus"
-        rm -f "$BRCM_RECOVERY_MARKER"
-        exit 0
+BRCM_WEDGE_MARKER="/run/pwnagotchi-brcm-wedge-recover-last"
+BRCM_WEDGE_ESCALATE_WINDOW=300
+
+if brcm_hard_failure; then
+    if brcm_reboot_allowed; then
+        reboot_with_reason "brcmfmac hard failure (fw_crashed / backplane halt) -- chip is dead, only a reboot re-inits it"
     else
-        brcm_recover_or_reboot "reload_brcm failed outright"
-        exit 0
+        log "CRITICAL: brcmfmac hard failure but the brcm reboot budget is exhausted -- staying up degraded so the device stays reachable for diagnosis."
     fi
+    exit 0
+fi
+
+if brcm_injection_wedged; then
+    now="$(date +%s)"
+    if [ -f "$BRCM_WEDGE_MARKER" ]; then
+        last="$(stat -c %Y "$BRCM_WEDGE_MARKER" 2>/dev/null || echo 0)"
+        if [ $((now - last)) -lt "$BRCM_WEDGE_ESCALATE_WINDOW" ]; then
+            since_fails="$(journalctl -k --since "@$last" 2>/dev/null | grep -c 'nexmon_set_channel.*Set Channel failed')"
+            if [ "${since_fails:-0}" -ge 3 ]; then
+                rm -f "$BRCM_WEDGE_MARKER"
+                if brcm_reboot_allowed; then
+                    reboot_with_reason "brcmfmac injection wedge persisted after a bettercap restart -- escalating to reboot"
+                else
+                    log "CRITICAL: brcmfmac wedge persisted after a bettercap restart and the reboot budget is exhausted -- staying up degraded."
+                fi
+                exit 0
+            fi
+            exit 0
+        fi
+    fi
+    touch "$BRCM_WEDGE_MARKER"
+    log "brcmfmac injection wedge (set_channel timeouts, chip still alive) -- restarting bettercap to recover the monitor interface in-place, no reboot"
+    systemctl restart bettercap
+    exit 0
 fi
 
 temp_millic=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null || echo 0)

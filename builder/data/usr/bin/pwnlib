@@ -38,6 +38,20 @@ blink_led() {
   fi
 }
 
+brcm_injection_wedged() {
+  [[ "$(journalctl -k --since -3m 2>/dev/null | grep -c 'nexmon_set_channel.*Set Channel failed')" -ge 3 ]]
+}
+
+brcm_hard_failure() {
+  if journalctl -k --since -6m 2>/dev/null | grep -qE 'brcmf_fw_crashed|failed backplane access|dongle is not responding'; then
+    return 0
+  fi
+  if [[ "$(journalctl -k --since -10m 2>/dev/null | grep -c 'brcmf_psm_watchdog_notify')" -ge 3 ]]; then
+    return 0
+  fi
+  return 1
+}
+
 check_brcm() {
   if [[ "$(journalctl -n10 -k --since -5m | grep -c 'brcmf_cfg80211_nexmon_set_channel.*Set Channel failed')" -ge 5 ]]; then
     return 1
