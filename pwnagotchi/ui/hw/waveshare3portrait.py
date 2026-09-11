@@ -45,7 +45,6 @@ class WaveshareV3Portrait(DisplayImpl):
         self._layout['ip1'] = (0, 188)
         self._layout['lifetime_trained'] = (0, 199)
         self._layout['memtemp_header'] = (16, 160)
-        self._layout['memtemp_data'] = (16, 170)
         self._layout['status'] = {
             'pos': (4, 42),
             'font': fonts.status_font(fonts.Medium),

@@ -1,21 +1,57 @@
-from PIL import Image
+import logging
+import os
+
+from PIL import Image, ImageOps
 from textwrap import TextWrapper
 
 
+IMAGE_EXTENSIONS = ('.png', '.bmp', '.jpg', '.jpeg', '.gif')
+
+_IMAGE_CACHE = {}
+_IMAGE_FAILURES = set()
+
+
+def _load_image(path, invert, max_width):
+    try:
+        mtime = os.path.getmtime(path)
+    except OSError:
+        return None
+
+    key = (path, invert, max_width, mtime)
+    if key in _IMAGE_CACHE:
+        return _IMAGE_CACHE[key]
+
+    try:
+        with Image.open(path) as opened:
+            image = opened.convert('RGBA')
+    except Exception as e:
+        if path not in _IMAGE_FAILURES:
+            _IMAGE_FAILURES.add(path)
+            logging.warning(f"could not load face image {path}: {e}")
+        return None
+
+    flattened = Image.new('RGBA', image.size, (255, 255, 255, 255))
+    flattened.alpha_composite(image)
+    prepared = flattened.convert('L')
+
+    if max_width and prepared.width > max_width:
+        height = max(1, round(prepared.height * max_width / prepared.width))
+        prepared = prepared.resize((max_width, height), Image.LANCZOS)
+
+    if invert:
+        prepared = ImageOps.invert(prepared)
+
+    prepared = prepared.convert('1')
+    _IMAGE_CACHE[key] = prepared
+    return prepared
+
+
 def _fit_to_max_x(value, value_x, max_x, font):
-    # Shared by Text and LabeledValue -- trims value_x-anchored text so it
-    # never draws past max_x, measured against the real font's getlength()
-    # rather than a guessed character count (a fixed-width guess breaks as
-    # soon as the neighbouring element it must not collide with isn't a
-    # fixed width itself, e.g. mode_right_edge's AUTO/MANU/'  AI'/TRAIN).
     if max_x is None or font is None:
         return value
     budget = max_x - value_x
     if font.getlength(value) <= budget:
         return value
-    # These are short single-line strings (a handshake SSID, not a
-    # paragraph), so a plain linear trim is plenty -- no need for
-    # anything fancier like a binary search or word-wrapping.
     ellipsis = '…'
     trimmed = value
     while trimmed and font.getlength(trimmed + ellipsis) > budget:
@@ -62,8 +98,9 @@ class FilledRect(Widget):
 
 class Text(Widget):
     def __init__(self, value="", position=(0, 0), font=None, color=0, wrap=False, max_length=0, max_lines=0,
-                 suffix="", suffix_font=None, center_width=None, right_edge=None, max_x=None):
+                 suffix="", suffix_font=None, center_width=None, right_edge=None, max_x=None, png=False):
         super().__init__(position, color)
+        self.png = png
         self.value = value
         self.font = font
         self.wrap = wrap
@@ -74,16 +111,25 @@ class Text(Widget):
         self.suffix_xy = None
         self.center_width = center_width
         self.right_edge = right_edge
-        # Absolute x-coordinate the value must not be drawn past -- see
-        # _fit_to_max_x() above. Only meaningful for the plain xy-anchored
-        # draw path (not wrap/center_width/right_edge, which each already
-        # bound their own width differently); None (default) means no
-        # limit, so every other Text user is unaffected.
         self.max_x = max_x
         self.wrapper = TextWrapper(width=self.max_length, replace_whitespace=False) if wrap else None
 
+    def _draw_image(self, canvas):
+        max_width = self.center_width or canvas.size[0]
+        image = _load_image(self.value, self.color == 0xff, max_width)
+        if image is None:
+            return False
+        x, y = self.xy
+        if self.center_width:
+            x += max(0, (self.center_width - image.width) // 2)
+        canvas.paste(image, (int(x), int(y)))
+        return True
+
     def draw(self, canvas, drawer):
         if self.value is not None:
+            if self.png and str(self.value).lower().endswith(IMAGE_EXTENSIONS):
+                self._draw_image(canvas)
+                return
             if self.wrap:
                 text = '\n'.join('\n'.join(self.wrapper.wrap(line)) if line else ''
                                   for line in self.value.split('\n'))

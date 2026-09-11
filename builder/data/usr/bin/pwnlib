@@ -38,6 +38,24 @@ blink_led() {
   fi
 }
 
+brcm_hard_failure() {
+  if journalctl -k --since -6m 2>/dev/null | grep -qE 'brcmf_fw_crashed|failed backplane access|dongle is not responding'; then
+    return 0
+  fi
+  if [[ "$(journalctl -k --since -10m 2>/dev/null | grep -c 'brcmf_psm_watchdog_notify')" -ge 3 ]]; then
+    return 0
+  fi
+  return 1
+}
+
+# True if the wifi chip is currently alive and responsive. After a firmware
+# crash the kernel auto-power-cycles the chip in place (mmc_hw_reset drives the
+# WL_ON mmc-pwrseq, gpio-553); when that succeeds wlan0 re-appears and answers.
+# Used to tell an already-recovered crash from one that still needs a reboot.
+brcm_chip_alive() {
+  iw dev wlan0 info >/dev/null 2>&1
+}
+
 check_brcm() {
   if [[ "$(journalctl -n10 -k --since -5m | grep -c 'brcmf_cfg80211_nexmon_set_channel.*Set Channel failed')" -ge 5 ]]; then
     return 1
@@ -67,23 +85,50 @@ _brcm_verify_reattached() {
   return 1
 }
 
-reset_brcm_host_controller() {
-  local dev="3f300000.mmcnr"
-  local driver_dir="/sys/bus/platform/drivers/mmc-bcm2835"
-  [ -e "$driver_dir/$dev" ] || return 1
+BRCM_REBOOT_STATE_FILE="/root/.pwnagotchi-brcm-reboot-state"
+BRCM_REBOOT_WINDOW_SECS=1800
+BRCM_REBOOT_MAX_IN_WINDOW=3
 
-  if ! timeout 15 bash -c "echo '$dev' > '$driver_dir/unbind'" 2>/dev/null; then
+brcm_reboot_allowed() {
+  local now count last
+  now="$(date +%s)"
+  count=0
+  last=0
+  if [ -r "$BRCM_REBOOT_STATE_FILE" ]; then
+    read -r count last < "$BRCM_REBOOT_STATE_FILE" || true
+    case "$count" in ''|*[!0-9]*) count=0 ;; esac
+    case "$last"  in ''|*[!0-9]*) last=0 ;; esac
+  fi
+
+  if [ $((now - last)) -gt "$BRCM_REBOOT_WINDOW_SECS" ]; then
+    count=0
+  fi
+
+  if [ "$count" -ge "$BRCM_REBOOT_MAX_IN_WINDOW" ]; then
     return 1
   fi
-  sleep 2
-  if ! timeout 15 bash -c "echo '$dev' > '$driver_dir/bind'" 2>/dev/null; then
-    return 1
-  fi
-  sleep 5
-  _brcm_verify_reattached
+
+  count=$((count + 1))
+  printf '%d %d' "$count" "$now" > "$BRCM_REBOOT_STATE_FILE" 2>/dev/null
+  sync
+  return 0
 }
 
+RELOAD_BRCM_MARKER="/run/pwnagotchi-reload-brcm-last"
+RELOAD_BRCM_COOLDOWN_SECONDS=90
+RELOAD_BRCM_SKIPPED=75
+
 reload_brcm() {
+  local now last
+  now="$(date +%s)"
+  if [ -f "$RELOAD_BRCM_MARKER" ]; then
+    last="$(stat -c %Y "$RELOAD_BRCM_MARKER" 2>/dev/null || echo 0)"
+    if [ $((now - last)) -lt "$RELOAD_BRCM_COOLDOWN_SECONDS" ]; then
+      return "$RELOAD_BRCM_SKIPPED"
+    fi
+  fi
+  touch "$RELOAD_BRCM_MARKER"
+
   if ! modprobe -r brcmfmac; then
     return 1
   fi
@@ -91,17 +136,6 @@ reload_brcm() {
     return 1
   fi
 
-  # modprobe returning 0 only proves the module loaded -- it does not prove
-  # the chip actually reattached over SDIO. Observed directly during the
-  # nexmon RE investigation: modprobe succeeded while the driver's SDIO
-  # probe subsequently failed asynchronously ("brcmf_attach: dongle is not
-  # responding" / "failed backplane access"), well after modprobe had
-  # already returned. Without this check the caller declares success and
-  # just restarts bettercap onto a dead interface, leaving wifi silently
-  # broken until the next watchdog cycle (up to several minutes) rediscovers
-  # it via check_brcm(). Give the async probe a few seconds, then verify
-  # both a fresh failure signature is absent and a brcmfmac-bound interface
-  # actually exists before declaring success.
   sleep 5
   _brcm_verify_reattached
 }

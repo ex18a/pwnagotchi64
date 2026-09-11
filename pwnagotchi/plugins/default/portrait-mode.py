@@ -7,7 +7,7 @@ import pwnagotchi.plugins as plugins
 
 class PortraitMode(plugins.Plugin):
     __author__ = 'ex18a'
-    __version__ = '2.0.1'
+    __version__ = '2.0.2'
     __license__ = 'GPL3'
     __description__ = 'Switches to portrait driver and repositions plugin elements.'
 
@@ -53,7 +53,6 @@ class PortraitMode(plugins.Plugin):
             'ip1':              ImageFont.truetype(self.FONT_REGULAR, 10),
             'lifetime_trained': ImageFont.truetype(self.FONT_REGULAR, 10),
             'memtemp_header':   ImageFont.truetype(self.FONT_REGULAR, 10),
-            'memtemp_data':     ImageFont.truetype(self.FONT_REGULAR, 10),
         }
 
     def _sync_layout_extras(self, elements, layout):

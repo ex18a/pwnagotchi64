@@ -4,6 +4,13 @@
 [pi02]
 # Enable USB Ethernet Gadget mode
 dtoverlay=dwc2
+# Underclock for heat -- Zero 2 W only, the bigger Pis keep their stock clock
+arm_freq=800
+# Wire WL_ON (gpio-553) as the wifi SDIO mmc-pwrseq reset line so the kernel can
+# power-cycle the BCM43430b0 in place after a firmware crash (mmc_hw_reset ->
+# WL_ON low/high -> clean re-init, no reboot). BCM2837 (Zero 2 W) wiring; see
+# overlays/wifi-pwrseq.dts and .claude-notes/brcmf-crash-root-cause-investigation.md
+dtoverlay=wifi-pwrseq
 
 # ==========================================
 # PWNAGOTCHI HARDWARE BUSES (Applies to all)
@@ -15,9 +22,15 @@ dtparam=sdio_overclock=25
 dtoverlay=i2c-rtc,ds3231
 dtoverlay=disable-bt
 enable_uart=1
-arm_freq=800
 arm_64bit=1
 kernel=kernel8-sdiofix.img
 
 # Hardware PWM (GPIO12/13) for Display Hat Mini's backlight
 dtoverlay=pwm-2chan,pin=12,func=4,pin2=13,func2=4
+
+# ==========================================
+# PI 5 SPECIFIC -- must come after [all] so it wins
+# ==========================================
+[pi5]
+# BCM2712 has its own kernel; the sdiofix build above is the v8 one
+kernel=kernel_2712.img

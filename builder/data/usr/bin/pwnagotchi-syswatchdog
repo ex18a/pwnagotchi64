@@ -14,7 +14,6 @@ CPU_TEMP_PAUSE_C=70
 CPU_TEMP_RESUME_C=50
 CPU_TEMP_HARD_REBOOT_C=85
 CPU_HOT_PAUSE_MARKER="/run/pwnagotchi-syswatchdog-hot-pause"
-BRCM_RECOVERY_MARKER="/run/pwnagotchi-syswatchdog-brcm-recovery"
 PIP_INSTALL_MAX_SECONDS=240
 USB0_GATEWAY="10.42.0.1"
 UPDATE_MAINTENANCE_MARKER="/run/pwnagotchi-automatic-updates-maintenance"
@@ -23,6 +22,7 @@ log() {
     logger -t pwnagotchi-syswatchdog "$1"
     echo "$(date -Is) $1" >> "$WATCHDOG_LOG"
 }
+
 
 reboot_with_reason() {
     reason="$1"
@@ -65,21 +65,32 @@ if ip link show usb0 >/dev/null 2>&1; then
     fi
 fi
 
-if ! check_brcm; then
-    if [ -f "$BRCM_RECOVERY_MARKER" ]; then
-        reboot_with_reason "brcmfmac still flaky after an earlier reload_brcm attempt this boot -- reload didn't hold"
-        exit 0
-    fi
-    log "brcmfmac flakiness detected -- attempting reload_brcm (no reboot) ..."
-    touch "$BRCM_RECOVERY_MARKER"
-    if reload_brcm; then
-        sleep 10
-        systemctl restart bettercap
-        log "reload_brcm succeeded, bettercap restarted"
+if brcm_hard_failure; then
+    # The kernel now auto-recovers the chip in place on a firmware crash:
+    # mmc_hw_reset power-cycles it via the WL_ON mmc-pwrseq (gpio-553) and
+    # re-downloads firmware, no reboot needed. Give that a grace window, then
+    # only reboot if the chip genuinely did NOT come back.
+    recovered=0
+    for _ in 1 2 3 4 5 6 7 8; do
+        if brcm_chip_alive; then recovered=1; break; fi
+        sleep 4
+    done
+    if [ "$recovered" = 1 ]; then
+        if ! ip link show mon0 >/dev/null 2>&1; then
+            # chip is back but the monitor vif was destroyed by the reset --
+            # rebuild it and re-attach bettercap so deauth resumes.
+            start_monitor_interface >/dev/null 2>&1
+            systemctl restart bettercap >/dev/null 2>&1
+            log "brcmfmac crash: chip auto-recovered in place via WL_ON pwrseq -- rebuilt mon0 + restarted bettercap, no reboot"
+        fi
     else
-        reboot_with_reason "reload_brcm failed outright"
-        exit 0
+        if brcm_reboot_allowed; then
+            reboot_with_reason "brcmfmac crash and the chip did NOT auto-recover in place within ~32s -- rebooting"
+        else
+            log "CRITICAL: brcmfmac crash, no in-place recovery, reboot budget exhausted -- staying up degraded so the device stays reachable."
+        fi
     fi
+    exit 0
 fi
 
 temp_millic=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null || echo 0)

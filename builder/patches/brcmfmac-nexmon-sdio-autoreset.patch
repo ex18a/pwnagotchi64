@@ -1,0 +1,20 @@
+--- a/sdio.c
++++ b/sdio.c
+@@ -2742,6 +2742,17 @@
+ 			}
+ 			sdio_release_host(bus->sdiodev->func1);
+ 		}
++		/* pwnagotchi: the backplane is dead (F1=0xffffffff); instead of
++		 * halting until a userspace reboot, trigger the existing crash
++		 * recovery so bus_reset -> mmc_hw_reset re-powers the chip via
++		 * pwrseq (WL_REG_ON) and re-downloads firmware in place. One-shot,
++		 * guarded on the DATA->DOWN transition so the DPC can't re-arm it.
++		 */
++		if (bus->sdiodev->state == BRCMF_SDIOD_DATA) {
++			brcmf_err("pwnagotchi: scheduling in-place chip power-cycle instead of halting\n");
++			brcmf_sdiod_change_state(bus->sdiodev, BRCMF_SDIOD_DOWN);
++			brcmf_fw_crashed(&bus->sdiodev->func1->dev);
++		}
+ 	} else if (atomic_read(&bus->intstatus) ||
+ 		   atomic_read(&bus->ipend) > 0 ||
+ 		   (!atomic_read(&bus->fcstate) &&

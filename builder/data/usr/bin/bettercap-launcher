@@ -9,11 +9,17 @@ if is_crypted_mode; then
   done
 fi
 
-# check if wifi driver is bugged
-if ! check_brcm; then
-  if ! reload_brcm; then
-    echo "Could not reload wifi driver. Reboot"
+# Only reboot if the chip actually hard-failed AND has not already recovered.
+# The kernel now auto-power-cycles it in place via the WL_ON mmc-pwrseq, so a
+# fw_crashed line in the log window does NOT mean the chip is still down -- and
+# bettercap is often (re)started by the syswatchdog right after such a recovery.
+# Checking current liveness avoids rebooting over a chip that already came back.
+if brcm_hard_failure && ! brcm_chip_alive; then
+  if brcm_reboot_allowed; then
+    echo "wifi chip hard-failed and is not responding -- rebooting to re-init it"
     reboot
+  else
+    echo "wifi chip hard-failed, not responding, reboot budget exhausted -- continuing"
   fi
   sleep 10
 fi

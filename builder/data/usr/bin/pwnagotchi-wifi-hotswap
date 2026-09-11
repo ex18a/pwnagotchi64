@@ -2,6 +2,11 @@
 
 source /usr/bin/pwnlib
 
+phy_count="$(ls -d /sys/class/ieee80211/*/ 2>/dev/null | wc -l)"
+if [ "$phy_count" -le 1 ]; then
+  exit 0
+fi
+
 DEBOUNCE_MARKER="/run/pwnagotchi-wifi-hotswap-last-trigger"
 DEBOUNCE_SECONDS=15
 
