@@ -156,17 +156,22 @@ for src_dir in /usr/src/brcmfmac-nexmon-*; do
     done
 done
 
-echo "  -> [Chroot] PHASE 4.4d: Building custom kernel (sdio_irq_work teardown-race fix, see pwnagotchi.sh.md)..."
+echo "  -> [Chroot] PHASE 4.4d: Fetching and patching kernel source (compiled outside the chroot, see pwnagotchi.sh.md)..."
 if [ -f /boot/firmware/kernel8-sdiofix.img ]; then
     echo "     (already built, skipping)"
 else
     echo "deb-src http://http.kali.org/kali kali-rolling main contrib non-free non-free-firmware" >> /etc/apt/sources.list
     apt-get update -y
-    apt-get install -y build-essential dpkg-dev gcc-12
-    apt-get build-dep -y linux-rpi
+    apt-get install -y --no-install-recommends dpkg-dev quilt patch patchutils xz-utils
 
     kpkg_name="$(dpkg-query -W -f='${Package}\n' 'linux-image-*-rpi-v8' | head -1)"
     kpkg_version="$(dpkg-query -W -f='${Version}\n' "$kpkg_name")"
+    kernel_release="${kpkg_name#linux-image-}"
+
+    if [ ! -f "/boot/config-$kernel_release" ]; then
+        echo " [!] /boot/config-$kernel_release missing -- cannot reproduce the stock kernel config"
+        exit 1
+    fi
 
     mkdir -p /root/kbuild
     cd /root/kbuild
@@ -174,14 +179,9 @@ else
     src_dir="$(find . -maxdepth 1 -type d -iname 'linux-rpi-*')"
     cd "$src_dir"
     patch -p1 < /tmp/mmc-sdio_irq_work-teardown-race.patch
-
-    export DEB_BUILD_OPTIONS="parallel=$(nproc)"
-    make -f debian/rules.gen build-arch_arm64_rpi_v8_headers build-arch_arm64_rpi_v8_image
-
-    cp debian/build/build_arm64_rpi_v8/arch/arm64/boot/Image /boot/firmware/kernel8-sdiofix.img
-    rm -f /boot/firmware/kernel8.img
-    cd /
-    rm -rf /root/kbuild
+    cp "/boot/config-$kernel_release" .config
+    printf '%s' "$kernel_release" > /root/kbuild/.kernelrelease
+    echo "     source ready at /root/kbuild/$src_dir for $kernel_release"
 fi
 
 echo "  -> [Chroot] Downloading and installing 64-bit Pwngrid engine..."
@@ -226,6 +226,52 @@ rm -rf /tmp/* /var/lib/apt/lists/*
 # ethernet port (e.g. Pi Zero 2 W)
 rm -f /etc/network/interfaces.d/eth0
 EOF
+
+    echo " [*] Step 3.5a-2: Cross-compiling the patched kernel (native amd64 -> arm64, outside the emulated chroot)..."
+    if [ -f /mnt/boot/firmware/kernel8-sdiofix.img ]; then
+        echo "     (already built, skipping)"
+    else
+        kernel_release="$(cat /mnt/root/kbuild/.kernelrelease)"
+        src_dir="$(find /mnt/root/kbuild -maxdepth 1 -type d -iname 'linux-rpi-*' | head -1)"
+        if [ -z "$src_dir" ] || [ -z "$kernel_release" ]; then
+            echo " [!] kernel source or release marker missing under /mnt/root/kbuild"
+            exit 1
+        fi
+
+        apt-get install -y --no-install-recommends \
+            gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu build-essential \
+            bc bison flex libssl-dev libelf-dev kmod cpio rsync xz-utils lz4 python3
+
+        kmake() { make -C "$src_dir" ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- "$@"; }
+
+        kver="$(kmake -s kernelversion 2>/dev/null | tail -1)"
+        cfg_lv="$(sed -n 's/^CONFIG_LOCALVERSION="\(.*\)"$/\1/p' "$src_dir/.config")"
+        suffix="${kernel_release#"$kver"}"
+        file_lv="${suffix%"$cfg_lv"}"
+        if [ -z "$suffix" ] || [ "$suffix" = "$kernel_release" ]; then
+            echo " [!] cannot derive a local version suffix from '$kernel_release' (kernelversion '$kver')"
+            exit 1
+        fi
+        printf '%s' "$file_lv" > "$src_dir/localversion"
+
+        kmake olddefconfig
+
+        built_release="$(kmake -s kernelrelease 2>/dev/null | tail -1)"
+        if [ "$built_release" != "$kernel_release" ]; then
+            echo " [!] kernel release mismatch -- built '$built_release' but the image ships modules for '$kernel_release'."
+            echo " [!] Installing this would leave every module unloadable. Refusing."
+            exit 1
+        fi
+        echo "     release check OK: $built_release"
+
+        kmake -j"$(nproc)" Image
+
+        cp "$src_dir/arch/arm64/boot/Image" /mnt/boot/firmware/kernel8-sdiofix.img
+        rm -f /mnt/boot/firmware/kernel8.img
+        rm -rf /mnt/root/kbuild
+        echo "     installed kernel8-sdiofix.img ($(du -h /mnt/boot/firmware/kernel8-sdiofix.img | cut -f1))"
+    fi
+
 
     # Restore DNS before unmounting so the snapshot doesn't capture our
     # override -- the pwnagotchi-stage chroot below re-applies it itself
