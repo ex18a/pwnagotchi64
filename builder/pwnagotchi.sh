@@ -106,7 +106,9 @@ if [ "$BUILD_BASE" = "1" ]; then
     cp apt-requirements.txt /mnt/tmp/
     cp -r builder/assets/networkmanager /mnt/tmp/networkmanager
     cp builder/patches/brcmfmac-nexmon-checkdied-deadlock.patch /mnt/tmp/
+    cp builder/patches/brcmfmac-nexmon-sdio-autoreset.patch /mnt/tmp/
     cp builder/patches/mmc-sdio_irq_work-teardown-race.patch /mnt/tmp/
+    cp builder/assets/boot/overlays/wifi-pwrseq.dts /mnt/tmp/
 
     chroot /mnt /bin/bash <<'EOF'
 set -e
@@ -138,15 +140,23 @@ grep -vE '^\s*#|^\s*$' /tmp/apt-requirements.txt | xargs apt-get install -y
 echo "  -> [Chroot] PHASE 4.4b: Installing realtek-rtl88xxau-dkms (image-build only, see pwnagotchi.sh.md)..."
 apt-get install -y realtek-rtl88xxau-dkms
 
-echo "  -> [Chroot] PHASE 4.4c: Patching brcmfmac-nexmon (SDIO checkdied deadlock fix, see pwnagotchi.sh.md)..."
+echo "  -> [Chroot] PHASE 4.4c: Patching brcmfmac-nexmon (SDIO checkdied deadlock fix + in-place WL_ON crash recovery, see pwnagotchi.sh.md)..."
 apt-get install -y patch
 for src_dir in /usr/src/brcmfmac-nexmon-*; do
     [ -d "$src_dir" ] || continue
-    if grep -q "block forever if another context" "$src_dir/sdio.c" 2>/dev/null; then
+    changed=0
+    if ! grep -q "block forever if another context" "$src_dir/sdio.c" 2>/dev/null; then
+        patch -p1 -d "$src_dir" < /tmp/brcmfmac-nexmon-checkdied-deadlock.patch
+        changed=1
+    fi
+    if ! grep -q "in-place chip power-cycle" "$src_dir/sdio.c" 2>/dev/null; then
+        patch -p1 -d "$src_dir" < /tmp/brcmfmac-nexmon-sdio-autoreset.patch
+        changed=1
+    fi
+    if [ "$changed" -eq 0 ]; then
         echo "     (already patched, skipping)"
         continue
     fi
-    patch -p1 -d "$src_dir" < /tmp/brcmfmac-nexmon-checkdied-deadlock.patch
     pkg_version="$(basename "$src_dir" | sed 's/^brcmfmac-nexmon-//')"
     for modules_dir in /lib/modules/*; do
         kernelver="$(basename "$modules_dir")"
@@ -155,6 +165,15 @@ for src_dir in /usr/src/brcmfmac-nexmon-*; do
         dkms install "brcmfmac-nexmon/$pkg_version" -k "$kernelver" --force
     done
 done
+
+echo "  -> [Chroot] PHASE 4.4c2: Compiling the wifi-pwrseq overlay (WL_ON in-place crash recovery, see boot/config.txt)..."
+apt-get install -y device-tree-compiler
+if [ -d /boot/firmware/overlays ]; then
+    dtc -@ -I dts -O dtb -o /boot/firmware/overlays/wifi-pwrseq.dtbo /tmp/wifi-pwrseq.dts
+    echo "     installed /boot/firmware/overlays/wifi-pwrseq.dtbo"
+else
+    echo "     WARNING: /boot/firmware/overlays missing -- wifi-pwrseq overlay not installed"
+fi
 
 echo "  -> [Chroot] PHASE 4.4d: Fetching and patching kernel source (compiled outside the chroot, see pwnagotchi.sh.md)..."
 if [ -f /boot/firmware/kernel8-sdiofix.img ]; then

@@ -48,6 +48,14 @@ brcm_hard_failure() {
   return 1
 }
 
+# True if the wifi chip is currently alive and responsive. After a firmware
+# crash the kernel auto-power-cycles the chip in place (mmc_hw_reset drives the
+# WL_ON mmc-pwrseq, gpio-553); when that succeeds wlan0 re-appears and answers.
+# Used to tell an already-recovered crash from one that still needs a reboot.
+brcm_chip_alive() {
+  iw dev wlan0 info >/dev/null 2>&1
+}
+
 check_brcm() {
   if [[ "$(journalctl -n10 -k --since -5m | grep -c 'brcmf_cfg80211_nexmon_set_channel.*Set Channel failed')" -ge 5 ]]; then
     return 1

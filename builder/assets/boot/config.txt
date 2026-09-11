@@ -6,6 +6,11 @@
 dtoverlay=dwc2
 # Underclock for heat -- Zero 2 W only, the bigger Pis keep their stock clock
 arm_freq=800
+# Wire WL_ON (gpio-553) as the wifi SDIO mmc-pwrseq reset line so the kernel can
+# power-cycle the BCM43430b0 in place after a firmware crash (mmc_hw_reset ->
+# WL_ON low/high -> clean re-init, no reboot). BCM2837 (Zero 2 W) wiring; see
+# overlays/wifi-pwrseq.dts and .claude-notes/brcmf-crash-root-cause-investigation.md
+dtoverlay=wifi-pwrseq
 
 # ==========================================
 # PWNAGOTCHI HARDWARE BUSES (Applies to all)

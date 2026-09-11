@@ -1,0 +1,29 @@
+/dts-v1/;
+/plugin/;
+
+/* Wire WL_ON (BCM GPIO 41) as the WiFi SDIO reset line via mmc-pwrseq-simple.
+ * This lets the mmc core actually power-cycle the BCM43430b0 (WL_ON low->high)
+ * on mmc_hw_reset -- the only thing that revives the chip after a firmware
+ * crash -- done in-kernel with proper SDIO locking (no userspace deadlock). */
+/ {
+    compatible = "brcm,bcm2837";
+
+    fragment@0 {
+        target-path = "/";
+        __overlay__ {
+            wifi_pwrseq: wifi-pwrseq {
+                compatible = "mmc-pwrseq-simple";
+                reset-gpios = <&gpio 41 1>;      /* 1 = GPIO_ACTIVE_LOW; WL_ON */
+                post-power-on-delay-ms = <10>;
+                power-off-delay-us = <10000>;
+            };
+        };
+    };
+
+    fragment@1 {
+        target = <&mmcnr>;
+        __overlay__ {
+            mmc-pwrseq = <&wifi_pwrseq>;
+        };
+    };
+};
