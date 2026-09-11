@@ -25,7 +25,7 @@ _DEFAULTS = {
     'ANGRY': "(-_-')",
     'FRIEND': '(♥‿‿♥)',
     'BROKEN': '(☓‿‿☓)',
-    'BLIND': '(☓‿‿☓)',
+    'BLIND': '(╥☁╥ )',
     'DEBUG': '(#__#)',
     'UPLOAD': '(1__0)',
     'UPLOAD1': '(1__1)',
