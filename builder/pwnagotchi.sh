@@ -106,6 +106,7 @@ if [ "$BUILD_BASE" = "1" ]; then
     cp apt-requirements.txt /mnt/tmp/
     cp -r builder/assets/networkmanager /mnt/tmp/networkmanager
     cp builder/patches/brcmfmac-nexmon-checkdied-deadlock.patch /mnt/tmp/
+    cp builder/patches/brcmfmac-nexmon-pmoff.patch /mnt/tmp/
     cp builder/patches/mmc-sdio_irq_work-teardown-race.patch /mnt/tmp/
 
     chroot /mnt /bin/bash <<'EOF'
@@ -138,7 +139,7 @@ grep -vE '^\s*#|^\s*$' /tmp/apt-requirements.txt | xargs apt-get install -y
 echo "  -> [Chroot] PHASE 4.4b: Installing realtek-rtl88xxau-dkms (image-build only, see pwnagotchi.sh.md)..."
 apt-get install -y realtek-rtl88xxau-dkms
 
-echo "  -> [Chroot] PHASE 4.4c: Patching brcmfmac-nexmon (SDIO checkdied deadlock fix, see pwnagotchi.sh.md)..."
+echo "  -> [Chroot] PHASE 4.4c: Patching brcmfmac-nexmon (SDIO checkdied deadlock fix + power-save-off, see pwnagotchi.sh.md)..."
 apt-get install -y patch
 for src_dir in /usr/src/brcmfmac-nexmon-*; do
     [ -d "$src_dir" ] || continue
@@ -147,6 +148,7 @@ for src_dir in /usr/src/brcmfmac-nexmon-*; do
         continue
     fi
     patch -p1 -d "$src_dir" < /tmp/brcmfmac-nexmon-checkdied-deadlock.patch
+    patch -p1 -d "$src_dir" < /tmp/brcmfmac-nexmon-pmoff.patch
     pkg_version="$(basename "$src_dir" | sed 's/^brcmfmac-nexmon-//')"
     for modules_dir in /lib/modules/*; do
         kernelver="$(basename "$modules_dir")"
