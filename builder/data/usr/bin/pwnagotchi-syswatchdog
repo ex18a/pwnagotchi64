@@ -78,10 +78,17 @@ if brcm_hard_failure; then
     if [ "$recovered" = 1 ]; then
         if ! ip link show mon0 >/dev/null 2>&1; then
             # chip is back but the monitor vif was destroyed by the reset --
-            # rebuild it and re-attach bettercap so deauth resumes.
+            # rebuild it and fully restart bettercap. The full restart is
+            # REQUIRED (verified on air with a second adapter): after the WL_ON
+            # firmware reload, a light "wifi.recon off/on" toggle re-opens RX
+            # recon but does NOT restore TX injection -- deauths then get logged
+            # but never transmit, so no client is kicked and nothing is captured.
+            # Only a full bettercap restart re-establishes injection AND recon.
+            # This runs only on an actual crash, so it is not the gratuitous
+            # restart churn that can itself cause a wedge.
             start_monitor_interface >/dev/null 2>&1
             systemctl restart bettercap >/dev/null 2>&1
-            log "brcmfmac crash: chip auto-recovered in place via WL_ON pwrseq -- rebuilt mon0 + restarted bettercap, no reboot"
+            log "brcmfmac crash: chip auto-recovered in place via WL_ON pwrseq -- rebuilt mon0 + restarted bettercap (restores injection+recon), no reboot"
         fi
     else
         if brcm_reboot_allowed; then
