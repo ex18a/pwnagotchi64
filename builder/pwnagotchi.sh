@@ -105,6 +105,7 @@ if [ "$BUILD_BASE" = "1" ]; then
     echo " [*] Step 3.5a: Injecting base-stage assets..."
     cp apt-requirements.txt /mnt/tmp/
     cp -r builder/assets/networkmanager /mnt/tmp/networkmanager
+    cp -r builder/assets/bluetooth /mnt/tmp/bluetooth
     cp builder/patches/brcmfmac-nexmon-checkdied-deadlock.patch /mnt/tmp/
     cp builder/patches/brcmfmac-nexmon-sdio-autoreset.patch /mnt/tmp/
     cp builder/patches/mmc-sdio_irq_work-teardown-race.patch /mnt/tmp/
@@ -211,7 +212,7 @@ chmod +x /usr/bin/pwngrid
 rm -rf /tmp/pwngrid_engine.zip /tmp/engine_extract
 
 echo "  -> [Chroot] Enabling I2C hardware modules..."
-echo "i2c-dev" >> /etc/modules
+echo -e "i2c-dev\nbnep" >> /etc/modules
 
 echo "  -> [Chroot] Forcing Kernel Wi-Fi Regulatory Domain to BO (Max TX Power)..."
 echo "options cfg80211 ieee80211_regdom=BO" > /etc/modprobe.d/cfg80211_regdomain.conf
@@ -223,7 +224,9 @@ sed -i \
   /etc/systemd/system.conf
 
 echo "  -> [Chroot] Injecting NetworkManager scripts..."
+cp /tmp/networkmanager/98-bt-gateway /etc/NetworkManager/dispatcher.d/98-bt-gateway
 cp /tmp/networkmanager/99-rtc-sync /etc/NetworkManager/dispatcher.d/99-rtc-sync
+chmod +x /etc/NetworkManager/dispatcher.d/98-bt-gateway
 chmod +x /etc/NetworkManager/dispatcher.d/99-rtc-sync
 
 echo "  -> [Chroot] Locking NetworkManager to ignore WiFi interfaces..."
@@ -233,8 +236,15 @@ cat << 'NM_EOF' > /etc/NetworkManager/conf.d/99-unmanaged.conf
 unmanaged-devices=type:wifi;interface-name:wlan*;interface-name:mon*;interface-name:usb*
 NM_EOF
 
-echo "  -> [Chroot] Disabling Bluetooth (dtoverlay=disable-bt, see boot/config.txt) and its services..."
-systemctl disable hciuart.service bluetooth.service bt-agent.service 2>/dev/null || true
+echo "  -> [Chroot] Installing Bluetooth Tethering Wizard..."
+cp /tmp/bluetooth/bt-wizard /usr/local/bin/bt-wizard
+chmod +x /usr/local/bin/bt-wizard
+
+echo "  -> [Chroot] Patching SAP plugin crash in bluetoothd..."
+sed -i 's|^ExecStart=.*bluetoothd.*|ExecStart=/usr/libexec/bluetooth/bluetoothd --noplugin=sap|' /lib/systemd/system/bluetooth.service
+
+echo "  -> [Chroot] Disabling hciuart.service (superseded by dtparam=krnbt=on)..."
+systemctl disable hciuart.service 2>/dev/null || true
 
 echo "  -> [Chroot] Base-stage cleanup..."
 rm -f /etc/dpkg/dpkg.cfg.d/force-unsafe-io

@@ -182,10 +182,17 @@ keep a single plug/unplug event from causing more than one restart.
 - **`gps`** — stock upstream plugin, unmodified: saves GPS coordinates alongside any handshake
   captured, if you have a supported GPS source attached.
 
-### Bluetooth removed entirely
+### Bluetooth tethering
 
-Disabled at the hardware level (`dtoverlay=disable-bt`) and every related service/package — not just
-turned off in software. If you need Bluetooth, this isn't the build for it.
+Bluetooth is enabled at the hardware level (`dtparam=krnbt=on`), and `bt-wizard` sets up a Bluetooth
+PAN tether to your phone: pair, trust and create the NetworkManager profile in one interactive pass,
+with a retry loop if the pairing doesn't take. The setup wizard offers to run it, or run
+`sudo bt-wizard` any time afterwards.
+
+The tether is always a fallback, never the primary link — its route metric (700) is far higher than
+anything usb0, wifi or ethernet uses, so the kernel picks one of those over Bluetooth whenever they're
+up. Auto-updates also refuse to install over a Bluetooth-only connection (notify only), since pulling a
+release and apt packages over a PAN tether isn't reliable enough to risk a half-applied update.
 
 ### Other changes
 
@@ -332,6 +339,8 @@ outside the Python process, so it keeps working even if pwnagotchi itself is com
 
 - Detects and recovers from internal WiFi chip firmware flakiness (reloads the driver, no reboot;
   escalates to a full reboot only if the same flakiness returns after that).
+- Detects `hci0` hardware errors and reloads the Bluetooth stack in place. It never reboots for this —
+  if the reload doesn't take, Bluetooth is left down and everything else keeps running.
 - Thermal protection — pauses `bettercap`/`pwnagotchi` at 70°C, resumes at 50°C, hard-reboots as a last
   resort at 85°C.
 - Reboots if `bettercap` is crash-looping, or if `pwnagotchi.log` goes stale while the service should

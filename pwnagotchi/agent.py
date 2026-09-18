@@ -21,24 +21,10 @@ from pwnagotchi.ai.train import AsyncTrainer
 
 RECOVERY_DATA_FILE = '/root/.pwnagotchi-recovery'
 
-# --- INTERACTION HISTORY DECAY ---
-# how often the background worker checks for decay opportunities (seconds)
 HISTORY_DECAY_CHECK_INTERVAL = 60
-# a MAC's interaction count drops by 1 once it's been absent (not seen) for
-# this long, and repeats every time another full interval of absence passes
-HISTORY_DECAY_INTERVAL = 30 * 60  # 30 minutes
-# ----------------------------------
+HISTORY_DECAY_INTERVAL = 30 * 60
 
-# --- FORGET-HANDSHAKE (live testing aid) ---
-# drop one MAC (or any substring of one, same matching rule _has_handshake
-# already uses) per line into this file and it's picked up on the next
-# decay-worker tick: removes any matching _handshakes/_history entries so
-# the agent treats it as never having been touched, without needing a
-# process restart (which would also throw away every other MAC's history/
-# handshake state and the current uptime/session, not just the one target).
 FORGET_HANDSHAKE_FILE = '/root/.pwnagotchi-forget'
-# --------------------------------------------
-
 
 class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
     def __init__(self, view, config, keypair):
@@ -61,25 +47,19 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         self._view.set_agent(self)
         self._web_ui = Server(self, config['ui'])
 
-        # persistent wait flag that survives epoch rollovers -- now holds a
-        # number of seconds (0 = nothing pending) rather than a bool, so we
-        # can carry the right wait duration through to set_channel()
         self._pending_wait = 0
 
         self._access_points = []
         self._last_pwnd = None
         self._tot_handshakes_cache = None
         self._history = {}
-        # --- INTERACTION HISTORY DECAY ---
-        self._last_seen = {}     # mac -> last time we actually saw it on the radio
-        self._last_decay = {}    # mac -> last time its history count was decremented
+        self._last_seen = {}
+        self._last_decay = {}
         self._history_lock = threading.Lock()
-        # ---------------------------------
         self._handshakes = {}
         self._handshakes_lock = threading.Lock()
         self.last_session = LastSession(self._config)
         self.mode = 'ai' if config.get('ai', {}).get('enabled', False) else 'auto'
-        # true if any whitelisted AP was visible as of the last get_access_points() call
         self._whitelist_ap_visible = False
 
         if not os.path.exists(config['bettercap']['handshakes']):
@@ -96,15 +76,6 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         return self._view
 
     def supported_channels(self):
-        # this is first populated in __init__, which runs before
-        # start_monitor_mode() has necessarily brought mon_iface up yet --
-        # if the interface didn't exist at that exact moment, iface_channels()
-        # silently returns [] and (without this) that empty result would be
-        # cached forever for the rest of the process's life, permanently
-        # starving the AI's action space of any channel parameters and
-        # making its saved brain.nn fail to load on every future boot until
-        # the next lucky race. Retry here instead of trusting the one-shot
-        # value from construction time.
         if not self._supported_channels:
             self._supported_channels = utils.iface_channels('mon0')
         return self._supported_channels
@@ -119,17 +90,6 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
                 pass
 
     def _apply_hop_period(self):
-        # Confirmed on-device over an extended period of testing: frequent
-        # channel hopping is the single biggest driver of nexmon/mon0
-        # instability on this chip (BCM43430) -- a full evening of the AI
-        # hopping across shifting sets of 5-10 channels every 1-3 minutes
-        # produced a crash-loop roughly every 20-40 minutes (bettercap
-        # dying, reload_brcm, full reboots), which stopped completely once
-        # locked to a single channel. Previously this varied by whether a
-        # bluetooth PAN tether was connected (the wifi chip shares its
-        # radio/firmware with bluetooth on this combo chip) -- simplified
-        # to always use the same conservative period regardless, rather
-        # than ever risking the faster one.
         hop_period = self._config['personality'].get('wifi_hop_period_ms', 1000)
         self.run('set wifi.hop.period %d' % hop_period)
 
@@ -141,20 +101,8 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         self.run('set wifi.handshakes.file %s' % self._config['bettercap']['handshakes'])
         self.run('set wifi.handshakes.aggregate false')
 
-        # see _apply_hop_period() -- always issued, even when it equals
-        # bettercap's own default: skipping the call when it matched
-        # bettercap's default (the old behavior here) meant a *previous*
-        # boot's non-default value could never be reverted, since bettercap
-        # has no way to know the config changed back without being told
-        # again -- confirmed live on-device: set to 750 one boot, changed
-        # back to 250 in config, bettercap stayed at 750 across the next
-        # restart because this line never re-ran.
         self._apply_hop_period()
 
-    # consecutive failed monitor-interface start attempts before giving up
-    # and rebooting -- a single failed attempt used to raise straight out of
-    # this method uncaught, crashing the whole process (silently, since the
-    # systemd unit discards stderr) and losing the one-shot auto-mode flag
     MAX_MON_START_ATTEMPTS = 5
 
     def start_monitor_mode(self):
@@ -210,15 +158,6 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
                                 pwnagotchi.reboot(mode='AUTO')
                                 return
                             else:
-                                # This shares its budget with watchdog.py's lockdown
-                                # reboot and pwnlib's syswatchdog reboot -- discovered
-                                # live that this call site rebooted with zero rate
-                                # limit of its own moments after the shared budget had
-                                # already denied a reboot elsewhere for the exact same
-                                # persistent wedge, which is exactly the tight-loop
-                                # scenario the budget exists to prevent. Give up and
-                                # keep retrying at the slower pace below instead of
-                                # rebooting again.
                                 logging.error(
                                     "monitor interface failed to start %d times in a row, but "
                                     "reboot budget exhausted -- will keep retrying without "
@@ -245,25 +184,9 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
 
         self.start_advertising()
 
-    # matches watchdog's own grace period for a bettercap-down check mid-run
-    # (see watchdog.py's _is_bettercap_still_down_after_grace_period). 60s
-    # was confirmed on-device to be too tight: after a rapid string of
-    # restarts, bettercap-launcher can need 2-3 attempts to recreate mon0
-    # (each ~30s apart, since it doesn't exist yet right after a restart),
-    # legitimately taking 90-120s+ to actually come up -- causing this to
-    # fire a full reboot for something that was already recovering on its
-    # own, which then triggers another rapid restart, compounding the exact
-    # problem it was trying to fix.
     BETTERCAP_WAIT_TIMEOUT = 180
 
     def _wait_bettercap(self):
-        # this runs before the first epoch, so watchdog's on_epoch-based
-        # bettercap-down detection never gets a chance to fire if bettercap
-        # never comes up at all (e.g. the wifi chip's firmware crashed and
-        # the SDIO card dropped off the bus -- confirmed on-device: bettercap
-        # can't even start without its interface, and no shell-level retry
-        # brings a vanished kernel device back, only a reboot does). Without
-        # a bound this loop waits forever and the device just sits there.
         waited = 0
         while True:
             try:
@@ -287,17 +210,11 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         self.start_monitor_mode()
         self.start_event_polling()
         self.start_session_fetcher()
-        self.start_history_decay()   # NEW
+        self.start_history_decay()
         self.next_epoch()
         self.set_ready()
 
     def flush_pending_wait(self):
-        # Closes out the scan > attack > wait > new epoch cycle: takes any
-        # reply-window wait still owed on the channel we just attacked,
-        # *before* the epoch ends -- so the wait time (and the chance of
-        # catching a delayed handshake) is attributed to the epoch that
-        # earned it, not bled into the next epoch's recon(). Call this
-        # right after the per-channel attack loop, right before next_epoch().
         if self._current_channel != 0 and self._pending_wait > 0:
             logging.info("holding on channel %d for %ds before ending epoch ...",
                          self._current_channel, self._pending_wait)
@@ -305,9 +222,6 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         self._pending_wait = 0
 
     def recon(self):
-        # Normally flush_pending_wait() (called right before next_epoch())
-        # already cleared this out, so this is just a defensive fallback in
-        # case recon() ever gets called without that happening first.
         if self._current_channel != 0 and self._pending_wait > 0:
             logging.info("holding on channel %d for %ds before broadening recon ...",
                          self._current_channel, self._pending_wait)
@@ -325,26 +239,9 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
 
         self._view.set('channel', '*')
 
-        # Release the AP-level channel stick set by associate()/deauth()
-        # (wifi.recon <bssid>, bettercap's own stickChan) before opening
-        # recon back up -- stickChan is checked unconditionally ahead of
-        # the hop frequency list, so a lingering stick would silently
-        # override whatever channel list we ask for below.
-        #
-        # Needs its own try/except: unlike the wifi.recon.channel calls
-        # below (already guarded), this one runs unconditionally on every
-        # single epoch regardless of which branch follows, so a bettercap/
-        # mon0 hiccup here (confirmed live: a real brcmfmac firmware crash
-        # while this was mid-test) must not propagate up and stall the
-        # main loop before it even reaches the (also guarded) branches below.
         try:
             self.run('wifi.recon clear')
         except Exception as e:
-            # One-line warning, not a full traceback: this only fires while
-            # mon0/bettercap is already down for some other reason (a
-            # brcmfmac firmware crash, a mid-restart window), and it'll spam
-            # once per epoch for as long as that lasts -- a stack trace
-            # every time would just bury the actual underlying issue.
             logging.warning("wifi.recon clear failed, mon0/bettercap likely down (%s)", e)
 
         if not channels:
@@ -367,16 +264,12 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
     def set_access_points(self, aps, unfiltered_count=0):
         self._access_points = aps
 
-        # --- INTERACTION HISTORY DECAY: NEW ---
-        # stamp every MAC we can currently see (APs and their clients) so the
-        # decay worker knows it's still "present" and shouldn't touch its count
         now = time.time()
         with self._history_lock:
             for ap in aps:
                 self._last_seen[ap['mac']] = now
                 for sta in ap['clients']:
                     self._last_seen[sta['mac']] = now
-        # ---------------------------------------
 
         plugins.on('wifi_update', self, aps)
         self._epoch.observe(aps, list(self._peers.values()), unfiltered_count)
@@ -440,11 +333,6 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             else:
                 grouped[ch].append(ap)
 
-        # Sort by total client count on the channel, not AP count. A channel
-        # with lots of APs but no clients can only be hit with associate(),
-        # which is a much less reliable way to get a handshake than deauth
-        # -- so prioritize wherever the actual stations are. AP count is
-        # kept as a tiebreaker for channels with equal (often zero) clients.
         return sorted(grouped.items(),
                       key=lambda kv: (sum(len(ap['clients']) for ap in kv[1]), len(kv[1])),
                       reverse=True)
@@ -502,11 +390,6 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             return None
 
     def _format_shakes_text(self, session, tot):
-        # On portrait, 'shakes' and 'mode' share row y=226, mode right-anchored
-        # at x=121 -- if the value grows too wide it draws right into the mode
-        # text. Preserve the lifetime total in full always, and cap the session
-        # count to whatever digits still fit, so the two never overlap
-        # regardless of how large either number gets.
         total_str = str(tot)
         session_str = str(session)
         try:
@@ -514,14 +397,13 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
                 raise ValueError("not portrait")
             shakes = self._view._state._state['shakes']
             mode = self._view._state._state['mode']
-            # matches LabeledValue.draw()'s own value x-offset formula exactly
             label_px = shakes.label_spacing + shakes.label_font.getlength(shakes.label)
             available_px = mode.xy[0] - shakes.xy[0] - label_px
-            value_budget = max(0, available_px // 6)  # 6px per monospace char
+            value_budget = max(0, available_px // 6)
         except Exception:
-            value_budget = 0  # unknown/non-portrait layout -- don't truncate
+            value_budget = 0
 
-        overhead = 3  # " (" + ")"
+        overhead = 3
         session_budget = value_budget - overhead - len(total_str)
         if value_budget and 0 < session_budget < len(session_str):
             session_str = '9' * (session_budget - 1) + '+' if session_budget > 1 else '+'
@@ -539,7 +421,6 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         try:
             shakes_x, shakes_y = self._view._state._state['shakes'].xy
             if self._view._width == 122:
-            # Portrait mode -- static position on line below shakes
                 self._view._state._state['last_pwnd_name'].xy = (shakes_x, 236)
             else:
                 dynamic_offset = 32 + (len(txt) * 6)
@@ -592,16 +473,11 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
                 self._history = data['history']
                 self._last_pwnd = data['last_pwnd']
 
-                # --- INTERACTION HISTORY DECAY: NEW ---
-                # seed fresh timestamps for the recovered counts so they don't
-                # look like they've been silent since 1970 and instantly decay
-                # on the very first tick after this reboot
                 now = time.time()
                 with self._history_lock:
                     for mac in self._history:
                         self._last_seen[mac] = now
                         self._last_decay[mac] = now
-                # ---------------------------------------
 
                 if delete:
                     logging.info("deleting %s", RECOVERY_DATA_FILE)
@@ -626,7 +502,6 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
                 logging.debug(f"[fetch_stats] bettercap unreachable, retrying in 1s: {e}")
             time.sleep(1)
 
-    # --- INTERACTION HISTORY DECAY ---
     def start_history_decay(self):
         _thread.start_new_thread(self._history_decay_worker, ())
 
@@ -648,9 +523,6 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             for mac in list(self._history.keys()):
                 last_seen = self._last_seen.get(mac, 0)
                 last_decay = self._last_decay.get(mac, 0)
-                # the decay clock restarts from whichever happened more
-                # recently -- being seen again always resets it, even if
-                # it had already partially decayed before reappearing
                 anchor = max(last_seen, last_decay)
 
                 if now - anchor >= HISTORY_DECAY_INTERVAL:
@@ -666,9 +538,7 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
                         self._history[mac] = new
                         self._last_decay[mac] = now
                         logging.info("[history] %s interaction count decayed %d -> %d", mac, old, new)
-    # ---------------------------------------
 
-    # --- FORGET-HANDSHAKE (live testing aid) ---
     def _check_forget_requests(self):
         if not os.path.exists(FORGET_HANDSHAKE_FILE):
             return
@@ -700,7 +570,6 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
 
         if targets:
             self._update_handshakes(0)
-    # --------------------------------------------
 
     async def _on_event(self, msg):
         found_handshake = False
@@ -797,8 +666,6 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
         return False
 
     def _should_interact(self, who):
-        # --- INTERACTION HISTORY DECAY: lock added so the background
-        # decay worker can't race with this on the same dict ---
         with self._history_lock:
             if self._has_handshake(who):
                 return False
@@ -817,15 +684,6 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             logging.debug("recon is stale, skipping assoc(%s)", ap['mac'])
             return
 
-        # Upstream evilsocket/pwnagotchi added this parameter but never
-        # actually passed a value at its one call site (bin/pwnagotchi's
-        # epoch loop calls agent.associate(ap) with nothing else), so
-        # throttle defaulted to 0 and this never actually throttled
-        # anything there either -- confirmed against the original source.
-        # None (rather than a hardcoded overwrite of whatever the caller
-        # passed) means "use the configured default", while still letting
-        # a caller that actually wants a specific value (0 included) have
-        # it honored.
         if throttle is None:
             throttle = self._config['personality'].get('action_throttle', 0.8)
 
@@ -835,22 +693,10 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             try:
                 logging.info("sending association frame to %s (%s %s) on channel %d [%d clients], %d dBm...",
                     ap['hostname'], ap['mac'], ap['vendor'], ap['channel'], len(ap['clients']), ap['rssi'])
-                # Field-confirmed with a live iw-based channel sampler:
-                # narrowing the hop *list* (wifi.recon.channel) is not
-                # enough -- bettercap's channel hopper drifted off within
-                # a couple of seconds regardless. wifi.recon <bssid> sets
-                # bettercap's own stickChan, which its hopper checks
-                # unconditionally *before* consulting the hop list at all,
-                # and which persists on its own (not reset until the next
-                # wifi.recon call) through the whole attack + reply-window
-                # hold, all the way until recon() explicitly releases it.
                 self.run('wifi.recon %s' % ap['mac'])
                 self.run('wifi.assoc %s' % ap['mac'])
                 self._epoch.track(assoc=True)
 
-                # Hold this channel for a bit before set_channel() is allowed
-                # to hop away, so a reply has a chance to arrive. Don't
-                # shorten a longer wait already queued up by a deauth.
                 self._pending_wait = max(self._pending_wait,
                                           self._config['personality']['min_recon_time'])
 
@@ -860,7 +706,6 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             plugins.on('association', self, ap)
             if throttle > 0:
                 time.sleep(throttle)
-                # CLOCK FIX: Tell the epoch timer it slept so it doesn't penalize the channel time limit
                 self._epoch.track(sleep=True, inc=throttle)
 
             self._view.on_normal()
@@ -870,7 +715,6 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             logging.debug("recon is stale, skipping deauth(%s)", sta['mac'])
             return
 
-        # see associate() -- same fix, same reasoning
         if throttle is None:
             throttle = self._config['personality'].get('action_throttle', 0.8)
 
@@ -880,14 +724,10 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             try:
                 logging.info("deauthing %s (%s) from %s (%s %s) on channel %d, %d dBm ...",
                     sta['mac'], sta['vendor'], ap['hostname'], ap['mac'], ap['vendor'], ap['channel'], ap['rssi'])
-                # see associate() -- same stickChan pin, same reasoning
                 self.run('wifi.recon %s' % ap['mac'])
                 self.run('wifi.deauth %s' % sta['mac'])
                 self._epoch.track(deauth=True)
 
-                # Deauth gets the longer wait, and always wins over a
-                # shorter assoc wait queued earlier on the same channel --
-                # we want to stick around for the handshake.
                 self._pending_wait = max(self._pending_wait,
                                           self._config['personality']['hop_recon_time'])
 
@@ -898,7 +738,6 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
 
             if throttle > 0:
                 time.sleep(throttle)
-                # CLOCK FIX: Tell the epoch timer it slept so it doesn't penalize the channel time limit
                 self._epoch.track(sleep=True, inc=throttle)
 
             self._view.on_normal()
@@ -909,10 +748,6 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             return
 
         if channel != self._current_channel:
-            # If a deauth (or assoc) just happened on the channel we're
-            # currently sitting on, give it a chance to get a reply before
-            # we abandon it for the next router -- this is the actual fix
-            # for "switches channel, misses the packet from the first one".
             if self._current_channel != 0 and self._pending_wait > 0:
                 logging.info("holding on channel %d for %ds before hopping to %d ...",
                              self._current_channel, self._pending_wait, channel)
@@ -931,11 +766,5 @@ class Agent(Client, Automata, AsyncAdvertiser, AsyncTrainer):
             except Exception as e:
                 logging.error("Error while setting channel (%s)", e)
 
-        # Always reflect the real channel on screen once we're actually
-        # parked on one -- not just on calls that caused a hop. Otherwise,
-        # staying on the same channel across epochs (very common when
-        # there's really just one network of interest) leaves the display
-        # stuck on '*' from the last recon() call, even though the radio
-        # is genuinely fixed on a single channel the whole time.
         if self._current_channel != 0:
             self._view.set('channel', '%d' % self._current_channel)
